@@ -117,11 +117,12 @@ else
     && printf '%s' "$protection" | grep -qE '"strict":true' \
     && printf '%s' "$protection" | grep -qE '"context":"Go"' \
     && printf '%s' "$protection" | grep -qE '"context":"Workflow lint"' \
+    && printf '%s' "$protection" | grep -qE '"context":"Production readiness audit"' \
     && printf '%s' "$protection" | grep -qE '"enforce_admins".*"enabled":true' \
     && printf '%s' "$protection" | grep -qE '"required_linear_history".*"enabled":true' \
     && printf '%s' "$protection" | grep -qE '"allow_force_pushes".*"enabled":false' \
     && printf '%s' "$protection" | grep -qE '"allow_deletions".*"enabled":false'; then
-    add_check "branch_protection" "passed" "main requires strict Go and Workflow lint checks and denies force-push/delete"
+    add_check "branch_protection" "passed" "main requires strict Go, Workflow lint, and Production readiness audit checks and denies force-push/delete"
   else
     add_check "branch_protection" "failed" "main branch protection is incomplete: ${protection:-unavailable}"
   fi
@@ -227,8 +228,8 @@ else
 fi
 
 if grep -qE "AO Command v0.1.0 Operator Closeout" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
+  && grep -qE "Required Evidence Before Tagging" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
   && grep -qE "readiness_percent=100" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
-  && grep -qE "Production readiness audit" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
   && grep -qE "public provenance manifest" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md; then
   add_check "operator_closeout" "passed" "v0.1.0 operator closeout documents ready scope, evidence, and remaining actions"
 else
