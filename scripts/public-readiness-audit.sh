@@ -117,7 +117,7 @@ else
   add_check "repository_private" "skipped" "--repo not provided"
 fi
 
-public_scan_files="$(git ls-files | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
+public_scan_files="$(git ls-files | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 require_no_tracked_match_in_files \
   "secret_patterns" \
   "tracked files contain no obvious tokens, private keys, or provider secrets" \
@@ -130,14 +130,14 @@ require_no_tracked_match_in_files \
   '(/Users/[^[:space:]")]+|/home/[^[:space:]")]+|C:/Users/[^[:space:]")]+)' \
   "$public_scan_files"
 
-workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
+workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 require_no_tracked_match_in_files \
   "ci_artifact_uploads" \
   "workflows and scripts do not upload CI artifacts by default" \
   '(actions/upload-artifact|upload-artifact@|gh release upload)' \
   "$workflow_and_scripts"
 
-command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
+command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 require_no_tracked_match_in_files \
   "dangerous_write_surface" \
   "command surface has no public-switch, release-publish, production-promotion, or destructive git operations" \

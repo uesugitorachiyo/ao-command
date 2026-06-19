@@ -21,6 +21,15 @@
       "mutates_repositories": false,
       "mutates_releases": false,
       "uploads_artifacts": false
+    },
+    {
+      "evidence_id": "release-governance-dry-run",
+      "producer": "scripts/release-governance-dry-run.sh",
+      "contract": "docs/contracts/release-governance-audit-v0.1.schema.json",
+      "public_safe": true,
+      "mutates_repositories": false,
+      "mutates_releases": false,
+      "uploads_artifacts": false
     }
   ],
   "blocked_content": [
