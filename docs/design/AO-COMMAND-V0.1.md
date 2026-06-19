@@ -20,7 +20,9 @@ AO Forge evidence and guide a human operator first.
 
 ## V0.1 Surface
 
-- `status`: show AO Forge production-readiness percentage and gate count.
+- `status`: show AO Forge production-readiness percentage, gate count,
+  required next action count, derived production-ready decision, operator mode,
+  and release governance state.
 - `next`: explain the next operator action from AO Forge readiness evidence.
 - `goals`: inspect an AO Forge GoalRun and show phase, next task, and guard.
 - `evidence`: validate a contract document through AO Forge.

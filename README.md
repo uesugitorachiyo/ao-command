@@ -28,6 +28,9 @@ go run ./cmd/ao-command evidence --forge ../ao-forge --schema docs/contracts/pro
 ```
 
 Use `--json` on any command for machine-readable output when available.
+`status` reports the AO Forge readiness percentage, gate count, required next
+action count, derived `production_ready` decision, `operator_mode=read_only`,
+and release governance state.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
