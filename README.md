@@ -39,12 +39,14 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
 
 ## Safety
 
+- Private by default until the operator explicitly approves publication.
 - Read-only by default.
 - AO Forge remains the source of truth for readiness percentages, release gates,
   GoalRun state, retained evidence, and Covenant decisions.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
+- CI does not upload artifacts by default while the repository is private.
 
 ## Foundry Direction
 
@@ -58,10 +60,14 @@ The Foundry path is:
    with a project registry, task queues, concurrency limits, overnight
    advancement, Covenant-signed job results, and control-plane evidence.
 
+The initial registry design is in
+`docs/design/FOUNDRY-REGISTRY-V0.1.md`.
+
 ## Verification
 
 ```sh
 go test ./...
 go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
+scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 ```

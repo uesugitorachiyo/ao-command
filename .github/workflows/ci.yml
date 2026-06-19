@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ao-command
+        uses: actions/checkout@v4
+
+      - name: Checkout ao-forge integration fixture
+        uses: actions/checkout@v4
+        with:
+          repository: uesugitorachiyo/ao-forge
+          path: ao-forge
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./... -count=1
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -o bin/ao-command ./cmd/ao-command
+
+      - name: Integration smoke
+        run: scripts/ao-command-smoke.sh --forge ao-forge --out tmp/ao-command-smoke
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ao-command
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@latest

@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -178,6 +181,46 @@ func TestCommandFailureReportsStderr(t *testing.T) {
 	if !strings.Contains(stderr, "forge failed") {
 		t.Fatalf("stderr missing command stderr: %s", stderr)
 	}
+}
+
+func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
+	root := repoRoot(t)
+	read := func(path ...string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(append([]string{root}, path...)...))
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.Join(path...), err)
+		}
+		return string(content)
+	}
+
+	readme := read("README.md")
+	security := read("SECURITY.md")
+	foundry := read("docs", "design", "AO-COMMAND-FOUNDRY.md")
+	for _, check := range []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{name: "README private", doc: readme, want: "Private by default"},
+		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
+		{name: "security private", doc: security, want: "private repository"},
+		{name: "security no secrets", doc: security, want: "Do not commit secrets"},
+		{name: "foundry no autonomous writes", doc: foundry, want: "intentionally avoids\nautonomous writes"},
+	} {
+		if !strings.Contains(check.doc, check.want) {
+			t.Fatalf("%s missing %q", check.name, check.want)
+		}
+	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
 func contains(values []string, target string) bool {

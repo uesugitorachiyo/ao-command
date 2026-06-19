@@ -37,7 +37,7 @@ Forge, AO Covenant, AO2, and control-plane evidence.
 ## Foundry Capabilities
 
 - Project registry for repos, branches, CI, release status, owners, readiness
-  score, and active goals.
+  score, and active goals. See `FOUNDRY-REGISTRY-V0.1.md`.
 - Task queues with dependency ordering, priority, concurrency limits, and stop
   conditions.
 - Safe overnight advancement with one active job per repo/branch, no hidden
