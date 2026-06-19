@@ -74,6 +74,8 @@ scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"
 scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
+scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 ```
@@ -91,6 +93,8 @@ The read-only AO Command release-preview dry-run contract is tracked in
 `docs/contracts/release-preview-audit-v0.1.schema.json`.
 The install verification dry-run contract is tracked in
 `docs/contracts/install-verify-audit-v0.1.schema.json`.
+The release governance dry-run contract is tracked in
+`docs/contracts/release-governance-audit-v0.1.schema.json`.
 Public-safe retained evidence rules are tracked in
 `docs/operations/RETAINED-EVIDENCE.md` and
 `docs/operations/public-provenance-manifest.json`.

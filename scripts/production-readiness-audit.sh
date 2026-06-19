@@ -90,9 +90,9 @@ require_no_tracked_match_in_files() {
   fi
 }
 
-public_scan_files="$(git ls-files | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' || true)"
-workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' || true)"
-command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' || true)"
+public_scan_files="$(git ls-files | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 
 status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!bin' 2>&1)"
 if [[ -n "$status_output" ]]; then
@@ -217,9 +217,18 @@ else
   add_check "install_verify_contract" "failed" "install verification dry-run contract must be present and wired into CI"
 fi
 
+if grep -qE "ao.command.release-governance-audit.v0.1" docs/contracts/release-governance-audit-v0.1.schema.json \
+  && grep -qE '"would_create_release"' docs/contracts/release-governance-audit-v0.1.schema.json \
+  && grep -qE "release-governance-dry-run.sh" .github/workflows/ci.yml; then
+  add_check "release_governance_contract" "passed" "release governance dry-run contract is present and wired into CI"
+else
+  add_check "release_governance_contract" "failed" "release governance dry-run contract must be present and wired into CI"
+fi
+
 if grep -qE "ao.command.public-provenance-manifest.v0.1" docs/operations/public-provenance-manifest.json \
   && grep -qE "release-preview-dry-run" docs/operations/public-provenance-manifest.json \
   && grep -qE "install-verify-dry-run" docs/operations/public-provenance-manifest.json \
+  && grep -qE "release-governance-dry-run" docs/operations/public-provenance-manifest.json \
   && grep -qE '"default_ci_artifact_uploads": false' docs/operations/public-provenance-manifest.json \
   && grep -qE "Do not upload CI artifacts by default" docs/operations/RETAINED-EVIDENCE.md; then
   add_check "retained_evidence_policy" "passed" "public-safe retained evidence policy and manifest are present"
@@ -246,6 +255,8 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "release_preview_contract_validate" "AO Command release preview audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-preview/release-preview-audit.json"
   run_check "install_verify_dry_run" "AO Command install verification dry-run passes" scripts/install-verify-dry-run.sh --forge "$forge" --out tmp/ao-command-install-verify
   run_check "install_verify_contract_validate" "AO Command install verification audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$root/tmp/ao-command-install-verify/install-verify-audit.json"
+  run_check "release_governance_dry_run" "AO Command release governance dry-run passes" scripts/release-governance-dry-run.sh --out tmp/ao-command-release-governance --tag v0.1.0 --release-preview-audit tmp/ao-command-release-preview/release-preview-audit.json --install-verify-audit tmp/ao-command-install-verify/install-verify-audit.json
+  run_check "release_governance_contract_validate" "AO Command release governance audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-governance/release-governance-audit.json"
 
   forge="$(cd "$forge" && pwd)"
   mkdir -p "$root/tmp"

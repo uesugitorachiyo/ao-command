@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/uesugitorachiyo/ao-command/docs/contracts/release-governance-audit-v0.1.schema.json",
+  "title": "AO Command Release Governance Audit v0.1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "generated_at_utc",
+    "tag",
+    "head_commit",
+    "decision",
+    "would_create_release",
+    "mutates_repositories",
+    "mutates_releases",
+    "uploads_artifacts",
+    "network_required",
+    "required_evidence",
+    "checks",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ao.command.release-governance-audit.v0.1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["blocked"]
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "head_commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40,64}$"
+    },
+    "decision": {
+      "const": "blocked_pending_operator_approval"
+    },
+    "would_create_release": {
+      "const": false
+    },
+    "mutates_repositories": {
+      "const": false
+    },
+    "mutates_releases": {
+      "const": false
+    },
+    "uploads_artifacts": {
+      "const": false
+    },
+    "network_required": {
+      "const": false
+    },
+    "required_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["evidence_id", "path", "status"],
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["present"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["check_id", "status", "summary"],
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passed"]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["action_id", "description", "required"],
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -209,6 +209,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	releasePreviewDryRun := read("scripts", "release-preview-dry-run.sh")
 	installVerifySchema := read("docs", "contracts", "install-verify-audit-v0.1.schema.json")
 	installVerifyDryRun := read("scripts", "install-verify-dry-run.sh")
+	releaseGovernanceSchema := read("docs", "contracts", "release-governance-audit-v0.1.schema.json")
+	releaseGovernanceDryRun := read("scripts", "release-governance-dry-run.sh")
 	publicReadinessAudit := read("scripts", "public-readiness-audit.sh")
 	productionReadinessAudit := read("scripts", "production-readiness-audit.sh")
 	workflow := read(".github", "workflows", "ci.yml")
@@ -234,6 +236,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs contract", doc: productionReadiness, want: "production-readiness-audit-v0.1.schema.json"},
 		{name: "production readiness docs release preview", doc: productionReadiness, want: "release-preview-audit-v0.1.schema.json"},
 		{name: "production readiness docs install verify", doc: productionReadiness, want: "install-verify-audit-v0.1.schema.json"},
+		{name: "production readiness docs release governance", doc: productionReadiness, want: "release-governance-audit-v0.1.schema.json"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -245,6 +248,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "provenance manifest schema", doc: publicProvenanceManifest, want: "ao.command.public-provenance-manifest.v0.1"},
 		{name: "provenance manifest release preview", doc: publicProvenanceManifest, want: "release-preview-dry-run"},
 		{name: "provenance manifest install verify", doc: publicProvenanceManifest, want: "install-verify-dry-run"},
+		{name: "provenance manifest release governance", doc: publicProvenanceManifest, want: "release-governance-dry-run"},
 		{name: "production readiness schema version", doc: productionReadinessSchema, want: "ao.command.production-readiness-audit.v0.1"},
 		{name: "production readiness schema strict", doc: productionReadinessSchema, want: "\"additionalProperties\": false"},
 		{name: "release preview schema version", doc: releasePreviewSchema, want: "ao.command.release-preview-audit.v0.1"},
@@ -253,6 +257,10 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "install verify schema version", doc: installVerifySchema, want: "ao.command.install-verify-audit.v0.1"},
 		{name: "install verify schema read-only", doc: installVerifySchema, want: "\"mutates_repositories\""},
 		{name: "install verify dry run read-only", doc: installVerifyDryRun, want: "\"mutates_repositories\": false"},
+		{name: "release governance schema version", doc: releaseGovernanceSchema, want: "ao.command.release-governance-audit.v0.1"},
+		{name: "release governance schema blocked", doc: releaseGovernanceSchema, want: "blocked_pending_operator_approval"},
+		{name: "release governance dry run blocked", doc: releaseGovernanceDryRun, want: "blocked_pending_operator_approval"},
+		{name: "release governance dry run no release create", doc: releaseGovernanceDryRun, want: "\"would_create_release\": false"},
 		{name: "public readiness audit repo private check", doc: publicReadinessAudit, want: "repository_private"},
 		{name: "public readiness audit no artifacts", doc: publicReadinessAudit, want: "ci_artifact_uploads"},
 		{name: "public readiness audit no dangerous writes", doc: publicReadinessAudit, want: "dangerous_write_surface"},
@@ -262,6 +270,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit release preview dry-run", doc: productionReadinessAudit, want: "release_preview_dry_run"},
 		{name: "production readiness audit install verify contract", doc: productionReadinessAudit, want: "install_verify_contract"},
 		{name: "production readiness audit install verify dry-run", doc: productionReadinessAudit, want: "install_verify_dry_run"},
+		{name: "production readiness audit release governance contract", doc: productionReadinessAudit, want: "release_governance_contract"},
+		{name: "production readiness audit release governance dry-run", doc: productionReadinessAudit, want: "release_governance_dry_run"},
 		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
 		{name: "production readiness audit operator closeout", doc: productionReadinessAudit, want: "operator_closeout"},
 		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
@@ -277,6 +287,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow release preview schema", doc: workflow, want: "Validate release preview contract"},
 		{name: "workflow install verify dry-run", doc: workflow, want: "Install verification dry-run"},
 		{name: "workflow install verify schema", doc: workflow, want: "Validate install verification contract"},
+		{name: "workflow release governance dry-run", doc: workflow, want: "Release governance dry-run"},
+		{name: "workflow release governance schema", doc: workflow, want: "Validate release governance contract"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)

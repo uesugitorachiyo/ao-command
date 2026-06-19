@@ -12,6 +12,7 @@ checked-in scripts and validated against their contracts:
 
 - release-preview audit JSON from `scripts/release-preview-dry-run.sh`;
 - install verification audit JSON from `scripts/install-verify-dry-run.sh`;
+- release governance audit JSON from `scripts/release-governance-dry-run.sh`;
 - checksum manifests for generated dry-run outputs;
 - command output from read-only `status`, `next`, `goals`, and `evidence`
   inspections when it references only public AO Forge fixtures.

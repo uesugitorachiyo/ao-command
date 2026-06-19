@@ -99,6 +99,21 @@ jobs:
             --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" \
             --document "$PWD/tmp/install-verify/install-verify-audit.json"
 
+      - name: Release governance dry-run
+        run: |
+          scripts/release-governance-dry-run.sh \
+            --out tmp/release-governance \
+            --tag v0.1.0 \
+            --release-preview-audit tmp/release-preview/release-preview-audit.json \
+            --install-verify-audit tmp/install-verify/install-verify-audit.json
+
+      - name: Validate release governance contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" \
+            --document "$PWD/tmp/release-governance/release-governance-audit.json"
+
       - name: Production readiness audit
         env:
           GH_TOKEN: ${{ github.token }}
