@@ -200,7 +200,18 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	privateGuardrails := read("docs", "operations", "PRIVATE-REPO-GUARDRAILS.md")
 	publicationChecklist := read("docs", "operations", "PUBLICATION-CHECKLIST.md")
 	publicationRecord := read("docs", "operations", "PUBLICATION-RECORD-2026-06-19.md")
+	productionReadiness := read("docs", "operations", "PRODUCTION-READINESS.md")
+	operatorCloseout := read("docs", "release", "V0.1.0-OPERATOR-CLOSEOUT.md")
+	retainedEvidence := read("docs", "operations", "RETAINED-EVIDENCE.md")
+	publicProvenanceManifest := read("docs", "operations", "public-provenance-manifest.json")
+	productionReadinessSchema := read("docs", "contracts", "production-readiness-audit-v0.1.schema.json")
+	releasePreviewSchema := read("docs", "contracts", "release-preview-audit-v0.1.schema.json")
+	releasePreviewDryRun := read("scripts", "release-preview-dry-run.sh")
+	installVerifySchema := read("docs", "contracts", "install-verify-audit-v0.1.schema.json")
+	installVerifyDryRun := read("scripts", "install-verify-dry-run.sh")
 	publicReadinessAudit := read("scripts", "public-readiness-audit.sh")
+	productionReadinessAudit := read("scripts", "production-readiness-audit.sh")
+	workflow := read(".github", "workflows", "ci.yml")
 	for _, check := range []struct {
 		name string
 		doc  string
@@ -218,9 +229,53 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "publication checklist private before approval", doc: publicationChecklist, want: "visibility=PRIVATE"},
 		{name: "publication record public", doc: publicationRecord, want: "visibility=PUBLIC"},
 		{name: "publication record no leaks", doc: publicationRecord, want: "reported no\n  leaks"},
+		{name: "production readiness docs title", doc: productionReadiness, want: "# Production Readiness"},
+		{name: "production readiness docs command", doc: productionReadiness, want: "scripts/production-readiness-audit.sh"},
+		{name: "production readiness docs contract", doc: productionReadiness, want: "production-readiness-audit-v0.1.schema.json"},
+		{name: "production readiness docs release preview", doc: productionReadiness, want: "release-preview-audit-v0.1.schema.json"},
+		{name: "production readiness docs install verify", doc: productionReadiness, want: "install-verify-audit-v0.1.schema.json"},
+		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
+		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
+		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
+		{name: "operator closeout read-only", doc: operatorCloseout, want: "read-only operator command surface"},
+		{name: "operator closeout required evidence", doc: operatorCloseout, want: "readiness_percent=100"},
+		{name: "operator closeout remaining actions", doc: operatorCloseout, want: "Require the `Production readiness audit` status check"},
+		{name: "retained evidence no uploads", doc: retainedEvidence, want: "Do not upload CI artifacts by default"},
+		{name: "retained evidence no secrets", doc: retainedEvidence, want: "Do not retain"},
+		{name: "provenance manifest schema", doc: publicProvenanceManifest, want: "ao.command.public-provenance-manifest.v0.1"},
+		{name: "provenance manifest release preview", doc: publicProvenanceManifest, want: "release-preview-dry-run"},
+		{name: "provenance manifest install verify", doc: publicProvenanceManifest, want: "install-verify-dry-run"},
+		{name: "production readiness schema version", doc: productionReadinessSchema, want: "ao.command.production-readiness-audit.v0.1"},
+		{name: "production readiness schema strict", doc: productionReadinessSchema, want: "\"additionalProperties\": false"},
+		{name: "release preview schema version", doc: releasePreviewSchema, want: "ao.command.release-preview-audit.v0.1"},
+		{name: "release preview schema read-only", doc: releasePreviewSchema, want: "\"mutates_releases\""},
+		{name: "release preview dry run read-only", doc: releasePreviewDryRun, want: "\"mutates_releases\": false"},
+		{name: "install verify schema version", doc: installVerifySchema, want: "ao.command.install-verify-audit.v0.1"},
+		{name: "install verify schema read-only", doc: installVerifySchema, want: "\"mutates_repositories\""},
+		{name: "install verify dry run read-only", doc: installVerifyDryRun, want: "\"mutates_repositories\": false"},
 		{name: "public readiness audit repo private check", doc: publicReadinessAudit, want: "repository_private"},
 		{name: "public readiness audit no artifacts", doc: publicReadinessAudit, want: "ci_artifact_uploads"},
 		{name: "public readiness audit no dangerous writes", doc: publicReadinessAudit, want: "dangerous_write_surface"},
+		{name: "production readiness audit schema", doc: productionReadinessAudit, want: "ao.command.production-readiness-audit.v0.1"},
+		{name: "production readiness audit contract check", doc: productionReadinessAudit, want: "readiness_contract"},
+		{name: "production readiness audit release preview contract", doc: productionReadinessAudit, want: "release_preview_contract"},
+		{name: "production readiness audit release preview dry-run", doc: productionReadinessAudit, want: "release_preview_dry_run"},
+		{name: "production readiness audit install verify contract", doc: productionReadinessAudit, want: "install_verify_contract"},
+		{name: "production readiness audit install verify dry-run", doc: productionReadinessAudit, want: "install_verify_dry_run"},
+		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
+		{name: "production readiness audit operator closeout", doc: productionReadinessAudit, want: "operator_closeout"},
+		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
+		{name: "production readiness audit secret scanning", doc: productionReadinessAudit, want: "secret_scanning"},
+		{name: "production readiness audit branch protection", doc: productionReadinessAudit, want: "branch_protection"},
+		{name: "production readiness audit skip admin mode", doc: productionReadinessAudit, want: "skip_remote_admin"},
+		{name: "production readiness audit no dangerous writes", doc: productionReadinessAudit, want: "dangerous_write_surface"},
+		{name: "workflow production readiness job", doc: workflow, want: "name: Production readiness audit"},
+		{name: "workflow production readiness script", doc: workflow, want: "scripts/production-readiness-audit.sh"},
+		{name: "workflow production readiness schema", doc: workflow, want: "Validate production readiness contract"},
+		{name: "workflow release preview dry-run", doc: workflow, want: "Release preview dry-run"},
+		{name: "workflow release preview schema", doc: workflow, want: "Validate release preview contract"},
+		{name: "workflow install verify dry-run", doc: workflow, want: "Install verification dry-run"},
+		{name: "workflow install verify schema", doc: workflow, want: "Validate install verification contract"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)

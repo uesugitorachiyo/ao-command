@@ -1,0 +1,34 @@
+{
+  "schema_version": "ao.command.public-provenance-manifest.v0.1",
+  "status": "active",
+  "retention_scope": "dry-run-public-safe",
+  "default_ci_artifact_uploads": false,
+  "evidence_classes": [
+    {
+      "evidence_id": "release-preview-dry-run",
+      "producer": "scripts/release-preview-dry-run.sh",
+      "contract": "docs/contracts/release-preview-audit-v0.1.schema.json",
+      "public_safe": true,
+      "mutates_repositories": false,
+      "mutates_releases": false,
+      "uploads_artifacts": false
+    },
+    {
+      "evidence_id": "install-verify-dry-run",
+      "producer": "scripts/install-verify-dry-run.sh",
+      "contract": "docs/contracts/install-verify-audit-v0.1.schema.json",
+      "public_safe": true,
+      "mutates_repositories": false,
+      "mutates_releases": false,
+      "uploads_artifacts": false
+    }
+  ],
+  "blocked_content": [
+    "credentials",
+    "provider_payloads",
+    "private_control_plane_exports",
+    "incident_details",
+    "security_review_details",
+    "local_machine_paths"
+  ]
+}
