@@ -6,10 +6,10 @@ daily command center.
 
 ## Status
 
-v0.1 is a local scaffold. It reads AO Forge production-readiness, GoalRun,
-release-preview, and contract evidence through AO Forge-owned commands. It does
-not publish releases, promote production, mutate provider state, or replace AO
-Forge policy decisions.
+v0.1 is a public scaffold after passing the AO Command publication audit. It
+reads AO Forge production-readiness, GoalRun, release-preview, and contract
+evidence through AO Forge-owned commands. It does not publish releases, promote
+production, mutate provider state, or replace AO Forge policy decisions.
 
 This is the first slice toward AO Command Foundry, not the full Foundry system
 yet. Foundry is the later persistent engineering operations layer across many
@@ -39,14 +39,14 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
 
 ## Safety
 
-- Private by default until the operator explicitly approves publication.
+- Published only after the operator-approved public-readiness audit passed.
 - Read-only by default.
 - AO Forge remains the source of truth for readiness percentages, release gates,
   GoalRun state, retained evidence, and Covenant decisions.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
-- CI does not upload artifacts by default while the repository is private.
+- CI does not upload artifacts by default.
 
 ## Foundry Direction
 
@@ -72,7 +72,7 @@ go build -o bin/ao-command ./cmd/ao-command
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 ```
 
-Private-repo operating guardrails are tracked in
+Historical private-repo operating guardrails are tracked in
 `docs/operations/PRIVATE-REPO-GUARDRAILS.md`.
-The pre-publication operator gate is tracked in
+The pre-publication operator gate and publication evidence are tracked in
 `docs/operations/PUBLICATION-CHECKLIST.md`.

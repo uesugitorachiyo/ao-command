@@ -1,28 +1,24 @@
 # Security
 
-AO Command is a private repository during v0.1 development. Do not make this
-repository public until the operator, security, and release gates explicitly
-approve publication.
+AO Command is public after passing the v0.1 publication audit. Do not commit
+private operational evidence, credentials, provider payloads, or control-plane
+exports.
 
-## Private-by-Default Rules
+## Public Repository Rules
 
-- Keep the GitHub repository private.
 - Do not commit secrets, tokens, credentials, private keys, provider payloads,
   or local machine paths.
-- Do not upload CI artifacts by default while the repository is private and the
-  evidence model is still being hardened.
-- Do not assume private GitHub Actions are available until billing or
-  spending-limit settings allow private runner usage; use the local verification
-  gate in `docs/operations/PRIVATE-REPO-GUARDRAILS.md` while Actions are blocked.
+- Do not upload CI artifacts by default unless a release gate explicitly
+  requires reviewed public evidence.
 - Keep all commands read-only by default.
 - Require explicit operator approval before introducing any command that mutates
   branches, releases, provider state, task queues, or control-plane records.
-- Require `docs/operations/PUBLICATION-CHECKLIST.md` and
-  `scripts/public-readiness-audit.sh` to pass before making the repository
-  public.
+- Require a fresh public-readiness review before adding any cross-repo autonomous
+  job scheduler, release publisher, production promoter, or provider mutation
+  path. Use `scripts/public-readiness-audit.sh` as the baseline local gate.
 
 ## Reporting
 
 For now, report security issues privately to the repository owner. Do not open
-public issues or publish proof-of-concept details while the repository remains
-private.
+public issues or publish proof-of-concept details for suspected vulnerabilities
+until a fix is available.

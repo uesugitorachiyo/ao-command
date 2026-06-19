@@ -199,22 +199,25 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	foundry := read("docs", "design", "AO-COMMAND-FOUNDRY.md")
 	privateGuardrails := read("docs", "operations", "PRIVATE-REPO-GUARDRAILS.md")
 	publicationChecklist := read("docs", "operations", "PUBLICATION-CHECKLIST.md")
+	publicationRecord := read("docs", "operations", "PUBLICATION-RECORD-2026-06-19.md")
 	publicReadinessAudit := read("scripts", "public-readiness-audit.sh")
 	for _, check := range []struct {
 		name string
 		doc  string
 		want string
 	}{
-		{name: "README private", doc: readme, want: "Private by default"},
+		{name: "README publication audit", doc: readme, want: "operator-approved public-readiness audit passed"},
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
-		{name: "security private", doc: security, want: "private repository"},
+		{name: "security public", doc: security, want: "public after passing the v0.1 publication audit"},
 		{name: "security no secrets", doc: security, want: "Do not commit secrets"},
 		{name: "foundry no autonomous writes", doc: foundry, want: "intentionally avoids\nautonomous writes"},
 		{name: "README publication checklist", doc: readme, want: "PUBLICATION-CHECKLIST.md"},
 		{name: "security publication audit", doc: security, want: "scripts/public-readiness-audit.sh"},
 		{name: "private guardrails local gate", doc: privateGuardrails, want: "scripts/public-readiness-audit.sh"},
-		{name: "publication checklist operator approval", doc: publicationChecklist, want: "explicit operator approval"},
+		{name: "publication checklist operator approval", doc: publicationChecklist, want: "explicitly approved publication"},
 		{name: "publication checklist private before approval", doc: publicationChecklist, want: "visibility=PRIVATE"},
+		{name: "publication record public", doc: publicationRecord, want: "visibility=PUBLIC"},
+		{name: "publication record no leaks", doc: publicationRecord, want: "reported no\n  leaks"},
 		{name: "public readiness audit repo private check", doc: publicReadinessAudit, want: "repository_private"},
 		{name: "public readiness audit no artifacts", doc: publicReadinessAudit, want: "ci_artifact_uploads"},
 		{name: "public readiness audit no dangerous writes", doc: publicReadinessAudit, want: "dangerous_write_surface"},

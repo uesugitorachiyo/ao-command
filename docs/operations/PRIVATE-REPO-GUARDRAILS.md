@@ -1,11 +1,12 @@
-# Private Repository Guardrails
+# Historical Private Repository Guardrails
 
-AO Command is private during v0.1 development. Do not change repository
-visibility to public until an explicit release readiness review approves it.
+AO Command was private during v0.1 scaffolding. It was made public only after
+the public-readiness audit passed and the operator explicitly approved
+publication.
 
-## Current GitHub State
+## Historical Private GitHub State
 
-- Repository visibility must remain `PRIVATE`.
+- Repository visibility had to remain `PRIVATE` before publication approval.
 - Vulnerability alerts should stay enabled.
 - GitHub Actions workflows are present, but private-repo Actions may not run
   until account billing or spending-limit settings allow private runner usage.
@@ -17,7 +18,7 @@ visibility to public until an explicit release readiness review approves it.
 
 ## Required Local Checks
 
-Run these before pushing while private Actions are unavailable:
+Run these before publication or before introducing sensitive Foundry features:
 
 ```sh
 go test ./... -count=1
@@ -30,7 +31,7 @@ scripts/public-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../a
 
 ## Publication Gate
 
-Before making AO Command public:
+Before AO Command was made public:
 
 - confirm no secrets, tokens, private keys, private repo names, incident details,
   or provider payloads are present;
