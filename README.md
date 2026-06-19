@@ -71,3 +71,6 @@ go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 ```
+
+Private-repo operating guardrails are tracked in
+`docs/operations/PRIVATE-REPO-GUARDRAILS.md`.

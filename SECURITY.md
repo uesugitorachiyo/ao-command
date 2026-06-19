@@ -11,6 +11,9 @@ approve publication.
   or local machine paths.
 - Do not upload CI artifacts by default while the repository is private and the
   evidence model is still being hardened.
+- Do not assume private GitHub Actions are available until billing or
+  spending-limit settings allow private runner usage; use the local verification
+  gate in `docs/operations/PRIVATE-REPO-GUARDRAILS.md` while Actions are blocked.
 - Keep all commands read-only by default.
 - Require explicit operator approval before introducing any command that mutates
   branches, releases, provider state, task queues, or control-plane records.
