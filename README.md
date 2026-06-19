@@ -74,3 +74,5 @@ scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 
 Private-repo operating guardrails are tracked in
 `docs/operations/PRIVATE-REPO-GUARDRAILS.md`.
+The pre-publication operator gate is tracked in
+`docs/operations/PUBLICATION-CHECKLIST.md`.

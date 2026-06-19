@@ -25,6 +25,7 @@ go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
 go run github.com/rhysd/actionlint/cmd/actionlint@latest
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
+scripts/public-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --out tmp/public-readiness-audit.json
 ```
 
 ## Publication Gate

@@ -17,6 +17,9 @@ approve publication.
 - Keep all commands read-only by default.
 - Require explicit operator approval before introducing any command that mutates
   branches, releases, provider state, task queues, or control-plane records.
+- Require `docs/operations/PUBLICATION-CHECKLIST.md` and
+  `scripts/public-readiness-audit.sh` to pass before making the repository
+  public.
 
 ## Reporting
 
