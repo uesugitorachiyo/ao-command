@@ -15,7 +15,11 @@ import (
 	"time"
 )
 
-const commandSchemaVersion = "ao.command.v0.1"
+const (
+	commandSchemaVersion = "ao.command.v0.1"
+	operatorMode         = "read_only"
+	releaseGovernance    = "blocked_pending_operator_approval"
+)
 
 type Command struct {
 	Dir  string
@@ -144,6 +148,10 @@ func (a App) status(ctx context.Context, args []string) int {
 	fmt.Fprintf(a.Stdout, "readiness_percent=%d\n", audit.ReadinessPercent)
 	fmt.Fprintf(a.Stdout, "gates=%d/%d\n", audit.PassedGates, audit.TotalGates)
 	fmt.Fprintf(a.Stdout, "next_actions=%d\n", len(audit.NextActions))
+	fmt.Fprintf(a.Stdout, "required_next_actions=%d\n", requiredNextActionCount(audit.NextActions))
+	fmt.Fprintf(a.Stdout, "production_ready=%t\n", productionReady(audit))
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", operatorMode)
+	fmt.Fprintf(a.Stdout, "release_governance=%s\n", releaseGovernance)
 	return 0
 }
 
@@ -353,6 +361,10 @@ type statusSummary struct {
 	ReadinessPercent     int          `json:"readiness_percent"`
 	PassedGates          int          `json:"passed_gates"`
 	TotalGates           int          `json:"total_gates"`
+	RequiredNextActions  int          `json:"required_next_actions"`
+	ProductionReady      bool         `json:"production_ready"`
+	OperatorMode         string       `json:"operator_mode"`
+	ReleaseGovernance    string       `json:"release_governance"`
 	NextActions          []nextAction `json:"next_actions"`
 }
 
@@ -364,8 +376,30 @@ func statusSummaryFromAudit(forge string, audit productionReadinessAudit) status
 		ReadinessPercent:     audit.ReadinessPercent,
 		PassedGates:          audit.PassedGates,
 		TotalGates:           audit.TotalGates,
+		RequiredNextActions:  requiredNextActionCount(audit.NextActions),
+		ProductionReady:      productionReady(audit),
+		OperatorMode:         operatorMode,
+		ReleaseGovernance:    releaseGovernance,
 		NextActions:          audit.NextActions,
 	}
+}
+
+func requiredNextActionCount(actions []nextAction) int {
+	count := 0
+	for _, action := range actions {
+		if action.Required {
+			count++
+		}
+	}
+	return count
+}
+
+func productionReady(audit productionReadinessAudit) bool {
+	return audit.Status == "passed" &&
+		audit.ReadinessPercent == 100 &&
+		audit.TotalGates > 0 &&
+		audit.PassedGates == audit.TotalGates &&
+		requiredNextActionCount(audit.NextActions) == 0
 }
 
 type nextSummary struct {

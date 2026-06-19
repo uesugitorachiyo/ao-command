@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -50,6 +51,10 @@ func TestStatusReadsAOForgeProductionReadiness(t *testing.T) {
 		"readiness_percent=100",
 		"gates=12/12",
 		"next_actions=0",
+		"required_next_actions=0",
+		"production_ready=true",
+		"operator_mode=read_only",
+		"release_governance=blocked_pending_operator_approval",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("status stdout missing %q:\n%s", want, stdout)
@@ -65,6 +70,47 @@ func TestStatusReadsAOForgeProductionReadiness(t *testing.T) {
 	wantArgs := []string{"run", "./cmd/forge", "production-readiness", "audit", "--json"}
 	if !reflect.DeepEqual(call.Args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", call.Args, wantArgs)
+	}
+}
+
+func TestStatusJSONIncludesOperatorSignals(t *testing.T) {
+	fake := &fakeRunner{stdout: []byte(`{
+		"status": "blocked",
+		"readiness_percent": 91,
+		"passed_gates": 11,
+		"total_gates": 12,
+		"next_actions": [
+			{"action_id":"refresh-evidence","description":"Refresh stale release evidence.","required":true},
+			{"action_id":"inspect-ui","description":"Inspect operator UI polish.","required":false}
+		]
+	}`)}
+
+	code, stdout, stderr := runWithFake([]string{"status", "--forge", "/repo/ao-forge", "--json"}, fake)
+	if code != 0 {
+		t.Fatalf("status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Forge                string `json:"forge"`
+		Status               string `json:"status"`
+		ReadinessPercent     int    `json:"readiness_percent"`
+		RequiredNextActions  int    `json:"required_next_actions"`
+		ProductionReady      bool   `json:"production_ready"`
+		OperatorMode         string `json:"operator_mode"`
+		ReleaseGovernance    string `json:"release_governance"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid status JSON: %v\n%s", err, stdout)
+	}
+	if got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Forge != "/repo/ao-forge" ||
+		got.Status != "blocked" ||
+		got.ReadinessPercent != 91 ||
+		got.RequiredNextActions != 1 ||
+		got.ProductionReady ||
+		got.OperatorMode != "read_only" ||
+		got.ReleaseGovernance != "blocked_pending_operator_approval" {
+		t.Fatalf("unexpected status summary: %+v", got)
 	}
 }
 
