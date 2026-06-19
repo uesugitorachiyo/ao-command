@@ -11,6 +11,9 @@ visibility to public until an explicit release readiness review approves it.
   until account billing or spending-limit settings allow private runner usage.
 - Do not require CI status checks in branch protection while private Actions are
   blocked, or the repository can become unable to merge routine fixes.
+- Required signed commits should be enabled after the active GPG public key is
+  uploaded to GitHub and GitHub reports test commits as verified. Until then,
+  requiring signatures can block all pushes even when commits verify locally.
 
 ## Required Local Checks
 
@@ -31,5 +34,7 @@ Before making AO Command public:
 - confirm no secrets, tokens, private keys, private repo names, incident details,
   or provider payloads are present;
 - confirm CI is running and required branch checks pass;
+- confirm GitHub verifies the configured signing key and then require signed
+  commits on the protected branch;
 - add release-preview and release-publish gates equivalent to AO Forge;
 - create an explicit operator approval record.
