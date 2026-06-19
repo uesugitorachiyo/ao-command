@@ -55,3 +55,62 @@ jobs:
 
       - name: Actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@latest
+
+  production-readiness:
+    name: Production readiness audit
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - workflow-lint
+    steps:
+      - name: Checkout ao-command
+        uses: actions/checkout@v4
+
+      - name: Checkout ao-forge integration fixture
+        uses: actions/checkout@v4
+        with:
+          repository: uesugitorachiyo/ao-forge
+          path: ao-forge
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Release preview dry-run
+        run: |
+          scripts/release-preview-dry-run.sh --forge ao-forge --out tmp/release-preview --tag v0.1.0-preview
+
+      - name: Validate release preview contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" \
+            --document "$PWD/tmp/release-preview/release-preview-audit.json"
+
+      - name: Install verification dry-run
+        run: |
+          scripts/install-verify-dry-run.sh --forge ao-forge --out tmp/install-verify
+
+      - name: Validate install verification contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" \
+            --document "$PWD/tmp/install-verify/install-verify-audit.json"
+
+      - name: Production readiness audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ao-forge --out tmp/production-readiness-audit.json --skip-remote-admin || {
+            cat tmp/production-readiness-audit.json
+            exit 1
+          }
+
+      - name: Validate production readiness contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" \
+            --document "$PWD/tmp/production-readiness-audit.json"

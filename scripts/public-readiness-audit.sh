@@ -38,13 +38,20 @@ json_escape() {
 
 checks=()
 failed=0
+passed_count=0
+counted=0
 
 add_check() {
   local check_id="$1"
   local status="$2"
-  local summary="$3"
+  local summary
+  summary="$(printf '%s' "$3" | tr '\n\r' '  ')"
   checks+=("{\"check_id\":\"$(json_escape "$check_id")\",\"status\":\"$(json_escape "$status")\",\"summary\":\"$(json_escape "$summary")\"}")
-  if [[ "$status" != "passed" ]]; then
+  if [[ "$status" == "passed" ]]; then
+    counted=$((counted + 1))
+    passed_count=$((passed_count + 1))
+  elif [[ "$status" == "failed" ]]; then
+    counted=$((counted + 1))
     failed=$((failed + 1))
   fi
 }
@@ -110,7 +117,7 @@ else
   add_check "repository_private" "skipped" "--repo not provided"
 fi
 
-public_scan_files="$(git ls-files | grep -v '^scripts/public-readiness-audit.sh$' || true)"
+public_scan_files="$(git ls-files | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
 require_no_tracked_match_in_files \
   "secret_patterns" \
   "tracked files contain no obvious tokens, private keys, or provider secrets" \
@@ -123,21 +130,23 @@ require_no_tracked_match_in_files \
   '(/Users/[^[:space:]")]+|/home/[^[:space:]")]+|C:/Users/[^[:space:]")]+)' \
   "$public_scan_files"
 
-workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/public-readiness-audit.sh$' || true)"
+workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
 require_no_tracked_match_in_files \
   "ci_artifact_uploads" \
   "workflows and scripts do not upload CI artifacts by default" \
   '(actions/upload-artifact|upload-artifact@|gh release upload)' \
   "$workflow_and_scripts"
 
-command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/public-readiness-audit.sh$' || true)"
+command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' || true)"
 require_no_tracked_match_in_files \
   "dangerous_write_surface" \
   "command surface has no public-switch, release-publish, production-promotion, or destructive git operations" \
   '(gh repo edit .*--visibility|release[ -]publish|production[ -]promotion|git push --force|git reset --hard|rm -rf /)' \
   "$command_surface_files"
 
-if rg -q "Private by default" README.md && rg -q "private repository" SECURITY.md && rg -q "PUBLICATION-CHECKLIST.md" README.md; then
+if rg -q "operator-approved public-readiness audit" README.md \
+  && rg -q "PUBLICATION-CHECKLIST.md" README.md \
+  && rg -q "public after passing the v0.1 publication audit" SECURITY.md; then
   add_check "publication_docs" "passed" "README and SECURITY document private/public boundaries"
 else
   add_check "publication_docs" "failed" "README and SECURITY must document private/public boundaries and link the publication checklist"

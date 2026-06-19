@@ -70,9 +70,29 @@ go test ./...
 go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
+scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.0-preview
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"
+scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
+scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --out tmp/production-readiness-audit.json
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 ```
 
 Historical private-repo operating guardrails are tracked in
 `docs/operations/PRIVATE-REPO-GUARDRAILS.md`.
 The pre-publication operator gate and publication evidence are tracked in
 `docs/operations/PUBLICATION-CHECKLIST.md`.
+Production Readiness is tracked in
+`docs/operations/PRODUCTION-READINESS.md`, with publication evidence in
+`docs/operations/PUBLICATION-RECORD-2026-06-19.md`.
+The AO Command readiness audit contract is tracked in
+`docs/contracts/production-readiness-audit-v0.1.schema.json`.
+The read-only AO Command release-preview dry-run contract is tracked in
+`docs/contracts/release-preview-audit-v0.1.schema.json`.
+The install verification dry-run contract is tracked in
+`docs/contracts/install-verify-audit-v0.1.schema.json`.
+Public-safe retained evidence rules are tracked in
+`docs/operations/RETAINED-EVIDENCE.md` and
+`docs/operations/public-provenance-manifest.json`.
+The v0.1.0 operator closeout is tracked in
+`docs/release/V0.1.0-OPERATOR-CLOSEOUT.md`.
