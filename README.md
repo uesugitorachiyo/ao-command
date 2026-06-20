@@ -106,5 +106,4 @@ The v0.1.0 operator closeout is tracked in
 
 ## License
 
-AO Command is licensed under `MIT OR Apache-2.0`, at your option. See
-`LICENSE`, `LICENSE-MIT`, and `LICENSE-APACHE`.
+AO Command is licensed under `MIT OR Apache-2.0`, at your option. See `LICENSE`.
