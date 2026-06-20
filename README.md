@@ -103,3 +103,8 @@ Public-safe retained evidence rules are tracked in
 `docs/operations/public-provenance-manifest.json`.
 The v0.1.0 operator closeout is tracked in
 `docs/release/V0.1.0-OPERATOR-CLOSEOUT.md`.
+
+## License
+
+AO Command is licensed under `MIT OR Apache-2.0`, at your option. See
+`LICENSE`, `LICENSE-MIT`, and `LICENSE-APACHE`.
