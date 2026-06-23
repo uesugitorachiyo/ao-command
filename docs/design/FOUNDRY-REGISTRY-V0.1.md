@@ -1,9 +1,10 @@
 # Foundry Registry v0.1
 
-The Foundry registry is the first durable model AO Command will need before it
-can become a multi-repo operations factory. It should remain read-only until AO
-Forge, AO Covenant, and ao2-control-plane evidence can prove that autonomous
-work is safe.
+The Foundry registry is owned by AO Foundry. AO Command reads registry and
+active-stack evidence through read-only commands; it does not become the
+multi-repo operations factory. Registry-backed automation should remain guarded
+until AO Forge, AO Covenant, and ao2-control-plane evidence can prove that
+autonomous work is safe.
 
 ## Registry Record
 

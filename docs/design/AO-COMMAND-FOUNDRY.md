@@ -1,16 +1,21 @@
-# AO Command Foundry
+# AO Command Foundry Legacy Design Note
 
-AO Command Foundry is the long-term product direction for AO Command. It is an
-autonomous operations factory for many projects, not just a prompt runner or
-workflow library.
+This document is a legacy product note. The active stack now uses the separate
+AO Foundry repository as the persistent engineering operations layer. AO Command
+stays the read-only operator surface over AO Forge, AO Foundry, AO Covenant,
+AO2, and ao2-control-plane evidence.
+
+Do not use this document to expand `ao-command` into a scheduler, background
+loop, release publisher, branch mutator, provider mutator, or replacement for
+AO Foundry.
 
 ## Positioning
 
-Most agent frameworks execute workflows. Foundry should maintain persistent
-engineering operations state across repositories and decide the next safe action
-from verified evidence.
+AO Foundry maintains persistent engineering operations state across repositories
+and decides the next safe action from verified evidence. AO Command presents
+that evidence to a human operator and keeps mutation paths out of scope.
 
-Foundry combines:
+The active AO Foundry layer combines:
 
 - project registry;
 - production-readiness state;
@@ -21,23 +26,23 @@ Foundry combines:
 - AO Covenant signed job outcomes;
 - ao2-control-plane evidence readback.
 
-The near-term `ao-command` v0.1 CLI is the read-only operator surface that makes
-this evidence usable. Foundry comes after AO Forge is trustworthy enough to be
-the source of operational truth.
+The `ao-command` v0.1 CLI is the read-only operator surface that makes this
+evidence usable. AO Forge remains the source of factory truth; AO Foundry owns
+the active-stack operations ledger.
 
 ## Core Differentiator
 
-Persistent operational memory plus verified execution. Foundry should behave
-like an engineering operations layer: it knows project state, schedules work,
-limits concurrency, records evidence, and reports what remains risky.
+Persistent operational memory plus verified execution belongs in AO Foundry.
+AO Command reports project state, release handoff status, and next actions from
+verified evidence, but it does not schedule work or mutate repositories.
 
-It should decide what to do next only when the decision can be proven from AO
-Forge, AO Covenant, AO2, and control-plane evidence.
+Any next-action recommendation shown by AO Command should be proven from AO
+Forge, AO Foundry, AO Covenant, AO2, and control-plane evidence.
 
-## Foundry Capabilities
+## AO Foundry Capabilities
 
-- Project registry for repos, branches, CI, release status, owners, readiness
-  score, and active goals. See `FOUNDRY-REGISTRY-V0.1.md`.
+- Project registry and active-stack ledger for repos, branches, CI, release
+  status, owners, readiness score, and active goals.
 - Task queues with dependency ordering, priority, concurrency limits, and stop
   conditions.
 - Safe overnight advancement with one active job per repo/branch, no hidden
@@ -49,17 +54,18 @@ Forge, AO Covenant, AO2, and control-plane evidence.
 - Operator review surfaces for promotion, rollback, security review, dependency
   updates, and docs drift.
 
-## Build Order
+## Current Build Order
 
 1. Finish AO Forge as the trusted factory brain.
 2. Build AO Command v0.1 as the read-only operator surface.
-3. Add AO Arena as an internal quality and replay mode.
-4. Evolve AO Command into Foundry once cross-repo autonomy has reliable gates,
-   memory, evidence, and rollback behavior.
+3. Use AO Foundry as the persistent operations layer once cross-repo autonomy
+   has reliable gates, memory, evidence, and rollback behavior.
+4. Keep AO Command focused on read-only operator visibility unless a future
+   Covenant-approved design explicitly changes that boundary.
 
 ## V0.1 Boundary
 
-The current `ao-command` scaffold is not Foundry yet. It intentionally avoids
+The current `ao-command` scaffold is not AO Foundry. It intentionally avoids
 autonomous writes, cross-repo task scheduling, branch mutation, release
-publishing, and background loops. Those belong behind later Foundry contracts
-after AO Forge and AO Covenant can prove the work is safe.
+publishing, and background loops. Those belong in AO Foundry contracts after AO
+Forge and AO Covenant can prove the work is safe.

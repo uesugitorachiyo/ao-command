@@ -16,12 +16,13 @@ AO2 for governed execution, ao2-control-plane for evidence readback, and AO
 Covenant for allow, deny, and block decisions. Deprecated standalone runtime,
 operator, conductor, and subscription-backed swarm surfaces are out of scope.
 
-This is the first slice toward AO Command Foundry, not the full Foundry system
-yet. Foundry is the later persistent engineering operations layer across many
-repos, branches, releases, incidents, dependency updates, docs drift, CI health,
-security reviews, and roadmap slices. v0.1 keeps the command surface read-only
-so AO Forge remains the trusted factory brain before autonomous cross-repo work
-is enabled.
+AO Foundry is the persistent engineering operations layer for many repos,
+branches, releases, dependency updates, docs drift, CI health, security
+reviews, and roadmap slices. AO Command reads AO Foundry's active-stack ledger
+and AO Forge evidence for humans; it does not become the factory brain or the
+operations scheduler. v0.1 keeps the command surface read-only so AO Forge
+remains the trusted factory brain and AO Foundry remains the orchestration
+owner.
 
 ## Commands
 
@@ -64,20 +65,23 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
 - Dangerous writes are intentionally out of scope for v0.1.
 - CI does not upload artifacts by default.
 
-## Foundry Direction
+## Foundry Boundary
 
-The Foundry path is:
+The current stack boundary is:
 
 1. AO Forge: trusted factory brain, release gates, GoalRun state, readiness, and
    verified evidence.
-2. AO Command v0.1: human/operator command center over AO Forge evidence.
-3. AO Arena: internal quality and replay mode for comparing agent/factory runs.
-4. AO Command Foundry: persistent engineering operations layer for many repos
-   with a project registry, task queues, concurrency limits, overnight
-   advancement, Covenant-signed job results, and control-plane evidence.
+2. AO Foundry: persistent active-stack operations ledger, release handoff, and
+   cross-repo readiness loop.
+3. AO Command v0.1: human/operator command center over AO Forge and AO Foundry
+   evidence.
+4. AO Covenant, AO2, and ao2-control-plane: policy, governed execution, and
+   evidence readback.
 
-The initial registry design is in
-`docs/design/FOUNDRY-REGISTRY-V0.1.md`.
+Historical AO Command Foundry design notes remain in
+`docs/design/AO-COMMAND-FOUNDRY.md`, but they are not the active ownership
+model. New persistent operations work belongs in AO Foundry unless a future
+AO Covenant-approved design moves that boundary.
 
 ## Verification
 

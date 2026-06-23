@@ -4,10 +4,10 @@ AO Command v0.1 is a read-only command center over AO Forge evidence. It should
 make daily operation boring: status, goals, packets, decisions, evidence, safe
 rehearsal, and next recommended action.
 
-This is the first operator-surface slice toward AO Command Foundry. Foundry is
-the later autonomous operations factory for many projects. v0.1 deliberately
-does not schedule autonomous cross-repo work; it proves that AO Command can read
-AO Forge evidence and guide a human operator first.
+This is the first operator-surface slice for the active AO stack. AO Foundry is
+the persistent operations factory for many projects; AO Command deliberately
+does not schedule autonomous cross-repo work. v0.1 proves that AO Command can
+read AO Forge and AO Foundry evidence and guide a human operator first.
 
 ## Boundaries
 
@@ -36,9 +36,9 @@ AO Forge evidence and guide a human operator first.
 - JSON output is available for automation.
 - No secret, token, or provider payload is displayed by default.
 
-## Foundry Hand-Off
+## AO Foundry Hand-Off
 
-After AO Command v0.1 is useful, the next product step is the Foundry roadmap:
-project registry, task queues, overnight advancement, Covenant-signed job
-results, and control-plane evidence for many repos. See
-`docs/design/AO-COMMAND-FOUNDRY.md`.
+AO Foundry owns the project registry, readiness loop, release handoff, task
+queues, overnight advancement, Covenant-signed job results, and control-plane
+evidence for many repos. AO Command consumes that evidence through read-only
+commands such as `ao-command stack --ledger`.
