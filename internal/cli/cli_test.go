@@ -474,6 +474,54 @@ func TestWorkflowUsesCurrentNodeRuntimeActions(t *testing.T) {
 	}
 }
 
+func TestProductionReadinessOpsWorkflowRunsBranchProtectionVerifier(t *testing.T) {
+	root := repoRoot(t)
+	read := func(path ...string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(append([]string{root}, path...)...))
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.Join(path...), err)
+		}
+		return string(content)
+	}
+
+	workflow := read(".github", "workflows", "production-readiness-ops.yml")
+	verifier := read("scripts", "verify-branch-protection.sh")
+	runbook := read("docs", "operations", "BRANCH-PROTECTION.md")
+
+	for _, check := range []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{name: "workflow name", doc: workflow, want: "name: Production Readiness Ops"},
+		{name: "manual dispatch", doc: workflow, want: "workflow_dispatch:"},
+		{name: "daily schedule", doc: workflow, want: `cron: "31 10 * * *"`},
+		{name: "read-only permissions", doc: workflow, want: "contents: read"},
+		{name: "token wiring", doc: workflow, want: "GH_TOKEN: ${{ github.token }}"},
+		{name: "limited token mode", doc: workflow, want: "AO_COMMAND_BRANCH_PROTECTION_MODE: limited"},
+		{name: "verifier step", doc: workflow, want: "scripts/verify-branch-protection.sh"},
+		{name: "verifier full mode", doc: verifier, want: `mode="${AO_COMMAND_BRANCH_PROTECTION_MODE:-full}"`},
+		{name: "verifier limited branch endpoint", doc: verifier, want: `repos/${repository}/branches/${branch}`},
+		{name: "runbook command", doc: runbook, want: "scripts/verify-branch-protection.sh"},
+		{name: "runbook limited mode", doc: runbook, want: "AO_COMMAND_BRANCH_PROTECTION_MODE=limited"},
+	} {
+		if !strings.Contains(check.doc, check.want) {
+			t.Fatalf("%s missing %q", check.name, check.want)
+		}
+	}
+
+	for _, forbidden := range []string{
+		"contents: write",
+		"pull-requests: write",
+		"id-token: write",
+	} {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("production readiness ops workflow must stay read-only, found %q", forbidden)
+		}
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

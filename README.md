@@ -94,6 +94,7 @@ scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
+scripts/verify-branch-protection.sh
 ```
 
 Historical private-repo operating guardrails are tracked in
@@ -103,6 +104,8 @@ The pre-publication operator gate and publication evidence are tracked in
 Production Readiness is tracked in
 `docs/operations/PRODUCTION-READINESS.md`, with publication evidence in
 `docs/operations/PUBLICATION-RECORD-2026-06-19.md`.
+Branch protection requirements and drift verification are tracked in
+`docs/operations/BRANCH-PROTECTION.md`.
 The AO Command readiness audit contract is tracked in
 `docs/contracts/production-readiness-audit-v0.1.schema.json`.
 The read-only AO Command release-preview dry-run contract is tracked in

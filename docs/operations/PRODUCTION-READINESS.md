@@ -50,6 +50,7 @@ go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contrac
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
+scripts/verify-branch-protection.sh
 ```
 
 The audit emits `ao.command.production-readiness-audit.v0.1` JSON with
@@ -61,3 +62,11 @@ Public GitHub Actions runs the same audit with `--skip-remote-admin` because the
 workflow token cannot read every branch-protection and security setting. Skipped
 admin-only checks are excluded from the CI percentage. The full local/operator
 audit above remains the authoritative operator score.
+
+## Branch Protection Drift
+
+`docs/operations/BRANCH-PROTECTION.md` defines the required live protection for
+`main`. The read-only `Production Readiness Ops` workflow runs
+`scripts/verify-branch-protection.sh` daily and by manual dispatch in
+`AO_COMMAND_BRANCH_PROTECTION_MODE=limited`, while local maintainer runs default
+to full administrative verification.
