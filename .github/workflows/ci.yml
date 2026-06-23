@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check license policy
         run: scripts/check-license-policy.sh
@@ -26,22 +26,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout ao-forge integration fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
 
       - name: Checkout ao-foundry active-stack fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: uesugitorachiyo/ao-foundry
           path: ao-foundry
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -65,10 +65,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -83,22 +83,22 @@ jobs:
       - workflow-lint
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout ao-forge integration fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
 
       - name: Checkout ao-foundry active-stack fixture
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: uesugitorachiyo/ao-foundry
           path: ao-foundry
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 

@@ -449,6 +449,30 @@ func TestDryRunCleanTreeAllowlistIncludesFoundryFixture(t *testing.T) {
 	}
 }
 
+func TestWorkflowUsesCurrentNodeRuntimeActions(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("read workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, deprecated := range []string{
+		"actions/checkout@v4",
+		"actions/setup-go@v5",
+	} {
+		if strings.Contains(workflow, deprecated) {
+			t.Fatalf("workflow must not use deprecated Node 20 action %q", deprecated)
+		}
+	}
+	for _, current := range []string{
+		"actions/checkout@v7",
+		"actions/setup-go@v6",
+	} {
+		if !strings.Contains(workflow, current) {
+			t.Fatalf("workflow must use current action %q", current)
+		}
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
