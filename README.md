@@ -4,6 +4,14 @@ AO Command is the read-only operator command surface for the AO stack. It makes
 AO Forge, AO2, ao2-control-plane, and AO Covenant evidence inspectable from one
 daily command center.
 
+## AO Stack Architecture
+
+This repository is part of the AO agent orchestration stack. Start with the
+central architecture guide at
+[uesugitorachiyo/ao-architecture](https://github.com/uesugitorachiyo/ao-architecture);
+the AO Command-specific architecture page is
+[ao-command](https://github.com/uesugitorachiyo/ao-architecture/tree/main/ao-command).
+
 ## Status
 
 v0.1 is a public scaffold after passing the AO Command publication audit. It
