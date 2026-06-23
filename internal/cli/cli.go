@@ -77,6 +77,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return 0
 	case "status":
 		return a.status(ctx, args[1:])
+	case "stack":
+		return a.stack(args[1:])
 	case "next":
 		return a.next(ctx, args[1:])
 	case "goals":
@@ -97,6 +99,7 @@ func (a App) printHelp() {
 
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
+  ao-command stack --ledger PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -154,6 +157,42 @@ func (a App) status(ctx context.Context, args []string) int {
 	fmt.Fprintf(a.Stdout, "production_ready=%t\n", productionReady(audit))
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", operatorMode)
 	fmt.Fprintf(a.Stdout, "release_governance=%s\n", releaseGovernance)
+	return 0
+}
+
+func (a App) stack(args []string) int {
+	var ledgerPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("stack", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&ledgerPath, "ledger", "", "path to AO Foundry active-stack readiness ledger")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(ledgerPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command stack: --ledger is required")
+		return 2
+	}
+	ledger, err := readActiveStackLedger(ledgerPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command stack: %v\n", err)
+		return 1
+	}
+	summary := stackSummaryFromLedger(ledgerPath, ledger)
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_stack=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "ledger=%s\n", summary.Ledger)
+	fmt.Fprintf(a.Stdout, "active_repositories=%d\n", len(summary.ActiveRepositories))
+	fmt.Fprintf(a.Stdout, "release_handoff=%s\n", summary.ReleaseHandoff.Status)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "orchestration_owner=%s\n", summary.OrchestrationOwner)
+	for _, gate := range summary.ReleaseHandoff.Gates {
+		fmt.Fprintf(a.Stdout, "gate=%s status=%s required_before_promotion=%t\n", gate.Name, gate.Status, gate.RequiredBeforePromotion)
+	}
+	fmt.Fprintf(a.Stdout, "out_of_scope=%s\n", strings.Join(summary.OutOfScope, ","))
 	return 0
 }
 
@@ -368,6 +407,84 @@ type statusSummary struct {
 	OperatorMode         string       `json:"operator_mode"`
 	ReleaseGovernance    string       `json:"release_governance"`
 	NextActions          []nextAction `json:"next_actions"`
+}
+
+type activeStackLedger struct {
+	SchemaVersion  string                  `json:"schema_version"`
+	RegistryID     string                  `json:"registry_id"`
+	Status         string                  `json:"status"`
+	Repositories   []activeStackRepository `json:"repositories"`
+	ReleaseHandoff releaseHandoff          `json:"release_handoff"`
+}
+
+type activeStackRepository struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Role   string `json:"role"`
+	Status string `json:"status"`
+}
+
+type releaseHandoff struct {
+	Status string               `json:"status"`
+	Gates  []releaseHandoffGate `json:"gates"`
+}
+
+type releaseHandoffGate struct {
+	Name                    string `json:"name"`
+	Status                  string `json:"status"`
+	RequiredBeforePromotion bool   `json:"required_before_promotion"`
+}
+
+type stackSummary struct {
+	CommandSchemaVersion string                  `json:"command_schema_version"`
+	Ledger               string                  `json:"ledger"`
+	Status               string                  `json:"status"`
+	OperatorMode         string                  `json:"operator_mode"`
+	OrchestrationOwner   string                  `json:"orchestration_owner"`
+	ActiveRepositories   []activeStackRepository `json:"active_repositories"`
+	ReleaseHandoff       releaseHandoff          `json:"release_handoff"`
+	OutOfScope           []string                `json:"out_of_scope"`
+}
+
+func readActiveStackLedger(path string) (activeStackLedger, error) {
+	var ledger activeStackLedger
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return ledger, fmt.Errorf("read ledger: %w", err)
+	}
+	if err := json.Unmarshal(bytes, &ledger); err != nil {
+		return ledger, fmt.Errorf("invalid ledger JSON: %w", err)
+	}
+	if ledger.SchemaVersion != "ao.foundry.active-stack-readiness.v0.1" {
+		return ledger, errors.New("invalid active-stack readiness schema_version")
+	}
+	if ledger.Status == "" || len(ledger.Repositories) == 0 {
+		return ledger, errors.New("active-stack ledger requires status and repositories")
+	}
+	if ledger.ReleaseHandoff.Status == "" || len(ledger.ReleaseHandoff.Gates) == 0 {
+		return ledger, errors.New("active-stack ledger requires release_handoff gates")
+	}
+	return ledger, nil
+}
+
+func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary {
+	return stackSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Ledger:               path,
+		Status:               ledger.Status,
+		OperatorMode:         operatorMode,
+		OrchestrationOwner:   "ao-foundry",
+		ActiveRepositories:   ledger.Repositories,
+		ReleaseHandoff:       ledger.ReleaseHandoff,
+		OutOfScope: []string{
+			"ao-operator",
+			"ao-runtime",
+			"ao-control-plane",
+			"ao-conductor",
+			"agy-swarms",
+			"codex-cron",
+		},
+	}
 }
 
 func statusSummaryFromAudit(forge string, audit productionReadinessAudit) statusSummary {

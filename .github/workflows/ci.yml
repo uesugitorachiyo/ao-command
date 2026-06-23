@@ -34,6 +34,12 @@ jobs:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
 
+      - name: Checkout ao-foundry active-stack fixture
+        uses: actions/checkout@v4
+        with:
+          repository: uesugitorachiyo/ao-foundry
+          path: ao-foundry
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -50,6 +56,9 @@ jobs:
 
       - name: Integration smoke
         run: scripts/ao-command-smoke.sh --forge ao-forge --out tmp/ao-command-smoke
+
+      - name: Active stack status
+        run: go run ./cmd/ao-command stack --ledger ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 
   workflow-lint:
     name: Workflow lint
@@ -81,6 +90,12 @@ jobs:
         with:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
+
+      - name: Checkout ao-foundry active-stack fixture
+        uses: actions/checkout@v4
+        with:
+          repository: uesugitorachiyo/ao-foundry
+          path: ao-foundry
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -124,11 +139,15 @@ jobs:
             --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" \
             --document "$PWD/tmp/release-governance/release-governance-audit.json"
 
+      - name: Active stack status
+        run: |
+          go run ./cmd/ao-command stack --ledger ao-foundry/examples/readiness/active-stack-readiness.ledger.json
+
       - name: Production readiness audit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ao-forge --out tmp/production-readiness-audit.json --skip-remote-admin || {
+          scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ao-forge --foundry ao-foundry --out tmp/production-readiness-audit.json --skip-remote-admin || {
             cat tmp/production-readiness-audit.json
             exit 1
           }

@@ -36,9 +36,9 @@ forge="$(cd "$forge" && pwd)"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 
-status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!bin' 2>&1)"
+status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!bin' 2>&1)"
 if [[ -n "$status_output" ]]; then
-  echo "release-preview-dry-run: working tree must be clean except tmp, ao-forge, and bin outputs" >&2
+  echo "release-preview-dry-run: working tree must be clean except tmp, ao-forge, ao-foundry, and bin outputs" >&2
   printf '%s\n' "$status_output" >&2
   exit 1
 fi

@@ -114,6 +114,86 @@ func TestStatusJSONIncludesOperatorSignals(t *testing.T) {
 	}
 }
 
+func TestStackReadsFoundryActiveStackLedger(t *testing.T) {
+	ledger := writeStackLedgerFixture(t)
+	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("stack exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_stack=ready",
+		"ledger=" + ledger,
+		"active_repositories=6",
+		"release_handoff=ready",
+		"operator_mode=read_only",
+		"orchestration_owner=ao-foundry",
+		"gate=foundry-release-candidate status=ready required_before_promotion=true",
+		"gate=forge-release-candidate-handoff status=ready required_before_promotion=true",
+		"gate=covenant-policy-spine status=ready required_before_promotion=true",
+		"out_of_scope=ao-operator,ao-runtime,ao-control-plane,ao-conductor,agy-swarms,codex-cron",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stack stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, excluded := range []string{"orchestration_started", "release_published", "branch_mutated"} {
+		if strings.Contains(stdout, excluded) {
+			t.Fatalf("stack output contains mutation signal %q:\n%s", excluded, stdout)
+		}
+	}
+}
+
+func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
+	ledger := writeStackLedgerFixture(t)
+	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("stack exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Ledger               string `json:"ledger"`
+		Status               string `json:"status"`
+		OperatorMode         string `json:"operator_mode"`
+		OrchestrationOwner   string `json:"orchestration_owner"`
+		ReleaseHandoff       struct {
+			Status string `json:"status"`
+			Gates  []struct {
+				Name                    string `json:"name"`
+				Status                  string `json:"status"`
+				RequiredBeforePromotion bool   `json:"required_before_promotion"`
+			} `json:"gates"`
+		} `json:"release_handoff"`
+		ActiveRepositories []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"active_repositories"`
+		OutOfScope []string `json:"out_of_scope"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid stack JSON: %v\n%s", err, stdout)
+	}
+	if got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Ledger != ledger ||
+		got.Status != "ready" ||
+		got.OperatorMode != "read_only" ||
+		got.OrchestrationOwner != "ao-foundry" ||
+		got.ReleaseHandoff.Status != "ready" ||
+		len(got.ReleaseHandoff.Gates) != 3 ||
+		len(got.ActiveRepositories) != 6 {
+		t.Fatalf("unexpected stack summary: %+v", got)
+	}
+	for _, want := range []string{"ao2", "ao2-control-plane", "ao-foundry", "ao-forge", "ao-command", "ao-covenant"} {
+		if !stackRepoPresent(got.ActiveRepositories, want) {
+			t.Fatalf("stack JSON missing active repo %q: %+v", want, got.ActiveRepositories)
+		}
+	}
+	for _, want := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms", "codex-cron"} {
+		if !contains(got.OutOfScope, want) {
+			t.Fatalf("stack JSON missing out-of-scope repo %q: %+v", want, got.OutOfScope)
+		}
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -268,6 +348,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README publication audit", doc: readme, want: "operator-approved public-readiness audit passed"},
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
+		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
+		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
 		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
 		{name: "security public", doc: security, want: "public after passing the v0.1 publication audit"},
 		{name: "security no secrets", doc: security, want: "Do not commit secrets"},
@@ -285,6 +367,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs release preview", doc: productionReadiness, want: "release-preview-audit-v0.1.schema.json"},
 		{name: "production readiness docs install verify", doc: productionReadiness, want: "install-verify-audit-v0.1.schema.json"},
 		{name: "production readiness docs release governance", doc: productionReadiness, want: "release-governance-audit-v0.1.schema.json"},
+		{name: "production readiness docs active stack command", doc: productionReadiness, want: "ao-command stack --ledger"},
+		{name: "production readiness docs active stack gate", doc: productionReadiness, want: "active-stack handoff"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -320,6 +404,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit install verify dry-run", doc: productionReadinessAudit, want: "install_verify_dry_run"},
 		{name: "production readiness audit release governance contract", doc: productionReadinessAudit, want: "release_governance_contract"},
 		{name: "production readiness audit release governance dry-run", doc: productionReadinessAudit, want: "release_governance_dry_run"},
+		{name: "production readiness audit active stack status", doc: productionReadinessAudit, want: "active_stack_status"},
 		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
 		{name: "production readiness audit operator closeout", doc: productionReadinessAudit, want: "operator_closeout"},
 		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
@@ -337,9 +422,29 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow install verify schema", doc: workflow, want: "Validate install verification contract"},
 		{name: "workflow release governance dry-run", doc: workflow, want: "Release governance dry-run"},
 		{name: "workflow release governance schema", doc: workflow, want: "Validate release governance contract"},
+		{name: "workflow active stack checkout", doc: workflow, want: "Checkout ao-foundry active-stack fixture"},
+		{name: "workflow active stack status", doc: workflow, want: "Active stack status"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)
+		}
+	}
+}
+
+func TestDryRunCleanTreeAllowlistIncludesFoundryFixture(t *testing.T) {
+	root := repoRoot(t)
+	for _, script := range []string{
+		"scripts/release-preview-dry-run.sh",
+		"scripts/install-verify-dry-run.sh",
+		"scripts/release-governance-dry-run.sh",
+		"scripts/production-readiness-audit.sh",
+	} {
+		content, err := os.ReadFile(filepath.Join(root, script))
+		if err != nil {
+			t.Fatalf("read %s: %v", script, err)
+		}
+		if !strings.Contains(string(content), "':!ao-foundry'") {
+			t.Fatalf("%s clean-tree allowlist must include the read-only ao-foundry fixture checkout", script)
 		}
 	}
 }
@@ -351,6 +456,51 @@ func repoRoot(t *testing.T) string {
 		t.Fatal("runtime caller unavailable")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func writeStackLedgerFixture(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "active-stack-readiness.ledger.json")
+	ledger := `{
+  "schema_version": "ao.foundry.active-stack-readiness.v0.1",
+  "registry_id": "local-ao-stack",
+  "generated_from_registry": "examples/registry/local-ao-stack.foundry-registry.json",
+  "last_sweep_date": "2026-06-23",
+  "status": "ready",
+  "repositories": [
+    {"id": "ao-foundry", "name": "AO Foundry", "role": "operations-factory", "status": "ready", "verification_evidence": ["go test ./..."]},
+    {"id": "ao-forge", "name": "AO Forge", "role": "factory-brain", "status": "ready", "verification_evidence": ["release candidate handoff"]},
+    {"id": "ao-command", "name": "AO Command", "role": "operator-command", "status": "ready", "verification_evidence": ["read-only status"]},
+    {"id": "ao2", "name": "AO2", "role": "execution-engine", "status": "ready", "verification_evidence": ["npm run verify"]},
+    {"id": "ao2-control-plane", "name": "AO2 Control Plane", "role": "evidence-observer", "status": "ready", "verification_evidence": ["cargo test --workspace"]},
+    {"id": "ao-covenant", "name": "AO Covenant", "role": "policy-kernel", "status": "ready", "verification_evidence": ["covenant policy spine --json"]}
+  ],
+  "release_handoff": {
+    "status": "ready",
+    "gates": [
+      {"name": "foundry-release-candidate", "status": "ready", "required_before_promotion": true, "evidence": ["foundry candidate validation"]},
+      {"name": "forge-release-candidate-handoff", "status": "ready", "required_before_promotion": true, "evidence": ["forge release-candidate validate"]},
+      {"name": "covenant-policy-spine", "status": "ready", "required_before_promotion": true, "evidence": ["covenant.policy-spine-result.v1"]}
+    ]
+  },
+  "next_actions": ["Keep release handoff gates attached to the active-stack readiness ledger"]
+}`
+	if err := os.WriteFile(path, []byte(ledger), 0o644); err != nil {
+		t.Fatalf("write stack ledger fixture: %v", err)
+	}
+	return path
+}
+
+func stackRepoPresent(repos []struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}, id string) bool {
+	for _, repo := range repos {
+		if repo.ID == id && repo.Status == "ready" {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(values []string, target string) bool {

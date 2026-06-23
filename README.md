@@ -27,6 +27,7 @@ is enabled.
 
 ```sh
 go run ./cmd/ao-command status --forge ../ao-forge
+go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command next --forge ../ao-forge
 go run ./cmd/ao-command goals --forge ../ao-forge --goal-run ../ao-forge/examples/goals/ao2-weekend-hardening.goal-run.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema docs/contracts/production-readiness-audit-v0.1.schema.json --document /tmp/ao-forge-production-readiness.json
@@ -36,6 +37,11 @@ Use `--json` on any command for machine-readable output when available.
 `status` reports the AO Forge readiness percentage, gate count, required next
 action count, derived `production_ready` decision, `operator_mode=read_only`,
 and release governance state.
+
+`stack` reads the AO Foundry active-stack readiness ledger and reports the
+active repository count, release handoff gates, `operator_mode=read_only`, and
+`orchestration_owner=ao-foundry`. It does not schedule work, mutate branches,
+publish releases, or write control-plane records.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
@@ -86,7 +92,7 @@ scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
 scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
-scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --out tmp/production-readiness-audit.json
+scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 ```
 
