@@ -221,6 +221,35 @@ func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	}
 }
 
+func TestNextFallbackStaysWithinActiveStack(t *testing.T) {
+	fake := &fakeRunner{stdout: []byte(`{
+		"status": "passed",
+		"readiness_percent": 100,
+		"passed_gates": 12,
+		"total_gates": 12,
+		"next_actions": []
+	}`)}
+
+	code, stdout, stderr := runWithFake([]string{"next"}, fake)
+	if code != 0 {
+		t.Fatalf("next exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_next=passed",
+		"next_action=inspect-active-stack-handoff required=false",
+		"AO Foundry active-stack readiness ledger",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("next fallback stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, forbidden := range []string{"ao-arena", "agy-swarms", "ao-conductor"} {
+		if strings.Contains(stdout, forbidden) {
+			t.Fatalf("next fallback must not mention out-of-scope project %q:\n%s", forbidden, stdout)
+		}
+	}
+}
+
 func TestGoalsInspectsGoalRunThroughAOForge(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"goal_run": "examples/goals/ao2-weekend-hardening.goal-run.json",
