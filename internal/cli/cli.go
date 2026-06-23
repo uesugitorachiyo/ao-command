@@ -531,8 +531,8 @@ type nextSummary struct {
 
 func nextSummaryFromAudit(forge string, audit productionReadinessAudit) nextSummary {
 	action := nextAction{
-		ActionID:    "build-ao-command-v0.1-read-only-surface",
-		Description: "AO Forge is production-ready; continue AO Command v0.1 read-only operator surface work before ao-arena.",
+		ActionID:    "inspect-active-stack-handoff",
+		Description: "AO Forge is production-ready; inspect the AO Foundry active-stack readiness ledger before release handoff.",
 		Required:    false,
 	}
 	if len(audit.NextActions) > 0 {
