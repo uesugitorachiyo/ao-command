@@ -93,7 +93,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 }
 
 func (a App) printHelp() {
-	fmt.Fprintln(a.Stdout, `ao-command is the read-only operator command surface for AO Forge.
+	fmt.Fprintln(a.Stdout, `ao-command is the read-only operator command surface for the AO2-first AO stack.
 
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
@@ -103,7 +103,9 @@ Usage:
   ao-command rehearse --tag TAG --out DIR [--forge PATH] [--forge-bin PATH] [--json]
 
 Commands are read-only by default. Rehearsal writes only dry-run evidence to the
-operator-provided output directory and relies on AO Forge release-preview proofs.`)
+operator-provided output directory and relies on AO Forge release-preview proofs.
+AO Forge provides readiness truth, AO2 executes governed work, ao2-control-plane
+stores evidence, and AO Covenant owns allow, deny, and block decisions.`)
 }
 
 type commonFlags struct {
