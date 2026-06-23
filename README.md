@@ -11,6 +11,11 @@ reads AO Forge production-readiness, GoalRun, release-preview, and contract
 evidence through AO Forge-owned commands. It does not publish releases, promote
 production, mutate provider state, or replace AO Forge policy decisions.
 
+AO Command's live stack boundary is AO Forge for readiness and GoalRun truth,
+AO2 for governed execution, ao2-control-plane for evidence readback, and AO
+Covenant for allow, deny, and block decisions. Deprecated standalone runtime,
+operator, conductor, and subscription-backed swarm surfaces are out of scope.
+
 This is the first slice toward AO Command Foundry, not the full Foundry system
 yet. Foundry is the later persistent engineering operations layer across many
 repos, branches, releases, incidents, dependency updates, docs drift, CI health,
@@ -46,6 +51,8 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
 - Read-only by default.
 - AO Forge remains the source of truth for readiness percentages, release gates,
   GoalRun state, retained evidence, and Covenant decisions.
+- AO2 is the governed execution path; AO Command reads evidence about that path
+  rather than invoking deprecated standalone runtime or operator repositories.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.

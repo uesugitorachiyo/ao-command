@@ -267,6 +267,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	}{
 		{name: "README publication audit", doc: readme, want: "operator-approved public-readiness audit passed"},
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
+		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
+		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
 		{name: "security public", doc: security, want: "public after passing the v0.1 publication audit"},
 		{name: "security no secrets", doc: security, want: "Do not commit secrets"},
 		{name: "foundry no autonomous writes", doc: foundry, want: "intentionally avoids\nautonomous writes"},
