@@ -410,6 +410,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
 		{name: "production readiness audit secret scanning", doc: productionReadinessAudit, want: "secret_scanning"},
 		{name: "production readiness audit branch protection", doc: productionReadinessAudit, want: "branch_protection"},
+		{name: "production readiness audit branch protection requires license policy", doc: productionReadinessAudit, want: "\"context\":\"License policy\""},
 		{name: "production readiness audit branch protection requires readiness", doc: productionReadinessAudit, want: "\"context\":\"Production readiness audit\""},
 		{name: "production readiness audit skip admin mode", doc: productionReadinessAudit, want: "skip_remote_admin"},
 		{name: "production readiness audit no dangerous writes", doc: productionReadinessAudit, want: "dangerous_write_surface"},

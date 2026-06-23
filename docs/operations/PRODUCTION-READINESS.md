@@ -9,7 +9,7 @@ The audit is passing only when all gates pass:
 
 - repository is public and deletes merged branches;
 - main branch protection denies force-push and deletion, enforces linear
-  history, and requires strict `Go`, `Workflow lint`, and
+  history, and requires strict `License policy`, `Go`, `Workflow lint`, and
   `Production readiness audit` checks;
 - secret scanning and push protection are enabled;
 - vulnerability alerts are enabled;

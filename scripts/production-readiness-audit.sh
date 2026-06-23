@@ -120,6 +120,7 @@ if [[ "$skip_remote_admin" -eq 1 ]]; then
 else
   if protection="$(gh api "repos/$repo/branches/main/protection" 2>&1)" \
     && printf '%s' "$protection" | grep -qE '"strict":true' \
+    && printf '%s' "$protection" | grep -qE '"context":"License policy"' \
     && printf '%s' "$protection" | grep -qE '"context":"Go"' \
     && printf '%s' "$protection" | grep -qE '"context":"Workflow lint"' \
     && printf '%s' "$protection" | grep -qE '"context":"Production readiness audit"' \
@@ -127,7 +128,7 @@ else
     && printf '%s' "$protection" | grep -qE '"required_linear_history".*"enabled":true' \
     && printf '%s' "$protection" | grep -qE '"allow_force_pushes".*"enabled":false' \
     && printf '%s' "$protection" | grep -qE '"allow_deletions".*"enabled":false'; then
-    add_check "branch_protection" "passed" "main requires strict Go, Workflow lint, and Production readiness audit checks and denies force-push/delete"
+    add_check "branch_protection" "passed" "main requires strict License policy, Go, Workflow lint, and Production readiness audit checks and denies force-push/delete"
   else
     add_check "branch_protection" "failed" "main branch protection is incomplete: ${protection:-unavailable}"
   fi
