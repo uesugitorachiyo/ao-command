@@ -99,7 +99,53 @@ jobs:
             "required_improvement_percent": 5,
             "actual_improvement_percent": 10,
             "autonomous_claim": "measured_local_improvement",
-            "mutates_repositories": false
+            "mutates_repositories": false,
+            "evidence": [
+              {
+                "label": "baseline",
+                "path": "examples/evals/rsi-baseline.eval-result.json",
+                "schema_version": "ao.foundry.eval-result.v0.1",
+                "status": "ready",
+                "score": 90,
+                "max_score": 100,
+                "sha256": "e5824cee9ef1455fcdc74dfecc7e30710edb5ef67cb939eff92d57283dfdc52e"
+              },
+              {
+                "label": "candidate",
+                "path": "tmp/pulse-rsi-verify/eval-result.json",
+                "schema_version": "ao.foundry.eval-result.v0.1",
+                "status": "ready",
+                "score": 100,
+                "max_score": 100,
+                "sha256": "cf3f99d1b1639ef2fd2ba24cb75481211c0c4b0ad8e81605be5fbd6e3f7f39ec"
+              }
+            ]
+          }
+          JSON
+          cat > tmp/rsi-health/foundry-rsi-candidate.json <<'JSON'
+          {
+            "schema_version": "ao.foundry.rsi-candidate.v0.1",
+            "status": "ready",
+            "generated_by": "foundry pulse run",
+            "improvement_hypothesis": "Local pulse generated the candidate eval result from the current Foundry run before measuring the RSI improvement gate.",
+            "baseline_eval_result": {
+              "path": "examples/evals/rsi-baseline.eval-result.json",
+              "schema_version": "ao.foundry.eval-result.v0.1",
+              "status": "ready",
+              "score": 90,
+              "max_score": 100,
+              "sha256": "e5824cee9ef1455fcdc74dfecc7e30710edb5ef67cb939eff92d57283dfdc52e"
+            },
+            "candidate_eval_result": {
+              "path": "tmp/pulse-rsi-verify/eval-result.json",
+              "schema_version": "ao.foundry.eval-result.v0.1",
+              "status": "ready",
+              "score": 100,
+              "max_score": 100,
+              "sha256": "cf3f99d1b1639ef2fd2ba24cb75481211c0c4b0ad8e81605be5fbd6e3f7f39ec"
+            },
+            "mutates_repositories": false,
+            "next_actions": []
           }
           JSON
           bin/ao-command rsi health \
@@ -108,6 +154,7 @@ jobs:
             --sentinel-verdict tmp/rsi-health/sentinel-verdict.json \
             --promoter-gate tmp/rsi-health/promoter-gate.json \
             --foundry-gate tmp/rsi-health/foundry-rsi-improvement-gate.json \
+            --foundry-candidate tmp/rsi-health/foundry-rsi-candidate.json \
             --bundle-out tmp/rsi-health/rsi-health-bundle.json \
             --json
           test -s tmp/rsi-health/rsi-health-bundle.json

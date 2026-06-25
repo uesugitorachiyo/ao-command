@@ -103,7 +103,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
-  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--bundle-out PATH] [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--foundry-candidate PATH] [--bundle-out PATH] [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -202,10 +202,10 @@ func (a App) stack(args []string) int {
 
 func (a App) rsi(args []string) int {
 	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--bundle-out PATH] [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--foundry-candidate PATH] [--bundle-out PATH] [--json]")
 		return 2
 	}
-	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, bundleOut string
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -214,6 +214,7 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&sentinelVerdict, "sentinel-verdict", "", "path to AO Sentinel verdict JSON")
 	fs.StringVar(&promoterGate, "promoter-gate", "", "path to AO Promoter gate JSON")
 	fs.StringVar(&foundryGate, "foundry-gate", "", "path to AO Foundry RSI improvement gate JSON")
+	fs.StringVar(&foundryCandidate, "foundry-candidate", "", "optional path to AO Foundry RSI candidate JSON")
 	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -223,7 +224,7 @@ func (a App) rsi(args []string) int {
 		fmt.Fprintln(a.Stderr, "ao-command rsi health: all evidence flags are required")
 		return 2
 	}
-	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate)
+	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
 		return 1
@@ -243,6 +244,13 @@ func (a App) rsi(args []string) int {
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
 	for _, family := range summary.Families {
 		fmt.Fprintf(a.Stdout, "family=%s status=%s passed=%t evidence=%s\n", family.Family, family.Status, family.Passed, family.Evidence)
+	}
+	if summary.FoundryCandidateBinding != nil {
+		fmt.Fprintf(a.Stdout, "foundry_candidate_bound=%t matched_eval_result_path=%s candidate_evidence=%s gate_evidence=%s\n",
+			summary.FoundryCandidateBinding.Passed,
+			summary.FoundryCandidateBinding.MatchedEvalResultPath,
+			summary.FoundryCandidateBinding.CandidateEvidence,
+			summary.FoundryCandidateBinding.GateEvidence)
 	}
 	if strings.TrimSpace(bundleOut) != "" {
 		fmt.Fprintf(a.Stdout, "bundle=%s\n", bundleOut)
@@ -513,24 +521,26 @@ type rsiFamilyStatus struct {
 }
 
 type rsiHealthSummary struct {
-	CommandSchemaVersion string            `json:"command_schema_version"`
-	Status               string            `json:"status"`
-	RSIMode              string            `json:"rsi_mode"`
-	RSICapability        string            `json:"rsi_capability"`
-	OperatorMode         string            `json:"operator_mode"`
-	MutatesRepositories  bool              `json:"mutates_repositories"`
-	Families             []rsiFamilyStatus `json:"families"`
+	CommandSchemaVersion    string                         `json:"command_schema_version"`
+	Status                  string                         `json:"status"`
+	RSIMode                 string                         `json:"rsi_mode"`
+	RSICapability           string                         `json:"rsi_capability"`
+	OperatorMode            string                         `json:"operator_mode"`
+	MutatesRepositories     bool                           `json:"mutates_repositories"`
+	Families                []rsiFamilyStatus              `json:"families"`
+	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 }
 
 type rsiHealthBundle struct {
-	SchemaVersion        string                  `json:"schema_version"`
-	CommandSchemaVersion string                  `json:"command_schema_version"`
-	Status               string                  `json:"status"`
-	RSIMode              string                  `json:"rsi_mode"`
-	RSICapability        string                  `json:"rsi_capability"`
-	OperatorMode         string                  `json:"operator_mode"`
-	MutatesRepositories  bool                    `json:"mutates_repositories"`
-	Families             []rsiBundleFamilyStatus `json:"families"`
+	SchemaVersion           string                         `json:"schema_version"`
+	CommandSchemaVersion    string                         `json:"command_schema_version"`
+	Status                  string                         `json:"status"`
+	RSIMode                 string                         `json:"rsi_mode"`
+	RSICapability           string                         `json:"rsi_capability"`
+	OperatorMode            string                         `json:"operator_mode"`
+	MutatesRepositories     bool                           `json:"mutates_repositories"`
+	Families                []rsiBundleFamilyStatus        `json:"families"`
+	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 }
 
 type rsiBundleFamilyStatus struct {
@@ -539,6 +549,46 @@ type rsiBundleFamilyStatus struct {
 	Passed   bool   `json:"passed"`
 	Evidence string `json:"evidence"`
 	SHA256   string `json:"sha256"`
+}
+
+type foundryCandidateBindingStatus struct {
+	Status                string `json:"status"`
+	Passed                bool   `json:"passed"`
+	CandidateEvidence     string `json:"candidate_evidence"`
+	GateEvidence          string `json:"gate_evidence"`
+	MatchedEvalResultPath string `json:"matched_eval_result_path"`
+	MutatesRepositories   bool   `json:"mutates_repositories"`
+}
+
+type foundryEvalResultRef struct {
+	Label         string  `json:"label,omitempty"`
+	Path          string  `json:"path"`
+	SchemaVersion string  `json:"schema_version"`
+	Status        string  `json:"status"`
+	Score         float64 `json:"score"`
+	MaxScore      float64 `json:"max_score"`
+	SHA256        string  `json:"sha256"`
+}
+
+type foundryRSIImprovementGate struct {
+	SchemaVersion              string                 `json:"schema_version"`
+	Status                     string                 `json:"status"`
+	BaselineScore              float64                `json:"baseline_score"`
+	CandidateScore             float64                `json:"candidate_score"`
+	RequiredImprovementPercent float64                `json:"required_improvement_percent"`
+	ActualImprovementPercent   float64                `json:"actual_improvement_percent"`
+	AutonomousClaim            string                 `json:"autonomous_claim"`
+	MutatesRepositories        bool                   `json:"mutates_repositories"`
+	Evidence                   []foundryEvalResultRef `json:"evidence"`
+}
+
+type foundryRSICandidate struct {
+	SchemaVersion       string               `json:"schema_version"`
+	Status              string               `json:"status"`
+	GeneratedBy         string               `json:"generated_by"`
+	BaselineEvalResult  foundryEvalResultRef `json:"baseline_eval_result"`
+	CandidateEvalResult foundryEvalResultRef `json:"candidate_eval_result"`
+	MutatesRepositories bool                 `json:"mutates_repositories"`
 }
 
 func readActiveStackLedger(path string) (activeStackLedger, error) {
@@ -582,7 +632,7 @@ func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary 
 	}
 }
 
-func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath string) (rsiHealthSummary, error) {
+func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath, foundryCandidatePath string) (rsiHealthSummary, error) {
 	arena, err := readArenaGate(arenaGatePath)
 	if err != nil {
 		return rsiHealthSummary{}, err
@@ -599,9 +649,17 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 	if err != nil {
 		return rsiHealthSummary{}, err
 	}
-	foundry, err := readFoundryRSIImprovementGate(foundryGatePath)
+	foundry, foundryGate, err := readFoundryRSIImprovementGate(foundryGatePath)
 	if err != nil {
 		return rsiHealthSummary{}, err
+	}
+	var foundryCandidateBinding *foundryCandidateBindingStatus
+	if strings.TrimSpace(foundryCandidatePath) != "" {
+		binding, err := readFoundryRSICandidateBinding(foundryCandidatePath, foundryGatePath, foundryGate)
+		if err != nil {
+			return rsiHealthSummary{}, err
+		}
+		foundryCandidateBinding = &binding
 	}
 	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter, foundry}
 	status := "passed"
@@ -613,14 +671,19 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 			break
 		}
 	}
+	if foundryCandidateBinding != nil && !foundryCandidateBinding.Passed {
+		status = "blocked"
+		capability = "not_demonstrated"
+	}
 	return rsiHealthSummary{
-		CommandSchemaVersion: commandSchemaVersion,
-		Status:               status,
-		RSIMode:              "governed_fixture_local",
-		RSICapability:        capability,
-		OperatorMode:         operatorMode,
-		MutatesRepositories:  false,
-		Families:             families,
+		CommandSchemaVersion:    commandSchemaVersion,
+		Status:                  status,
+		RSIMode:                 "governed_fixture_local",
+		RSICapability:           capability,
+		OperatorMode:            operatorMode,
+		MutatesRepositories:     false,
+		Families:                families,
+		FoundryCandidateBinding: foundryCandidateBinding,
 	}, nil
 }
 
@@ -644,14 +707,15 @@ func writeRSIHealthBundle(path string, summary rsiHealthSummary) error {
 
 func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, error) {
 	bundle := rsiHealthBundle{
-		SchemaVersion:        "ao.command.rsi-health-bundle.v0.1",
-		CommandSchemaVersion: summary.CommandSchemaVersion,
-		Status:               summary.Status,
-		RSIMode:              summary.RSIMode,
-		RSICapability:        summary.RSICapability,
-		OperatorMode:         summary.OperatorMode,
-		MutatesRepositories:  summary.MutatesRepositories,
-		Families:             make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
+		SchemaVersion:           "ao.command.rsi-health-bundle.v0.1",
+		CommandSchemaVersion:    summary.CommandSchemaVersion,
+		Status:                  summary.Status,
+		RSIMode:                 summary.RSIMode,
+		RSICapability:           summary.RSICapability,
+		OperatorMode:            summary.OperatorMode,
+		MutatesRepositories:     summary.MutatesRepositories,
+		Families:                make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
+		FoundryCandidateBinding: summary.FoundryCandidateBinding,
 	}
 	for _, family := range summary.Families {
 		hash, err := sha256File(family.Evidence)
@@ -743,19 +807,10 @@ func readPromoterGate(path string) (rsiFamilyStatus, error) {
 	return rsiFamilyStatus{Family: "ao-promoter", Status: gate.Status, Passed: passed, Evidence: path}, nil
 }
 
-func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, error) {
-	var gate struct {
-		SchemaVersion              string  `json:"schema_version"`
-		Status                     string  `json:"status"`
-		BaselineScore              float64 `json:"baseline_score"`
-		CandidateScore             float64 `json:"candidate_score"`
-		RequiredImprovementPercent float64 `json:"required_improvement_percent"`
-		ActualImprovementPercent   float64 `json:"actual_improvement_percent"`
-		AutonomousClaim            string  `json:"autonomous_claim"`
-		MutatesRepositories        bool    `json:"mutates_repositories"`
-	}
+func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, foundryRSIImprovementGate, error) {
+	var gate foundryRSIImprovementGate
 	if err := readJSONFile(path, &gate); err != nil {
-		return rsiFamilyStatus{}, fmt.Errorf("read foundry RSI improvement gate: %w", err)
+		return rsiFamilyStatus{}, foundryRSIImprovementGate{}, fmt.Errorf("read foundry RSI improvement gate: %w", err)
 	}
 	passed := gate.SchemaVersion == "ao.foundry.rsi-improvement-gate.v0.1" &&
 		gate.Status == "passed" &&
@@ -764,7 +819,53 @@ func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, error) {
 		gate.RequiredImprovementPercent > 0 &&
 		gate.AutonomousClaim == "measured_local_improvement" &&
 		!gate.MutatesRepositories
-	return rsiFamilyStatus{Family: "ao-foundry", Status: gate.Status, Passed: passed, Evidence: path}, nil
+	return rsiFamilyStatus{Family: "ao-foundry", Status: gate.Status, Passed: passed, Evidence: path}, gate, nil
+}
+
+func readFoundryRSICandidateBinding(candidatePath, gatePath string, gate foundryRSIImprovementGate) (foundryCandidateBindingStatus, error) {
+	var candidate foundryRSICandidate
+	if err := readJSONFile(candidatePath, &candidate); err != nil {
+		return foundryCandidateBindingStatus{}, fmt.Errorf("read foundry RSI candidate: %w", err)
+	}
+	gateCandidate, ok := foundryGateCandidateEvidence(gate)
+	passed := ok &&
+		candidate.SchemaVersion == "ao.foundry.rsi-candidate.v0.1" &&
+		candidate.Status == "ready" &&
+		candidate.GeneratedBy == "foundry pulse run" &&
+		candidate.CandidateEvalResult.SchemaVersion == "ao.foundry.eval-result.v0.1" &&
+		candidate.CandidateEvalResult.Status == "ready" &&
+		candidate.CandidateEvalResult.Path != "" &&
+		candidate.CandidateEvalResult.MaxScore > 0 &&
+		candidate.CandidateEvalResult.SHA256 != "" &&
+		candidate.CandidateEvalResult.Path == gateCandidate.Path &&
+		candidate.CandidateEvalResult.SchemaVersion == gateCandidate.SchemaVersion &&
+		candidate.CandidateEvalResult.Status == gateCandidate.Status &&
+		candidate.CandidateEvalResult.Score == gateCandidate.Score &&
+		candidate.CandidateEvalResult.MaxScore == gateCandidate.MaxScore &&
+		candidate.CandidateEvalResult.SHA256 == gateCandidate.SHA256 &&
+		!candidate.MutatesRepositories &&
+		!gate.MutatesRepositories
+	status := "passed"
+	if !passed {
+		status = "blocked"
+	}
+	return foundryCandidateBindingStatus{
+		Status:                status,
+		Passed:                passed,
+		CandidateEvidence:     candidatePath,
+		GateEvidence:          gatePath,
+		MatchedEvalResultPath: candidate.CandidateEvalResult.Path,
+		MutatesRepositories:   candidate.MutatesRepositories || gate.MutatesRepositories,
+	}, nil
+}
+
+func foundryGateCandidateEvidence(gate foundryRSIImprovementGate) (foundryEvalResultRef, bool) {
+	for _, evidence := range gate.Evidence {
+		if evidence.Label == "candidate" {
+			return evidence, true
+		}
+	}
+	return foundryEvalResultRef{}, false
 }
 
 func readJSONFile(path string, target any) error {
