@@ -832,6 +832,86 @@ func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
 	}
 }
 
+func TestRSIManifestReportsArchitectureClaimBoundary(t *testing.T) {
+	manifest := writeRSIManifestFixture(t, true)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi manifest exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_rsi_manifest=passed",
+		"schema_version=ao.architecture.rsi-claim-evidence-manifest.v0.1",
+		"manifest=" + manifest,
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"claim_level=bounded_governed_rsi decision=allowed status=supported_when_chain_passes",
+		"claim_level=full_autonomous_self_mutating_rsi decision=denied status=missing_required_full_claim_evidence",
+		"active_repositories=6",
+		"out_of_scope_repositories=5",
+		"full_claim_required_evidence=6",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("rsi manifest stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestRSIManifestJSONReportsArchitectureClaimBoundary(t *testing.T) {
+	manifest := writeRSIManifestFixture(t, true)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi manifest json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion        string `json:"schema_version"`
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		Manifest             string `json:"manifest"`
+		OperatorMode         string `json:"operator_mode"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+		ClaimLevels          []struct {
+			ClaimLevel string `json:"claim_level"`
+			Decision   string `json:"decision"`
+			Status     string `json:"status"`
+		} `json:"claim_levels"`
+		ActiveRepositories                 []struct{ ID string } `json:"active_repositories"`
+		DeprecatedOrOutOfScopeRepositories []struct{ ID string } `json:"deprecated_or_out_of_scope_repositories"`
+		FullClaimRequiredEvidence          []string              `json:"full_claim_required_evidence"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi manifest JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.rsi-manifest.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "passed" ||
+		got.Manifest != manifest ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		len(got.ClaimLevels) != 2 ||
+		len(got.ActiveRepositories) != 6 ||
+		len(got.DeprecatedOrOutOfScopeRepositories) != 5 ||
+		len(got.FullClaimRequiredEvidence) != 6 {
+		t.Fatalf("unexpected rsi manifest summary: %+v", got)
+	}
+	if got.ClaimLevels[0].ClaimLevel != "bounded_governed_rsi" || got.ClaimLevels[0].Decision != "allowed" {
+		t.Fatalf("unexpected bounded claim level: %+v", got.ClaimLevels)
+	}
+	if got.ClaimLevels[1].ClaimLevel != "full_autonomous_self_mutating_rsi" || got.ClaimLevels[1].Decision != "denied" {
+		t.Fatalf("unexpected full claim level: %+v", got.ClaimLevels)
+	}
+}
+
+func TestRSIManifestFailsClosedWithoutDeniedFullClaim(t *testing.T) {
+	manifest := writeRSIManifestFixture(t, false)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "full_autonomous_self_mutating_rsi denied claim level is required") {
+		t.Fatalf("stderr missing denied full claim reason: %s", stderr)
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -1020,6 +1100,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
+		{name: "README RSI manifest command", doc: readme, want: "go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json"},
 		{name: "README RSI health Foundry candidate", doc: readme, want: "--foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json"},
 		{name: "README RSI health Foundry next task", doc: readme, want: "--foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json"},
 		{name: "README RSI health Forge retained gate", doc: readme, want: "--forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json"},
@@ -1031,6 +1112,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI full claim denied", doc: readme, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
 		{name: "README RSI health schema", doc: readme, want: "docs/contracts/rsi-health-v0.1.schema.json"},
 		{name: "README RSI health bundle schema", doc: readme, want: "docs/contracts/rsi-health-bundle-v0.1.schema.json"},
+		{name: "README RSI manifest read-only", doc: readme, want: "`rsi manifest` reads AO Architecture's"},
+		{name: "README RSI manifest no mutation", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
 		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
@@ -1113,6 +1196,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit release governance dry-run", doc: productionReadinessAudit, want: "release_governance_dry_run"},
 		{name: "production readiness audit active stack status", doc: productionReadinessAudit, want: "active_stack_status"},
 		{name: "production readiness audit RSI evidence chain smoke", doc: productionReadinessAudit, want: "rsi_evidence_chain_smoke"},
+		{name: "production readiness audit RSI claim manifest", doc: productionReadinessAudit, want: "rsi_claim_manifest"},
 		{name: "production readiness audit RSI health contract", doc: productionReadinessAudit, want: "rsi_health_contract_validate"},
 		{name: "production readiness audit RSI health bundle contract", doc: productionReadinessAudit, want: "rsi_health_bundle_contract_validate"},
 		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
@@ -1145,6 +1229,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow RSI health schema validation", doc: workflow, want: "Validate RSI health contract"},
 		{name: "workflow RSI health bundle schema validation", doc: workflow, want: "Validate RSI health bundle contract"},
 		{name: "workflow RSI evidence chain smoke", doc: workflow, want: "scripts/rsi-evidence-chain-smoke.sh --forge ao-forge --foundry ao-foundry --covenant ao-covenant"},
+		{name: "workflow RSI claim manifest", doc: workflow, want: "RSI claim manifest"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)
@@ -1169,6 +1254,9 @@ func TestDryRunCleanTreeAllowlistIncludesReadOnlyFixtureCheckouts(t *testing.T) 
 		}
 		if !strings.Contains(string(content), "':!ao-covenant'") {
 			t.Fatalf("%s clean-tree allowlist must include the read-only ao-covenant fixture checkout", script)
+		}
+		if !strings.Contains(string(content), "':!ao-architecture'") {
+			t.Fatalf("%s clean-tree allowlist must include the read-only ao-architecture fixture checkout", script)
 		}
 	}
 }
@@ -1573,6 +1661,74 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
   }
 }`),
 	}
+}
+
+func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
+	t.Helper()
+	fullClaim := ""
+	if includeDeniedFullClaim {
+		fullClaim = `,
+    {
+      "claim_level": "full_autonomous_self_mutating_rsi",
+      "decision": "denied",
+      "status": "missing_required_full_claim_evidence",
+      "required_before_allowed": [
+        "covenant_claim_publish_approval",
+        "mutation_authority",
+        "rollback_evidence",
+        "live_self_change_evidence",
+        "observer_readback",
+        "updated_retained_claim_level_evidence"
+      ]
+    }`
+	}
+	path := filepath.Join(t.TempDir(), "rsi-claim-evidence-manifest.json")
+	manifest := `{
+  "schema_version": "ao.architecture.rsi-claim-evidence-manifest.v0.1",
+  "generated_date": "2026-06-25",
+  "claim_levels": [
+    {
+      "claim_level": "bounded_governed_rsi",
+      "decision": "allowed",
+      "status": "supported_when_chain_passes",
+      "required_evidence": [
+        "ao_foundry_rsi_candidate_evidence",
+        "ao_foundry_rsi_improvement_gate",
+        "ao_foundry_rsi_next_improvement_task",
+        "ao_forge_retained_foundry_evidence",
+        "ao_command_rsi_health",
+        "ao_covenant_full_claim_boundary_denial"
+      ]
+    }` + fullClaim + `
+  ],
+  "active_repositories": [
+    {"id": "ao-foundry", "role": "pulse_candidate_and_improvement_gate_producer"},
+    {"id": "ao-forge", "role": "goalrun_retention_and_aggregate_proof"},
+    {"id": "ao-command", "role": "read_only_rsi_health_verifier"},
+    {"id": "ao-covenant", "role": "claim_publication_policy_gate"},
+    {"id": "ao2", "role": "governed_execution_and_evidence_runtime"},
+    {"id": "ao2-control-plane", "role": "read_only_observer_readback"}
+  ],
+  "deprecated_or_out_of_scope_repositories": [
+    {"id": "ao-operator", "status": "deprecated", "replacement": "ao2", "rsi_evidence_scope": "not_active_rsi_evidence"},
+    {"id": "ao-runtime", "status": "deprecated", "replacement": "ao2", "rsi_evidence_scope": "not_active_rsi_evidence"},
+    {"id": "ao-control-plane", "status": "deprecated", "replacement": "ao2-control-plane", "rsi_evidence_scope": "not_active_rsi_evidence"},
+    {"id": "ao-conductor", "status": "out_of_scope", "replacement": null, "rsi_evidence_scope": "not_active_rsi_evidence"},
+    {"id": "agy-swarms", "status": "out_of_scope", "replacement": null, "rsi_evidence_scope": "not_active_rsi_evidence"}
+  ],
+  "full_claim_required_evidence": [
+    "covenant-approved claim.publish ticket for full-autonomous-self-mutating-rsi",
+    "mutation authority naming repository, branch, allowed write surface, exact digest, approval identity, and expiry",
+    "rollback evidence for the same change class",
+    "live self-change evidence over an active planning, execution, policy, or verification path",
+    "observer readback that preserves observer-only authority",
+    "AO Command and AO Forge retained evidence with updated claim-level decisions"
+  ]
+}`
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write rsi manifest fixture: %v", err)
+	}
+	return path
 }
 
 func stackRepoPresent(repos []struct {

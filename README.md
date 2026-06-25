@@ -42,6 +42,7 @@ owner.
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json --foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json --forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json --forge-retained-candidate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-candidate-retention-proof.json --forge-retained-next-task ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-next-improvement-task-retention-proof.json --forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json --bundle-out tmp/rsi-health-bundle.json
+go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json
 go run ./cmd/ao-command next --forge ../ao-forge
 go run ./cmd/ao-command goals --forge ../ao-forge --goal-run ../ao-forge/examples/goals/ao2-weekend-hardening.goal-run.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema docs/contracts/production-readiness-audit-v0.1.schema.json --document /tmp/ao-forge-production-readiness.json
@@ -81,6 +82,14 @@ Validate machine-readable RSI health output against
 `docs/contracts/rsi-health-v0.1.schema.json` and bundles against
 `docs/contracts/rsi-health-bundle-v0.1.schema.json`.
 
+`rsi manifest` reads AO Architecture's
+`overview/rsi-claim-evidence-manifest.json` and fail-closes unless the
+manifest preserves the bounded/full RSI claim boundary. It requires
+`claim_level=bounded_governed_rsi decision=allowed`, requires
+`claim_level=full_autonomous_self_mutating_rsi decision=denied`, confirms the
+active repositories and deprecated or out-of-scope repositories are represented,
+and reports `operator_mode=read_only` with `mutates_repositories=false`.
+
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
 end: it runs `foundry pulse run`, verifies the pulse evidence against AO Forge
 retained RSI proofs through `ao-command rsi health`, and confirms AO Covenant
@@ -109,6 +118,8 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
   rather than invoking deprecated standalone runtime or operator repositories.
 - `rsi health` reads assurance-family JSON evidence and does not run providers,
   promote candidates, apply activation plans, or mutate repositories.
+- `rsi manifest` reads the architecture manifest and does not mutate
+  repositories, publish claims, or approve the full RSI claim.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
@@ -149,7 +160,7 @@ scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
 scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
-scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/production-readiness-audit.json
+scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --architecture ../ao-architecture --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 scripts/verify-branch-protection.sh
 ```
