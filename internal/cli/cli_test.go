@@ -474,6 +474,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
+		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
+		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
 		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
 		{name: "security public", doc: security, want: "public after passing the v0.1 publication audit"},
@@ -552,6 +554,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow release governance schema", doc: workflow, want: "Validate release governance contract"},
 		{name: "workflow active stack checkout", doc: workflow, want: "Checkout ao-foundry active-stack fixture"},
 		{name: "workflow active stack status", doc: workflow, want: "Active stack status"},
+		{name: "workflow RSI health step", doc: workflow, want: "RSI health dry-run"},
+		{name: "workflow RSI health command", doc: workflow, want: "bin/ao-command rsi health"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)

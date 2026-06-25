@@ -54,6 +54,49 @@ jobs:
       - name: Build
         run: go build -o bin/ao-command ./cmd/ao-command
 
+      - name: RSI health dry-run
+        run: |
+          mkdir -p tmp/rsi-health
+          cat > tmp/rsi-health/arena-promotion-gate.json <<'JSON'
+          {
+            "schema_version": "ao.arena.promotion-gate.v0.1",
+            "status": "passed",
+            "winner": "ao-orchestration"
+          }
+          JSON
+          cat > tmp/rsi-health/crucible-hardening-gate.json <<'JSON'
+          {
+            "schema_version": "ao.crucible.hardening-gate.v0.1",
+            "status": "passed",
+            "score": 97
+          }
+          JSON
+          cat > tmp/rsi-health/sentinel-verdict.json <<'JSON'
+          {
+            "schema_version": "ao.sentinel.verdict.v0.1",
+            "verdict": "clear",
+            "safety_status": "passed",
+            "regression_status": "passed",
+            "promoter_hold_required": false,
+            "mutates_live_state": false
+          }
+          JSON
+          cat > tmp/rsi-health/promoter-gate.json <<'JSON'
+          {
+            "schema_version": "ao.promoter.gate.v0.1",
+            "status": "passed",
+            "promotion_allowed": true,
+            "activation_plan_allowed": true,
+            "blockers": []
+          }
+          JSON
+          bin/ao-command rsi health \
+            --arena-gate tmp/rsi-health/arena-promotion-gate.json \
+            --crucible-gate tmp/rsi-health/crucible-hardening-gate.json \
+            --sentinel-verdict tmp/rsi-health/sentinel-verdict.json \
+            --promoter-gate tmp/rsi-health/promoter-gate.json \
+            --json
+
       - name: Integration smoke
         run: scripts/ao-command-smoke.sh --forge ao-forge --out tmp/ao-command-smoke
 
