@@ -23,6 +23,10 @@ AO Command's live stack boundary is AO Forge for readiness and GoalRun truth,
 AO2 for governed execution, ao2-control-plane for evidence readback, and AO
 Covenant for allow, deny, and block decisions. Deprecated standalone runtime,
 operator, conductor, and subscription-backed swarm surfaces are out of scope.
+The newer assurance families extend the read-only view: AO Arena supplies
+benchmark promotion gates, AO Crucible supplies hardening gates, AO Sentinel
+supplies regression and safety verdicts, and AO Promoter supplies dry-run
+promotion gates.
 
 AO Foundry is the persistent engineering operations layer for many repos,
 branches, releases, dependency updates, docs drift, CI health, security
@@ -37,6 +41,7 @@ owner.
 ```sh
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
+go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json
 go run ./cmd/ao-command next --forge ../ao-forge
 go run ./cmd/ao-command goals --forge ../ao-forge --goal-run ../ao-forge/examples/goals/ao2-weekend-hardening.goal-run.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema docs/contracts/production-readiness-audit-v0.1.schema.json --document /tmp/ao-forge-production-readiness.json
@@ -51,6 +56,11 @@ and release governance state.
 active repository count, release handoff gates, `operator_mode=read_only`, and
 `orchestration_owner=ao-foundry`. It does not schedule work, mutate branches,
 publish releases, or write control-plane records.
+
+`rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
+Sentinel, and AO Promoter. It reports whether the governed fixture/local RSI
+chain is demonstrated and keeps `operator_mode=read_only` and
+`mutates_repositories=false`.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
@@ -68,6 +78,8 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
   GoalRun state, retained evidence, and Covenant decisions.
 - AO2 is the governed execution path; AO Command reads evidence about that path
   rather than invoking deprecated standalone runtime or operator repositories.
+- `rsi health` reads assurance-family JSON evidence and does not run providers,
+  promote candidates, apply activation plans, or mutate repositories.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
@@ -97,6 +109,7 @@ AO Covenant-approved design moves that boundary.
 go test ./...
 go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
+go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --json
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.0-preview
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"

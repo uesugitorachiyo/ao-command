@@ -79,6 +79,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.status(ctx, args[1:])
 	case "stack":
 		return a.stack(args[1:])
+	case "rsi":
+		return a.rsi(args[1:])
 	case "next":
 		return a.next(ctx, args[1:])
 	case "goals":
@@ -100,6 +102,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -193,6 +196,50 @@ func (a App) stack(args []string) int {
 		fmt.Fprintf(a.Stdout, "gate=%s status=%s required_before_promotion=%t\n", gate.Name, gate.Status, gate.RequiredBeforePromotion)
 	}
 	fmt.Fprintf(a.Stdout, "out_of_scope=%s\n", strings.Join(summary.OutOfScope, ","))
+	return 0
+}
+
+func (a App) rsi(args []string) int {
+	if len(args) == 0 || args[0] != "health" {
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--json]")
+		return 2
+	}
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate string
+	var jsonOut bool
+	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&arenaGate, "arena-gate", "", "path to AO Arena promotion gate JSON")
+	fs.StringVar(&crucibleGate, "crucible-gate", "", "path to AO Crucible hardening gate JSON")
+	fs.StringVar(&sentinelVerdict, "sentinel-verdict", "", "path to AO Sentinel verdict JSON")
+	fs.StringVar(&promoterGate, "promoter-gate", "", "path to AO Promoter gate JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" {
+		fmt.Fprintln(a.Stderr, "ao-command rsi health: all evidence flags are required")
+		return 2
+	}
+	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_rsi_health=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "rsi_mode=%s\n", summary.RSIMode)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, family := range summary.Families {
+		fmt.Fprintf(a.Stdout, "family=%s status=%s passed=%t evidence=%s\n", family.Family, family.Status, family.Passed, family.Evidence)
+	}
+	fmt.Fprintf(a.Stdout, "rsi_capability=%s\n", summary.RSICapability)
+	if summary.Status != "passed" {
+		fmt.Fprintln(a.Stderr, "ao-command rsi health: RSI health blocked")
+		return 1
+	}
 	return 0
 }
 
@@ -446,6 +493,23 @@ type stackSummary struct {
 	OutOfScope           []string                `json:"out_of_scope"`
 }
 
+type rsiFamilyStatus struct {
+	Family   string `json:"family"`
+	Status   string `json:"status"`
+	Passed   bool   `json:"passed"`
+	Evidence string `json:"evidence"`
+}
+
+type rsiHealthSummary struct {
+	CommandSchemaVersion string            `json:"command_schema_version"`
+	Status               string            `json:"status"`
+	RSIMode              string            `json:"rsi_mode"`
+	RSICapability        string            `json:"rsi_capability"`
+	OperatorMode         string            `json:"operator_mode"`
+	MutatesRepositories  bool              `json:"mutates_repositories"`
+	Families             []rsiFamilyStatus `json:"families"`
+}
+
 func readActiveStackLedger(path string) (activeStackLedger, error) {
 	var ledger activeStackLedger
 	bytes, err := os.ReadFile(path)
@@ -485,6 +549,121 @@ func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary 
 			"codex-cron",
 		},
 	}
+}
+
+func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath string) (rsiHealthSummary, error) {
+	arena, err := readArenaGate(arenaGatePath)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	crucible, err := readCrucibleGate(crucibleGatePath)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	sentinel, err := readSentinelVerdict(sentinelVerdictPath)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	promoter, err := readPromoterGate(promoterGatePath)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter}
+	status := "passed"
+	capability := "demonstrated_local_fixture_loop"
+	for _, family := range families {
+		if !family.Passed {
+			status = "blocked"
+			capability = "not_demonstrated"
+			break
+		}
+	}
+	return rsiHealthSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Status:               status,
+		RSIMode:              "governed_fixture_local",
+		RSICapability:        capability,
+		OperatorMode:         operatorMode,
+		MutatesRepositories:  false,
+		Families:             families,
+	}, nil
+}
+
+func readArenaGate(path string) (rsiFamilyStatus, error) {
+	var gate struct {
+		SchemaVersion string `json:"schema_version"`
+		Status        string `json:"status"`
+		Winner        string `json:"winner"`
+	}
+	if err := readJSONFile(path, &gate); err != nil {
+		return rsiFamilyStatus{}, fmt.Errorf("read arena gate: %w", err)
+	}
+	passed := gate.SchemaVersion == "ao.arena.promotion-gate.v0.1" && gate.Status == "passed" && gate.Winner != ""
+	return rsiFamilyStatus{Family: "ao-arena", Status: gate.Status, Passed: passed, Evidence: path}, nil
+}
+
+func readCrucibleGate(path string) (rsiFamilyStatus, error) {
+	var gate struct {
+		SchemaVersion string `json:"schema_version"`
+		Status        string `json:"status"`
+		Score         int    `json:"score"`
+	}
+	if err := readJSONFile(path, &gate); err != nil {
+		return rsiFamilyStatus{}, fmt.Errorf("read crucible gate: %w", err)
+	}
+	passed := gate.SchemaVersion == "ao.crucible.hardening-gate.v0.1" && gate.Status == "passed" && gate.Score >= 85
+	return rsiFamilyStatus{Family: "ao-crucible", Status: gate.Status, Passed: passed, Evidence: path}, nil
+}
+
+func readSentinelVerdict(path string) (rsiFamilyStatus, error) {
+	var verdict struct {
+		SchemaVersion        string `json:"schema_version"`
+		Verdict              string `json:"verdict"`
+		SafetyStatus         string `json:"safety_status"`
+		RegressionStatus     string `json:"regression_status"`
+		PromoterHoldRequired bool   `json:"promoter_hold_required"`
+		MutatesLiveState     bool   `json:"mutates_live_state"`
+	}
+	if err := readJSONFile(path, &verdict); err != nil {
+		return rsiFamilyStatus{}, fmt.Errorf("read sentinel verdict: %w", err)
+	}
+	passed := verdict.SchemaVersion == "ao.sentinel.verdict.v0.1" &&
+		verdict.Verdict == "clear" &&
+		verdict.SafetyStatus == "passed" &&
+		verdict.RegressionStatus == "passed" &&
+		!verdict.PromoterHoldRequired &&
+		!verdict.MutatesLiveState
+	return rsiFamilyStatus{Family: "ao-sentinel", Status: verdict.Verdict, Passed: passed, Evidence: path}, nil
+}
+
+func readPromoterGate(path string) (rsiFamilyStatus, error) {
+	var gate struct {
+		SchemaVersion         string   `json:"schema_version"`
+		Status                string   `json:"status"`
+		PromotionAllowed      bool     `json:"promotion_allowed"`
+		ActivationPlanAllowed bool     `json:"activation_plan_allowed"`
+		Blockers              []string `json:"blockers"`
+	}
+	if err := readJSONFile(path, &gate); err != nil {
+		return rsiFamilyStatus{}, fmt.Errorf("read promoter gate: %w", err)
+	}
+	passed := gate.SchemaVersion == "ao.promoter.gate.v0.1" &&
+		gate.Status == "passed" &&
+		gate.PromotionAllowed &&
+		gate.ActivationPlanAllowed &&
+		len(gate.Blockers) == 0
+	return rsiFamilyStatus{Family: "ao-promoter", Status: gate.Status, Passed: passed, Evidence: path}, nil
+}
+
+func readJSONFile(path string, target any) error {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(bytes, target); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
 }
 
 func statusSummaryFromAudit(forge string, audit productionReadinessAudit) statusSummary {

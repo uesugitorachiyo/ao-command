@@ -194,6 +194,102 @@ func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	}
 }
 
+func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_rsi_health=passed",
+		"rsi_mode=governed_fixture_local",
+		"operator_mode=read_only",
+		"family=ao-arena status=passed",
+		"family=ao-crucible status=passed",
+		"family=ao-sentinel status=clear",
+		"family=ao-promoter status=passed",
+		"rsi_capability=demonstrated_local_fixture_loop",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("rsi health stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		RSIMode              string `json:"rsi_mode"`
+		RSICapability        string `json:"rsi_capability"`
+		OperatorMode         string `json:"operator_mode"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+		Families             []struct {
+			Family   string `json:"family"`
+			Status   string `json:"status"`
+			Passed   bool   `json:"passed"`
+			Evidence string `json:"evidence"`
+		} `json:"families"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health JSON: %v\n%s", err, stdout)
+	}
+	if got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "passed" ||
+		got.RSIMode != "governed_fixture_local" ||
+		got.RSICapability != "demonstrated_local_fixture_loop" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		len(got.Families) != 4 {
+		t.Fatalf("unexpected rsi health summary: %+v", got)
+	}
+	for _, family := range got.Families {
+		if !family.Passed || family.Evidence == "" {
+			t.Fatalf("family missing pass/evidence: %+v", family)
+		}
+	}
+}
+
+func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, false)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi health blocked exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "RSI health blocked") {
+		t.Fatalf("stderr missing blocked message: %s", stderr)
+	}
+	if !strings.Contains(stdout, "ao_command_rsi_health=blocked") ||
+		!strings.Contains(stdout, "family=ao-sentinel status=incident") ||
+		!strings.Contains(stdout, "rsi_capability=not_demonstrated") {
+		t.Fatalf("blocked stdout missing expected signals:\n%s", stdout)
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -593,6 +689,75 @@ func writeStackLedgerFixture(t *testing.T) string {
 		t.Fatalf("write stack ledger fixture: %v", err)
 	}
 	return path
+}
+
+type rsiHealthFixturePaths struct {
+	arena    string
+	crucible string
+	sentinel string
+	promoter string
+}
+
+func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(name string, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		return path
+	}
+	sentinelVerdict := `"clear"`
+	sentinelSafety := `"passed"`
+	sentinelRegression := `"passed"`
+	sentinelHold := `false`
+	if !clear {
+		sentinelVerdict = `"incident"`
+		sentinelSafety = `"failed"`
+		sentinelRegression = `"failed"`
+		sentinelHold = `true`
+	}
+	return rsiHealthFixturePaths{
+		arena: write("arena-promotion-gate.json", `{
+  "schema_version": "ao.arena.promotion-gate.v0.1",
+  "suite_id": "ao-arena-v0.1",
+  "status": "passed",
+  "reasons": [],
+  "winner": "ao-orchestration"
+}`),
+		crucible: write("crucible-hardening-gate.json", `{
+  "schema_version": "ao.crucible.hardening-gate.v0.1",
+  "gate_id": "hardening-gate",
+  "status": "passed",
+  "score": 97,
+  "reasons": ["resilience score meets threshold"]
+}`),
+		sentinel: write("sentinel-verdict.json", `{
+  "schema_version": "ao.sentinel.verdict.v0.1",
+  "target_id": "local-ao-stack",
+  "verdict": `+sentinelVerdict+`,
+  "safety_status": `+sentinelSafety+`,
+  "regression_status": `+sentinelRegression+`,
+  "promoter_hold_required": `+sentinelHold+`,
+  "mutates_live_state": false,
+  "blockers": []
+}`),
+		promoter: write("promoter-gate.json", `{
+  "schema_version": "ao.promoter.gate.v0.1",
+  "target_stack_id": "ao-stack-local",
+  "candidate_id": "ao-foundry",
+  "status": "passed",
+  "promotion_allowed": true,
+  "activation_plan_allowed": true,
+  "blockers": [],
+  "gate_results": [
+    {"role": "arena_promotion_gate", "status": "passed", "accepted_status": "passed", "passed": true},
+    {"role": "crucible_hardening_gate", "status": "passed", "accepted_status": "passed", "passed": true}
+  ]
+}`),
+	}
 }
 
 func stackRepoPresent(repos []struct {
