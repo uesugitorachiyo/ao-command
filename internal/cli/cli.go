@@ -254,6 +254,9 @@ func (a App) rsi(args []string) int {
 	fmt.Fprintf(a.Stdout, "rsi_mode=%s\n", summary.RSIMode)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, claim := range summary.ClaimLevels {
+		fmt.Fprintf(a.Stdout, "claim_level=%s decision=%s status=%s reason=%s\n", claim.Claim, claim.Decision, claim.Status, claim.Reason)
+	}
 	for _, family := range summary.Families {
 		fmt.Fprintf(a.Stdout, "family=%s status=%s passed=%t evidence=%s\n", family.Family, family.Status, family.Passed, family.Evidence)
 	}
@@ -546,6 +549,13 @@ type rsiFamilyStatus struct {
 	Evidence string `json:"evidence"`
 }
 
+type rsiClaimLevel struct {
+	Claim    string `json:"claim"`
+	Decision string `json:"decision"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason"`
+}
+
 type rsiHealthSummary struct {
 	CommandSchemaVersion    string                         `json:"command_schema_version"`
 	Status                  string                         `json:"status"`
@@ -553,6 +563,7 @@ type rsiHealthSummary struct {
 	RSICapability           string                         `json:"rsi_capability"`
 	OperatorMode            string                         `json:"operator_mode"`
 	MutatesRepositories     bool                           `json:"mutates_repositories"`
+	ClaimLevels             []rsiClaimLevel                `json:"claim_levels"`
 	Families                []rsiFamilyStatus              `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
@@ -567,6 +578,7 @@ type rsiHealthBundle struct {
 	RSICapability           string                         `json:"rsi_capability"`
 	OperatorMode            string                         `json:"operator_mode"`
 	MutatesRepositories     bool                           `json:"mutates_repositories"`
+	ClaimLevels             []rsiClaimLevel                `json:"claim_levels"`
 	Families                []rsiBundleFamilyStatus        `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
@@ -816,6 +828,7 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		RSICapability:           capability,
 		OperatorMode:            operatorMode,
 		MutatesRepositories:     false,
+		ClaimLevels:             rsiClaimLevels(status),
 		Families:                families,
 		FoundryCandidateBinding: foundryCandidateBinding,
 		FoundryNextTaskBinding:  foundryNextTaskBinding,
@@ -850,6 +863,7 @@ func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, erro
 		RSICapability:           summary.RSICapability,
 		OperatorMode:            summary.OperatorMode,
 		MutatesRepositories:     summary.MutatesRepositories,
+		ClaimLevels:             summary.ClaimLevels,
 		Families:                make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
 		FoundryCandidateBinding: summary.FoundryCandidateBinding,
 		FoundryNextTaskBinding:  summary.FoundryNextTaskBinding,
@@ -869,6 +883,31 @@ func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, erro
 		})
 	}
 	return bundle, nil
+}
+
+func rsiClaimLevels(healthStatus string) []rsiClaimLevel {
+	boundedDecision := "denied"
+	boundedStatus := "blocked"
+	boundedReason := "bounded governed RSI claim requires the Foundry pulse, Forge retention, Command health, 5 percent improvement gate, read-only operator mode, and non-mutating evidence chain to pass"
+	if healthStatus == "passed" {
+		boundedDecision = "allowed"
+		boundedStatus = "passed"
+		boundedReason = "bounded governed RSI claim allowed: Foundry pulse, Forge retention, Command health, 5 percent improvement gate, read-only operator mode, and non-mutating evidence chain passed"
+	}
+	return []rsiClaimLevel{
+		{
+			Claim:    "bounded_governed_rsi",
+			Decision: boundedDecision,
+			Status:   boundedStatus,
+			Reason:   boundedReason,
+		},
+		{
+			Claim:    "full_autonomous_self_mutating_rsi",
+			Decision: "denied",
+			Status:   "blocked",
+			Reason:   "full autonomous self-mutating RSI remains denied until mutation authority, rollback, and live self-change evidence exist and AO Covenant allows the claim.publish boundary",
+		},
+	}
 }
 
 func sha256File(path string) (string, error) {

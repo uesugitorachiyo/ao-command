@@ -33,6 +33,12 @@ The audit is passing only when all gates pass:
 - the governed RSI evidence-chain smoke passes from `foundry pulse run` through
   AO Forge retained proofs, `ao-command rsi health`, and AO Covenant's denied
   full autonomous self-mutating RSI claim boundary;
+- RSI health output reports
+  `claim_level=bounded_governed_rsi decision=allowed` only for the bounded
+  governed local chain and
+  `claim_level=full_autonomous_self_mutating_rsi decision=denied` for the full
+  autonomous self-mutating RSI claim until mutation authority, rollback, live
+  self-change evidence, and Covenant approval exist;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;

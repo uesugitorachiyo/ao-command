@@ -69,15 +69,24 @@ output against the AO Forge retained-evidence contract before trusting the
 semantic proof fields. It reports whether the governed fixture/local RSI chain
 is demonstrated from Foundry pulse through Forge retention to Command health
 while keeping `operator_mode=read_only` and
-`mutates_repositories=false`. Use `--bundle-out` to write the canonical
-`ao.command.rsi-health-bundle.v0.1` JSON artifact with the source evidence
-paths and SHA-256 hashes retained in one portable file.
+`mutates_repositories=false`. The text, JSON, and bundle outputs also publish
+claim-level decisions: `claim_level=bounded_governed_rsi decision=allowed` only
+for the bounded governed local evidence chain, and
+`claim_level=full_autonomous_self_mutating_rsi decision=denied` until mutation
+authority, rollback, live self-change evidence, and an AO Covenant
+`claim.publish` boundary allow that stronger claim. Use `--bundle-out` to write
+the canonical `ao.command.rsi-health-bundle.v0.1` JSON artifact with the source
+evidence paths, claim levels, and SHA-256 hashes retained in one portable file.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
 end: it runs `foundry pulse run`, verifies the pulse evidence against AO Forge
 retained RSI proofs through `ao-command rsi health`, and confirms AO Covenant
 denies `claim.publish` for `full-autonomous-self-mutating-rsi` unless mutation
-authority, rollback, and live self-change evidence exist.
+authority, rollback, and live self-change evidence exist. The smoke also pins
+the AO Forge aggregate proof at
+`../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/bounded-rsi-improvement-chain-retention-proof.json`
+and the AO Covenant claim-boundary fixtures at
+`../ao-covenant/examples/full-rsi-claim-boundary/`.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
