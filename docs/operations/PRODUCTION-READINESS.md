@@ -53,7 +53,11 @@ The audit is passing only when all gates pass:
   `ao-command-rsi-manifest-retention-proof.json`, AO Forge PR #144's
   `goalrun.architecture_rsi_pin_readback` evidence, and AO Covenant PR #57's
   `rollback-retained.contract.json` denial fixture plus AO Covenant PR #58's
-  `covenant.live-self-change-authority.v1` authority packet schema;
+  `covenant.live-self-change-authority.v1` authority packet schema. The
+  manifest validator also fail-closes unless AO Architecture pins AO2 PR #201's
+  dry-run authority-packet candidate with
+  `schema_valid_for_claim_publish=false` and ao2-control-plane PR #73's
+  `ao2.cp-ao2-rsi-authority-packet-readback.v1` observer readback;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;
