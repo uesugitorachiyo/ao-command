@@ -89,7 +89,10 @@ manifest preserves the bounded/full RSI claim boundary. It requires
 `claim_level=full_autonomous_self_mutating_rsi decision=denied`, confirms the
 active repositories and deprecated or out-of-scope repositories are represented,
 requires AO2's claim-readiness producer plus ao2-control-plane's
-`ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback, and reports
+`ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback, requires AO2's
+governed self-change dry-run producer
+`ao2.rsi-governed-self-change-dry-run.v1` plus ao2-control-plane's
+`ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, and reports
 `operator_mode=read_only` with `mutates_repositories=false`.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
