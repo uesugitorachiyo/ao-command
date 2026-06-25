@@ -103,7 +103,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
-  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--foundry-candidate PATH] [--bundle-out PATH] [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH [--bundle-out PATH] [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -202,10 +202,10 @@ func (a App) stack(args []string) int {
 
 func (a App) rsi(args []string) int {
 	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--foundry-candidate PATH] [--bundle-out PATH] [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH [--bundle-out PATH] [--json]")
 		return 2
 	}
-	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, bundleOut string
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -214,17 +214,18 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&sentinelVerdict, "sentinel-verdict", "", "path to AO Sentinel verdict JSON")
 	fs.StringVar(&promoterGate, "promoter-gate", "", "path to AO Promoter gate JSON")
 	fs.StringVar(&foundryGate, "foundry-gate", "", "path to AO Foundry RSI improvement gate JSON")
-	fs.StringVar(&foundryCandidate, "foundry-candidate", "", "optional path to AO Foundry RSI candidate JSON")
+	fs.StringVar(&foundryCandidate, "foundry-candidate", "", "path to AO Foundry RSI candidate JSON")
+	fs.StringVar(&foundryNextTask, "foundry-next-task", "", "path to AO Foundry RSI next improvement task JSON")
 	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" {
+	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" || foundryCandidate == "" || foundryNextTask == "" {
 		fmt.Fprintln(a.Stderr, "ao-command rsi health: all evidence flags are required")
 		return 2
 	}
-	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate)
+	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
 		return 1
@@ -236,7 +237,14 @@ func (a App) rsi(args []string) int {
 		}
 	}
 	if jsonOut {
-		return a.writeJSON(summary)
+		if code := a.writeJSON(summary); code != 0 {
+			return code
+		}
+		if summary.Status != "passed" {
+			fmt.Fprintln(a.Stderr, "ao-command rsi health: RSI health blocked")
+			return 1
+		}
+		return 0
 	}
 	fmt.Fprintf(a.Stdout, "ao_command_rsi_health=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "rsi_mode=%s\n", summary.RSIMode)
@@ -251,6 +259,13 @@ func (a App) rsi(args []string) int {
 			summary.FoundryCandidateBinding.MatchedEvalResultPath,
 			summary.FoundryCandidateBinding.CandidateEvidence,
 			summary.FoundryCandidateBinding.GateEvidence)
+	}
+	if summary.FoundryNextTaskBinding != nil {
+		fmt.Fprintf(a.Stdout, "foundry_next_task_bound=%t next_task_evidence=%s candidate_evidence=%s gate_evidence=%s\n",
+			summary.FoundryNextTaskBinding.Passed,
+			summary.FoundryNextTaskBinding.NextTaskEvidence,
+			summary.FoundryNextTaskBinding.CandidateEvidence,
+			summary.FoundryNextTaskBinding.GateEvidence)
 	}
 	if strings.TrimSpace(bundleOut) != "" {
 		fmt.Fprintf(a.Stdout, "bundle=%s\n", bundleOut)
@@ -529,6 +544,7 @@ type rsiHealthSummary struct {
 	MutatesRepositories     bool                           `json:"mutates_repositories"`
 	Families                []rsiFamilyStatus              `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
+	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
 }
 
 type rsiHealthBundle struct {
@@ -541,6 +557,7 @@ type rsiHealthBundle struct {
 	MutatesRepositories     bool                           `json:"mutates_repositories"`
 	Families                []rsiBundleFamilyStatus        `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
+	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
 }
 
 type rsiBundleFamilyStatus struct {
@@ -558,6 +575,18 @@ type foundryCandidateBindingStatus struct {
 	GateEvidence          string `json:"gate_evidence"`
 	MatchedEvalResultPath string `json:"matched_eval_result_path"`
 	MutatesRepositories   bool   `json:"mutates_repositories"`
+}
+
+type foundryNextTaskBindingStatus struct {
+	Status                     string  `json:"status"`
+	Passed                     bool    `json:"passed"`
+	NextTaskEvidence           string  `json:"next_task_evidence"`
+	CandidateEvidence          string  `json:"candidate_evidence"`
+	GateEvidence               string  `json:"gate_evidence"`
+	RequiredImprovementPercent float64 `json:"required_improvement_percent"`
+	ActualImprovementPercent   float64 `json:"actual_improvement_percent"`
+	AutonomousClaim            string  `json:"autonomous_claim"`
+	MutatesRepositories        bool    `json:"mutates_repositories"`
 }
 
 type foundryEvalResultRef struct {
@@ -589,6 +618,19 @@ type foundryRSICandidate struct {
 	BaselineEvalResult  foundryEvalResultRef `json:"baseline_eval_result"`
 	CandidateEvalResult foundryEvalResultRef `json:"candidate_eval_result"`
 	MutatesRepositories bool                 `json:"mutates_repositories"`
+}
+
+type foundryRSINextImprovementTask struct {
+	SchemaVersion              string   `json:"schema_version"`
+	Status                     string   `json:"status"`
+	GeneratedBy                string   `json:"generated_by"`
+	CandidateEvidencePath      string   `json:"candidate_evidence_path"`
+	GateEvidencePath           string   `json:"gate_evidence_path"`
+	RequiredImprovementPercent float64  `json:"required_improvement_percent"`
+	ActualImprovementPercent   float64  `json:"actual_improvement_percent"`
+	AutonomousClaim            string   `json:"autonomous_claim"`
+	MutatesRepositories        bool     `json:"mutates_repositories"`
+	NextActions                []string `json:"next_actions"`
 }
 
 func readActiveStackLedger(path string) (activeStackLedger, error) {
@@ -632,7 +674,7 @@ func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary 
 	}
 }
 
-func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath, foundryCandidatePath string) (rsiHealthSummary, error) {
+func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath, foundryCandidatePath, foundryNextTaskPath string) (rsiHealthSummary, error) {
 	arena, err := readArenaGate(arenaGatePath)
 	if err != nil {
 		return rsiHealthSummary{}, err
@@ -653,14 +695,16 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 	if err != nil {
 		return rsiHealthSummary{}, err
 	}
-	var foundryCandidateBinding *foundryCandidateBindingStatus
-	if strings.TrimSpace(foundryCandidatePath) != "" {
-		binding, err := readFoundryRSICandidateBinding(foundryCandidatePath, foundryGatePath, foundryGate)
-		if err != nil {
-			return rsiHealthSummary{}, err
-		}
-		foundryCandidateBinding = &binding
+	binding, err := readFoundryRSICandidateBinding(foundryCandidatePath, foundryGatePath, foundryGate)
+	if err != nil {
+		return rsiHealthSummary{}, err
 	}
+	foundryCandidateBinding := &binding
+	nextTaskBinding, err := readFoundryRSINextTaskBinding(foundryNextTaskPath, foundryCandidatePath, foundryGatePath, foundryGate)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	foundryNextTaskBinding := &nextTaskBinding
 	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter, foundry}
 	status := "passed"
 	capability := "demonstrated_local_fixture_loop"
@@ -675,6 +719,10 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		status = "blocked"
 		capability = "not_demonstrated"
 	}
+	if foundryNextTaskBinding != nil && !foundryNextTaskBinding.Passed {
+		status = "blocked"
+		capability = "not_demonstrated"
+	}
 	return rsiHealthSummary{
 		CommandSchemaVersion:    commandSchemaVersion,
 		Status:                  status,
@@ -684,6 +732,7 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		MutatesRepositories:     false,
 		Families:                families,
 		FoundryCandidateBinding: foundryCandidateBinding,
+		FoundryNextTaskBinding:  foundryNextTaskBinding,
 	}, nil
 }
 
@@ -716,6 +765,7 @@ func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, erro
 		MutatesRepositories:     summary.MutatesRepositories,
 		Families:                make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
 		FoundryCandidateBinding: summary.FoundryCandidateBinding,
+		FoundryNextTaskBinding:  summary.FoundryNextTaskBinding,
 	}
 	for _, family := range summary.Families {
 		hash, err := sha256File(family.Evidence)
@@ -856,6 +906,41 @@ func readFoundryRSICandidateBinding(candidatePath, gatePath string, gate foundry
 		GateEvidence:          gatePath,
 		MatchedEvalResultPath: candidate.CandidateEvalResult.Path,
 		MutatesRepositories:   candidate.MutatesRepositories || gate.MutatesRepositories,
+	}, nil
+}
+
+func readFoundryRSINextTaskBinding(nextTaskPath, candidatePath, gatePath string, gate foundryRSIImprovementGate) (foundryNextTaskBindingStatus, error) {
+	var nextTask foundryRSINextImprovementTask
+	if err := readJSONFile(nextTaskPath, &nextTask); err != nil {
+		return foundryNextTaskBindingStatus{}, fmt.Errorf("read foundry RSI next task: %w", err)
+	}
+	passed := nextTask.SchemaVersion == "ao.foundry.rsi-next-improvement-task.v0.1" &&
+		nextTask.Status == "ready" &&
+		nextTask.GeneratedBy == "foundry pulse run" &&
+		nextTask.CandidateEvidencePath == candidatePath &&
+		nextTask.GateEvidencePath == gatePath &&
+		nextTask.RequiredImprovementPercent == gate.RequiredImprovementPercent &&
+		nextTask.ActualImprovementPercent == gate.ActualImprovementPercent &&
+		nextTask.RequiredImprovementPercent > 0 &&
+		nextTask.ActualImprovementPercent >= nextTask.RequiredImprovementPercent &&
+		nextTask.AutonomousClaim == "derived_local_next_improvement" &&
+		!nextTask.MutatesRepositories &&
+		!gate.MutatesRepositories &&
+		len(nextTask.NextActions) > 0
+	status := "passed"
+	if !passed {
+		status = "blocked"
+	}
+	return foundryNextTaskBindingStatus{
+		Status:                     status,
+		Passed:                     passed,
+		NextTaskEvidence:           nextTaskPath,
+		CandidateEvidence:          candidatePath,
+		GateEvidence:               gatePath,
+		RequiredImprovementPercent: nextTask.RequiredImprovementPercent,
+		ActualImprovementPercent:   nextTask.ActualImprovementPercent,
+		AutonomousClaim:            nextTask.AutonomousClaim,
+		MutatesRepositories:        nextTask.MutatesRepositories || gate.MutatesRepositories,
 	}, nil
 }
 

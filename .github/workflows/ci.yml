@@ -148,6 +148,26 @@ jobs:
             "next_actions": []
           }
           JSON
+          cat > tmp/rsi-health/foundry-rsi-next-improvement-task.json <<'JSON'
+          {
+            "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
+            "status": "ready",
+            "generated_by": "foundry pulse run",
+            "goal_id": "ao-foundry-production-readiness",
+            "recommended_task_id": "rsi-next-ci",
+            "recommended_action": "retain the next bounded RSI improvement task as governed evidence",
+            "improvement_rationale": "The local pulse produced an RSI candidate and a passing improvement gate, so the next bounded task can be retained as governed evidence before delegation.",
+            "candidate_evidence_path": "tmp/rsi-health/foundry-rsi-candidate.json",
+            "gate_evidence_path": "tmp/rsi-health/foundry-rsi-improvement-gate.json",
+            "required_improvement_percent": 5,
+            "actual_improvement_percent": 10,
+            "autonomous_claim": "derived_local_next_improvement",
+            "mutates_repositories": false,
+            "next_actions": [
+              "retain rsi_next_improvement_task with RSI candidate and gate evidence"
+            ]
+          }
+          JSON
           bin/ao-command rsi health \
             --arena-gate tmp/rsi-health/arena-promotion-gate.json \
             --crucible-gate tmp/rsi-health/crucible-hardening-gate.json \
@@ -155,6 +175,7 @@ jobs:
             --promoter-gate tmp/rsi-health/promoter-gate.json \
             --foundry-gate tmp/rsi-health/foundry-rsi-improvement-gate.json \
             --foundry-candidate tmp/rsi-health/foundry-rsi-candidate.json \
+            --foundry-next-task tmp/rsi-health/foundry-rsi-next-improvement-task.json \
             --bundle-out tmp/rsi-health/rsi-health-bundle.json \
             --json
           test -s tmp/rsi-health/rsi-health-bundle.json
