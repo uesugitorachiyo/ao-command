@@ -271,6 +271,48 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 	}
 }
 
+func TestRSIHealthBindsFoundryCandidateToImprovementGate(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health candidate binding exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                  string `json:"status"`
+		RSICapability           string `json:"rsi_capability"`
+		FoundryCandidateBinding struct {
+			Status                string `json:"status"`
+			Passed                bool   `json:"passed"`
+			CandidateEvidence     string `json:"candidate_evidence"`
+			GateEvidence          string `json:"gate_evidence"`
+			MatchedEvalResultPath string `json:"matched_eval_result_path"`
+			MutatesRepositories   bool   `json:"mutates_repositories"`
+		} `json:"foundry_candidate_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health candidate binding JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "passed" ||
+		got.RSICapability != "demonstrated_local_fixture_loop" ||
+		got.FoundryCandidateBinding.Status != "passed" ||
+		!got.FoundryCandidateBinding.Passed ||
+		got.FoundryCandidateBinding.CandidateEvidence != paths.foundryCandidate ||
+		got.FoundryCandidateBinding.GateEvidence != paths.foundry ||
+		got.FoundryCandidateBinding.MatchedEvalResultPath != "tmp/pulse-rsi-verify/eval-result.json" ||
+		got.FoundryCandidateBinding.MutatesRepositories {
+		t.Fatalf("unexpected Foundry candidate binding: %+v", got)
+	}
+}
+
 func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	bundleOut := filepath.Join(t.TempDir(), "rsi-health-bundle.json")
@@ -538,6 +580,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
+		{name: "README RSI health Foundry candidate", doc: readme, want: "--foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json"},
 		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
@@ -620,6 +663,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow active stack status", doc: workflow, want: "Active stack status"},
 		{name: "workflow RSI health step", doc: workflow, want: "RSI health dry-run"},
 		{name: "workflow RSI health command", doc: workflow, want: "bin/ao-command rsi health"},
+		{name: "workflow RSI health Foundry candidate", doc: workflow, want: "--foundry-candidate tmp/rsi-health/foundry-rsi-candidate.json"},
 		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
@@ -761,11 +805,12 @@ func writeStackLedgerFixture(t *testing.T) string {
 }
 
 type rsiHealthFixturePaths struct {
-	arena    string
-	crucible string
-	sentinel string
-	promoter string
-	foundry  string
+	arena            string
+	crucible         string
+	sentinel         string
+	promoter         string
+	foundry          string
+	foundryCandidate string
 }
 
 func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
@@ -835,7 +880,51 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
   "required_improvement_percent": 5,
   "actual_improvement_percent": 10,
   "autonomous_claim": "measured_local_improvement",
-  "mutates_repositories": false
+  "mutates_repositories": false,
+  "evidence": [
+    {
+      "label": "baseline",
+      "path": "examples/evals/rsi-baseline.eval-result.json",
+      "schema_version": "ao.foundry.eval-result.v0.1",
+      "status": "ready",
+      "score": 90,
+      "max_score": 100,
+      "sha256": "e5824cee9ef1455fcdc74dfecc7e30710edb5ef67cb939eff92d57283dfdc52e"
+    },
+    {
+      "label": "candidate",
+      "path": "tmp/pulse-rsi-verify/eval-result.json",
+      "schema_version": "ao.foundry.eval-result.v0.1",
+      "status": "ready",
+      "score": 100,
+      "max_score": 100,
+      "sha256": "cf3f99d1b1639ef2fd2ba24cb75481211c0c4b0ad8e81605be5fbd6e3f7f39ec"
+    }
+  ]
+}`),
+		foundryCandidate: write("foundry-rsi-candidate.json", `{
+  "schema_version": "ao.foundry.rsi-candidate.v0.1",
+  "status": "ready",
+  "generated_by": "foundry pulse run",
+  "improvement_hypothesis": "Local pulse generated the candidate eval result from the current Foundry run before measuring the RSI improvement gate.",
+  "baseline_eval_result": {
+    "path": "examples/evals/rsi-baseline.eval-result.json",
+    "schema_version": "ao.foundry.eval-result.v0.1",
+    "status": "ready",
+    "score": 90,
+    "max_score": 100,
+    "sha256": "e5824cee9ef1455fcdc74dfecc7e30710edb5ef67cb939eff92d57283dfdc52e"
+  },
+  "candidate_eval_result": {
+    "path": "tmp/pulse-rsi-verify/eval-result.json",
+    "schema_version": "ao.foundry.eval-result.v0.1",
+    "status": "ready",
+    "score": 100,
+    "max_score": 100,
+    "sha256": "cf3f99d1b1639ef2fd2ba24cb75481211c0c4b0ad8e81605be5fbd6e3f7f39ec"
+  },
+  "mutates_repositories": false,
+  "next_actions": []
 }`),
 	}
 }
