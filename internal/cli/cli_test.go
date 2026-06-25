@@ -205,6 +205,10 @@ func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 	}, &fakeRunner{})
 	if code != 0 {
 		t.Fatalf("rsi health exit=%d stderr=%s", code, stderr)
@@ -237,6 +241,10 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -286,6 +294,10 @@ func TestRSIHealthBindsFoundryCandidateToImprovementGate(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -329,6 +341,10 @@ func TestRSIHealthBindsFoundryNextTaskToCandidateAndGate(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -367,6 +383,128 @@ func TestRSIHealthBindsFoundryNextTaskToCandidateAndGate(t *testing.T) {
 	}
 }
 
+func TestRSIHealthBindsForgeRetainedEvidenceChain(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health forge retention binding exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                string `json:"status"`
+		RSICapability         string `json:"rsi_capability"`
+		ForgeRetentionBinding struct {
+			Status              string   `json:"status"`
+			Passed              bool     `json:"passed"`
+			GoalID              string   `json:"goal_id"`
+			Iteration           string   `json:"iteration"`
+			Phase               string   `json:"phase"`
+			RetainedEvidence    []string `json:"retained_evidence"`
+			RetainedOutputCount int      `json:"retained_output_count"`
+			MutatesRepositories bool     `json:"mutates_repositories"`
+		} `json:"forge_retention_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health forge retention binding JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "passed" ||
+		got.RSICapability != "demonstrated_local_fixture_loop" ||
+		got.ForgeRetentionBinding.Status != "passed" ||
+		!got.ForgeRetentionBinding.Passed ||
+		got.ForgeRetentionBinding.GoalID != "ao2-weekend-hardening" ||
+		got.ForgeRetentionBinding.Iteration != "20260619T180000Z-verification" ||
+		got.ForgeRetentionBinding.Phase != "verification" ||
+		len(got.ForgeRetentionBinding.RetainedEvidence) != 4 ||
+		got.ForgeRetentionBinding.RetainedOutputCount != 4 ||
+		got.ForgeRetentionBinding.MutatesRepositories {
+		t.Fatalf("unexpected Forge retention binding: %+v", got)
+	}
+}
+
+func TestRSIHealthFailsClosedWhenForgeRetentionDoesNotBind(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	if err := os.WriteFile(paths.forgeRetainedNextTask, []byte(`{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "captured_outputs": [
+    {
+      "label": "ao-foundry-rsi-next-improvement-task",
+      "command": "foundry pulse run",
+      "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
+      "status": "ready",
+      "required_improvement_percent": 5,
+      "actual_improvement_percent": 4,
+      "autonomous_claim": "derived_local_next_improvement",
+      "mutates_repositories": false
+    }
+  ],
+  "retention_policy": {
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write mismatched forge retained next task: %v", err)
+	}
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
+		"--json",
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi health mismatched forge retention exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                string `json:"status"`
+		RSICapability         string `json:"rsi_capability"`
+		ForgeRetentionBinding struct {
+			Status string `json:"status"`
+			Passed bool   `json:"passed"`
+		} `json:"forge_retention_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health mismatched forge retention JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "blocked" ||
+		got.RSICapability != "not_demonstrated" ||
+		got.ForgeRetentionBinding.Status != "blocked" ||
+		got.ForgeRetentionBinding.Passed {
+		t.Fatalf("unexpected mismatched Forge retention status: %+v", got)
+	}
+	if !strings.Contains(stderr, "RSI health blocked") {
+		t.Fatalf("stderr missing blocked message: %s", stderr)
+	}
+}
+
 func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	if err := os.WriteFile(paths.foundryNextTask, []byte(`{
@@ -394,6 +532,10 @@ func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 		"--json",
 	}, &fakeRunner{})
 	if code != 1 {
@@ -433,6 +575,10 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 		"--bundle-out", bundleOut,
 	}, &fakeRunner{})
 	if code != 0 {
@@ -493,6 +639,10 @@ func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
 		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
 	}, &fakeRunner{})
 	if code != 1 {
 		t.Fatalf("rsi health blocked exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
@@ -694,6 +844,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
 		{name: "README RSI health Foundry candidate", doc: readme, want: "--foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json"},
 		{name: "README RSI health Foundry next task", doc: readme, want: "--foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json"},
+		{name: "README RSI health Forge retained gate", doc: readme, want: "--forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json"},
+		{name: "README RSI health Forge retained command", doc: readme, want: "--forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json"},
 		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
@@ -778,6 +930,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow RSI health command", doc: workflow, want: "bin/ao-command rsi health"},
 		{name: "workflow RSI health Foundry candidate", doc: workflow, want: "--foundry-candidate tmp/rsi-health/foundry-rsi-candidate.json"},
 		{name: "workflow RSI health Foundry next task", doc: workflow, want: "--foundry-next-task tmp/rsi-health/foundry-rsi-next-improvement-task.json"},
+		{name: "workflow RSI health Forge retained gate", doc: workflow, want: "--forge-retained-gate tmp/rsi-health/forge-retained-foundry-rsi-improvement-gate.json"},
+		{name: "workflow RSI health Forge retained command", doc: workflow, want: "--forge-retained-command-health tmp/rsi-health/forge-retained-command-rsi-health.json"},
 		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
@@ -919,13 +1073,17 @@ func writeStackLedgerFixture(t *testing.T) string {
 }
 
 type rsiHealthFixturePaths struct {
-	arena            string
-	crucible         string
-	sentinel         string
-	promoter         string
-	foundry          string
-	foundryCandidate string
-	foundryNextTask  string
+	arena                      string
+	crucible                   string
+	sentinel                   string
+	promoter                   string
+	foundry                    string
+	foundryCandidate           string
+	foundryNextTask            string
+	forgeRetainedGate          string
+	forgeRetainedCandidate     string
+	forgeRetainedNextTask      string
+	forgeRetainedCommandHealth string
 }
 
 func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
@@ -1066,6 +1224,138 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
   "next_actions": [
     "retain rsi_next_improvement_task with RSI candidate and gate evidence"
   ]
+}`),
+		forgeRetainedGate: write("forge-retained-foundry-rsi-improvement-gate.json", `{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "summary": "Retained AO Foundry RSI improvement gate.",
+  "captured_outputs": [
+    {
+      "label": "ao-foundry-rsi-improvement-gate",
+      "command": "foundry pulse run",
+      "schema_version": "ao.foundry.rsi-improvement-gate.v0.1",
+      "status": "passed",
+      "baseline_score": 90,
+      "candidate_score": 100,
+      "required_improvement_percent": 5,
+      "actual_improvement_percent": 10,
+      "autonomous_claim": "measured_local_improvement",
+      "mutates_repositories": false
+    }
+  ],
+  "retention_policy": {
+    "layout": "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/",
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retained_at": "2026-06-19T18:00:00Z",
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true,
+    "cleanup_change_must_name": ["goal_id", "iteration", "reason"]
+  }
+}`),
+		forgeRetainedCandidate: write("forge-retained-foundry-rsi-candidate.json", `{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "summary": "Retained AO Foundry RSI candidate evidence.",
+  "captured_outputs": [
+    {
+      "label": "ao-foundry-rsi-candidate",
+      "command": "foundry pulse run",
+      "schema_version": "ao.foundry.rsi-candidate.v0.1",
+      "status": "ready",
+      "generated_by": "foundry pulse run",
+      "baseline_score": 90,
+      "candidate_score": 100,
+      "mutates_repositories": false
+    }
+  ],
+  "retention_policy": {
+    "layout": "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/",
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retained_at": "2026-06-19T18:00:00Z",
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true,
+    "cleanup_change_must_name": ["goal_id", "iteration", "reason"]
+  }
+}`),
+		forgeRetainedNextTask: write("forge-retained-foundry-rsi-next-improvement-task.json", `{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "summary": "Retained AO Foundry RSI next improvement task.",
+  "captured_outputs": [
+    {
+      "label": "ao-foundry-rsi-next-improvement-task",
+      "command": "foundry pulse run",
+      "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
+      "status": "ready",
+      "required_improvement_percent": 5,
+      "actual_improvement_percent": 10,
+      "autonomous_claim": "derived_local_next_improvement",
+      "mutates_repositories": false
+    }
+  ],
+  "retention_policy": {
+    "layout": "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/",
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retained_at": "2026-06-19T18:00:00Z",
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true,
+    "cleanup_change_must_name": ["goal_id", "iteration", "reason"]
+  }
+}`),
+		forgeRetainedCommandHealth: write("forge-retained-command-rsi-health.json", `{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "summary": "Retained AO Command RSI health output.",
+  "captured_outputs": [
+    {
+      "label": "ao-command-rsi-health",
+      "command": "ao-command rsi health",
+      "status": "passed",
+      "rsi_mode": "governed_fixture_local",
+      "rsi_capability": "demonstrated_local_fixture_loop",
+      "operator_mode": "read_only",
+      "mutates_repositories": false,
+      "families": [
+        {"family": "ao-arena", "status": "passed", "passed": true},
+        {"family": "ao-crucible", "status": "passed", "passed": true},
+        {"family": "ao-sentinel", "status": "clear", "passed": true},
+        {"family": "ao-promoter", "status": "passed", "passed": true},
+        {"family": "ao-foundry", "status": "passed", "passed": true}
+      ]
+    }
+  ],
+  "retention_policy": {
+    "layout": "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/",
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retained_at": "2026-06-19T18:00:00Z",
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true,
+    "cleanup_change_must_name": ["goal_id", "iteration", "reason"]
+  }
 }`),
 	}
 }

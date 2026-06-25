@@ -103,7 +103,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
-  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH [--bundle-out PATH] [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -202,10 +202,10 @@ func (a App) stack(args []string) int {
 
 func (a App) rsi(args []string) int {
 	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH [--bundle-out PATH] [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]")
 		return 2
 	}
-	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask, bundleOut string
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask, forgeRetainedGate, forgeRetainedCandidate, forgeRetainedNextTask, forgeRetainedCommandHealth, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -216,16 +216,20 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&foundryGate, "foundry-gate", "", "path to AO Foundry RSI improvement gate JSON")
 	fs.StringVar(&foundryCandidate, "foundry-candidate", "", "path to AO Foundry RSI candidate JSON")
 	fs.StringVar(&foundryNextTask, "foundry-next-task", "", "path to AO Foundry RSI next improvement task JSON")
+	fs.StringVar(&forgeRetainedGate, "forge-retained-gate", "", "path to AO Forge retained Foundry RSI improvement gate proof JSON")
+	fs.StringVar(&forgeRetainedCandidate, "forge-retained-candidate", "", "path to AO Forge retained Foundry RSI candidate proof JSON")
+	fs.StringVar(&forgeRetainedNextTask, "forge-retained-next-task", "", "path to AO Forge retained Foundry RSI next task proof JSON")
+	fs.StringVar(&forgeRetainedCommandHealth, "forge-retained-command-health", "", "path to AO Forge retained AO Command RSI health proof JSON")
 	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" || foundryCandidate == "" || foundryNextTask == "" {
+	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" || foundryCandidate == "" || foundryNextTask == "" || forgeRetainedGate == "" || forgeRetainedCandidate == "" || forgeRetainedNextTask == "" || forgeRetainedCommandHealth == "" {
 		fmt.Fprintln(a.Stderr, "ao-command rsi health: all evidence flags are required")
 		return 2
 	}
-	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask)
+	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask, forgeRetainedGate, forgeRetainedCandidate, forgeRetainedNextTask, forgeRetainedCommandHealth)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
 		return 1
@@ -266,6 +270,13 @@ func (a App) rsi(args []string) int {
 			summary.FoundryNextTaskBinding.NextTaskEvidence,
 			summary.FoundryNextTaskBinding.CandidateEvidence,
 			summary.FoundryNextTaskBinding.GateEvidence)
+	}
+	if summary.ForgeRetentionBinding != nil {
+		fmt.Fprintf(a.Stdout, "forge_retention_bound=%t goal_id=%s iteration=%s retained_evidence=%d\n",
+			summary.ForgeRetentionBinding.Passed,
+			summary.ForgeRetentionBinding.GoalID,
+			summary.ForgeRetentionBinding.Iteration,
+			len(summary.ForgeRetentionBinding.RetainedEvidence))
 	}
 	if strings.TrimSpace(bundleOut) != "" {
 		fmt.Fprintf(a.Stdout, "bundle=%s\n", bundleOut)
@@ -545,6 +556,7 @@ type rsiHealthSummary struct {
 	Families                []rsiFamilyStatus              `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
+	ForgeRetentionBinding   *forgeRetentionBindingStatus   `json:"forge_retention_binding,omitempty"`
 }
 
 type rsiHealthBundle struct {
@@ -558,6 +570,7 @@ type rsiHealthBundle struct {
 	Families                []rsiBundleFamilyStatus        `json:"families"`
 	FoundryCandidateBinding *foundryCandidateBindingStatus `json:"foundry_candidate_binding,omitempty"`
 	FoundryNextTaskBinding  *foundryNextTaskBindingStatus  `json:"foundry_next_task_binding,omitempty"`
+	ForgeRetentionBinding   *forgeRetentionBindingStatus   `json:"forge_retention_binding,omitempty"`
 }
 
 type rsiBundleFamilyStatus struct {
@@ -587,6 +600,17 @@ type foundryNextTaskBindingStatus struct {
 	ActualImprovementPercent   float64 `json:"actual_improvement_percent"`
 	AutonomousClaim            string  `json:"autonomous_claim"`
 	MutatesRepositories        bool    `json:"mutates_repositories"`
+}
+
+type forgeRetentionBindingStatus struct {
+	Status              string   `json:"status"`
+	Passed              bool     `json:"passed"`
+	GoalID              string   `json:"goal_id"`
+	Iteration           string   `json:"iteration"`
+	Phase               string   `json:"phase"`
+	RetainedEvidence    []string `json:"retained_evidence"`
+	RetainedOutputCount int      `json:"retained_output_count"`
+	MutatesRepositories bool     `json:"mutates_repositories"`
 }
 
 type foundryEvalResultRef struct {
@@ -633,6 +657,51 @@ type foundryRSINextImprovementTask struct {
 	NextActions                []string `json:"next_actions"`
 }
 
+type forgeRetainedEvidence struct {
+	SchemaVersion     string                 `json:"schema_version"`
+	GoalID            string                 `json:"goal_id"`
+	Iteration         string                 `json:"iteration"`
+	Phase             string                 `json:"phase"`
+	CapturedOutputs   []forgeRetainedOutput  `json:"captured_outputs"`
+	RetentionPolicy   forgeRetentionPolicy   `json:"retention_policy"`
+	RetentionMetadata forgeRetentionMetadata `json:"retention_metadata"`
+}
+
+type forgeRetainedOutput struct {
+	Label                      string              `json:"label"`
+	Command                    string              `json:"command"`
+	SchemaVersion              string              `json:"schema_version,omitempty"`
+	Status                     string              `json:"status"`
+	GeneratedBy                string              `json:"generated_by,omitempty"`
+	BaselineScore              float64             `json:"baseline_score,omitempty"`
+	CandidateScore             float64             `json:"candidate_score,omitempty"`
+	RequiredImprovementPercent float64             `json:"required_improvement_percent,omitempty"`
+	ActualImprovementPercent   float64             `json:"actual_improvement_percent,omitempty"`
+	AutonomousClaim            string              `json:"autonomous_claim,omitempty"`
+	RSIMode                    string              `json:"rsi_mode,omitempty"`
+	RSICapability              string              `json:"rsi_capability,omitempty"`
+	OperatorMode               string              `json:"operator_mode,omitempty"`
+	MutatesRepositories        bool                `json:"mutates_repositories"`
+	Families                   []retainedRSIFamily `json:"families,omitempty"`
+}
+
+type retainedRSIFamily struct {
+	Family string `json:"family"`
+	Status string `json:"status"`
+	Passed bool   `json:"passed"`
+}
+
+type forgeRetentionPolicy struct {
+	TemporaryPathsAllowed                  bool `json:"temporary_paths_allowed"`
+	MinimumRetentionDaysAfterTerminalPhase int  `json:"minimum_retention_days_after_terminal_phase"`
+}
+
+type forgeRetentionMetadata struct {
+	RetentionClass         string `json:"retention_class"`
+	RetainWhileGoalActive  bool   `json:"retain_while_goal_active"`
+	DeletionRequiresReview bool   `json:"deletion_requires_review"`
+}
+
 func readActiveStackLedger(path string) (activeStackLedger, error) {
 	var ledger activeStackLedger
 	bytes, err := os.ReadFile(path)
@@ -674,7 +743,7 @@ func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary 
 	}
 }
 
-func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath, foundryCandidatePath, foundryNextTaskPath string) (rsiHealthSummary, error) {
+func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath, foundryCandidatePath, foundryNextTaskPath, forgeRetainedGatePath, forgeRetainedCandidatePath, forgeRetainedNextTaskPath, forgeRetainedCommandHealthPath string) (rsiHealthSummary, error) {
 	arena, err := readArenaGate(arenaGatePath)
 	if err != nil {
 		return rsiHealthSummary{}, err
@@ -706,6 +775,11 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 	}
 	foundryNextTaskBinding := &nextTaskBinding
 	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter, foundry}
+	retentionBinding, err := readForgeRSIRetentionBinding(forgeRetainedGatePath, forgeRetainedCandidatePath, forgeRetainedNextTaskPath, forgeRetainedCommandHealthPath, foundryGate, foundryCandidatePath, foundryNextTaskPath, families)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	forgeRetentionBinding := &retentionBinding
 	status := "passed"
 	capability := "demonstrated_local_fixture_loop"
 	for _, family := range families {
@@ -723,6 +797,10 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		status = "blocked"
 		capability = "not_demonstrated"
 	}
+	if forgeRetentionBinding != nil && !forgeRetentionBinding.Passed {
+		status = "blocked"
+		capability = "not_demonstrated"
+	}
 	return rsiHealthSummary{
 		CommandSchemaVersion:    commandSchemaVersion,
 		Status:                  status,
@@ -733,6 +811,7 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		Families:                families,
 		FoundryCandidateBinding: foundryCandidateBinding,
 		FoundryNextTaskBinding:  foundryNextTaskBinding,
+		ForgeRetentionBinding:   forgeRetentionBinding,
 	}, nil
 }
 
@@ -766,6 +845,7 @@ func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, erro
 		Families:                make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
 		FoundryCandidateBinding: summary.FoundryCandidateBinding,
 		FoundryNextTaskBinding:  summary.FoundryNextTaskBinding,
+		ForgeRetentionBinding:   summary.ForgeRetentionBinding,
 	}
 	for _, family := range summary.Families {
 		hash, err := sha256File(family.Evidence)
@@ -942,6 +1022,171 @@ func readFoundryRSINextTaskBinding(nextTaskPath, candidatePath, gatePath string,
 		AutonomousClaim:            nextTask.AutonomousClaim,
 		MutatesRepositories:        nextTask.MutatesRepositories || gate.MutatesRepositories,
 	}, nil
+}
+
+func readForgeRSIRetentionBinding(gateProofPath, candidateProofPath, nextTaskProofPath, commandHealthProofPath string, gate foundryRSIImprovementGate, candidatePath, nextTaskPath string, families []rsiFamilyStatus) (forgeRetentionBindingStatus, error) {
+	var candidate foundryRSICandidate
+	if err := readJSONFile(candidatePath, &candidate); err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read foundry RSI candidate for retention binding: %w", err)
+	}
+	var nextTask foundryRSINextImprovementTask
+	if err := readJSONFile(nextTaskPath, &nextTask); err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read foundry RSI next task for retention binding: %w", err)
+	}
+	gateProof, err := readForgeRetainedEvidence(gateProofPath)
+	if err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read forge retained gate proof: %w", err)
+	}
+	candidateProof, err := readForgeRetainedEvidence(candidateProofPath)
+	if err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read forge retained candidate proof: %w", err)
+	}
+	nextTaskProof, err := readForgeRetainedEvidence(nextTaskProofPath)
+	if err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read forge retained next task proof: %w", err)
+	}
+	commandHealthProof, err := readForgeRetainedEvidence(commandHealthProofPath)
+	if err != nil {
+		return forgeRetentionBindingStatus{}, fmt.Errorf("read forge retained command health proof: %w", err)
+	}
+
+	goalID := gateProof.GoalID
+	iteration := gateProof.Iteration
+	phase := gateProof.Phase
+	proofs := []forgeRetainedEvidence{gateProof, candidateProof, nextTaskProof, commandHealthProof}
+	passed := goalID != "" && iteration != "" && phase == "verification"
+	outputCount := 0
+	mutatesRepositories := false
+	for _, proof := range proofs {
+		outputCount += len(proof.CapturedOutputs)
+		passed = passed && forgeRetentionBasePassed(proof, goalID, iteration, phase)
+		for _, output := range proof.CapturedOutputs {
+			mutatesRepositories = mutatesRepositories || output.MutatesRepositories
+		}
+	}
+
+	gateOutput, gateOutputOK := retainedOutput(gateProof, "ao-foundry-rsi-improvement-gate")
+	candidateOutput, candidateOutputOK := retainedOutput(candidateProof, "ao-foundry-rsi-candidate")
+	nextTaskOutput, nextTaskOutputOK := retainedOutput(nextTaskProof, "ao-foundry-rsi-next-improvement-task")
+	commandHealthOutput, commandHealthOutputOK := retainedOutput(commandHealthProof, "ao-command-rsi-health")
+
+	passed = passed &&
+		gateOutputOK &&
+		candidateOutputOK &&
+		nextTaskOutputOK &&
+		commandHealthOutputOK &&
+		retainedFoundryGatePassed(gateOutput, gate) &&
+		retainedFoundryCandidatePassed(candidateOutput, candidate) &&
+		retainedFoundryNextTaskPassed(nextTaskOutput, nextTask) &&
+		retainedCommandHealthPassed(commandHealthOutput, families) &&
+		!mutatesRepositories
+
+	status := "passed"
+	if !passed {
+		status = "blocked"
+	}
+	return forgeRetentionBindingStatus{
+		Status:              status,
+		Passed:              passed,
+		GoalID:              goalID,
+		Iteration:           iteration,
+		Phase:               phase,
+		RetainedEvidence:    []string{gateProofPath, candidateProofPath, nextTaskProofPath, commandHealthProofPath},
+		RetainedOutputCount: outputCount,
+		MutatesRepositories: mutatesRepositories,
+	}, nil
+}
+
+func readForgeRetainedEvidence(path string) (forgeRetainedEvidence, error) {
+	var retained forgeRetainedEvidence
+	if err := readJSONFile(path, &retained); err != nil {
+		return forgeRetainedEvidence{}, err
+	}
+	return retained, nil
+}
+
+func forgeRetentionBasePassed(proof forgeRetainedEvidence, goalID, iteration, phase string) bool {
+	return proof.SchemaVersion == "ao.forge.goal-run-retained-evidence.v0.1" &&
+		proof.GoalID == goalID &&
+		proof.Iteration == iteration &&
+		proof.Phase == phase &&
+		len(proof.CapturedOutputs) == 1 &&
+		!proof.RetentionPolicy.TemporaryPathsAllowed &&
+		proof.RetentionPolicy.MinimumRetentionDaysAfterTerminalPhase >= 90 &&
+		proof.RetentionMetadata.RetentionClass == "loop_evidence" &&
+		proof.RetentionMetadata.RetainWhileGoalActive &&
+		proof.RetentionMetadata.DeletionRequiresReview
+}
+
+func retainedOutput(proof forgeRetainedEvidence, label string) (forgeRetainedOutput, bool) {
+	for _, output := range proof.CapturedOutputs {
+		if output.Label == label {
+			return output, true
+		}
+	}
+	return forgeRetainedOutput{}, false
+}
+
+func retainedFoundryGatePassed(output forgeRetainedOutput, gate foundryRSIImprovementGate) bool {
+	return output.Command == "foundry pulse run" &&
+		output.SchemaVersion == "ao.foundry.rsi-improvement-gate.v0.1" &&
+		output.Status == gate.Status &&
+		output.BaselineScore == gate.BaselineScore &&
+		output.CandidateScore == gate.CandidateScore &&
+		output.RequiredImprovementPercent == gate.RequiredImprovementPercent &&
+		output.ActualImprovementPercent == gate.ActualImprovementPercent &&
+		output.AutonomousClaim == gate.AutonomousClaim &&
+		!output.MutatesRepositories &&
+		!gate.MutatesRepositories
+}
+
+func retainedFoundryCandidatePassed(output forgeRetainedOutput, candidate foundryRSICandidate) bool {
+	return output.Command == "foundry pulse run" &&
+		output.SchemaVersion == "ao.foundry.rsi-candidate.v0.1" &&
+		output.Status == candidate.Status &&
+		output.GeneratedBy == candidate.GeneratedBy &&
+		output.BaselineScore == candidate.BaselineEvalResult.Score &&
+		output.CandidateScore == candidate.CandidateEvalResult.Score &&
+		!output.MutatesRepositories &&
+		!candidate.MutatesRepositories
+}
+
+func retainedFoundryNextTaskPassed(output forgeRetainedOutput, nextTask foundryRSINextImprovementTask) bool {
+	return output.Command == "foundry pulse run" &&
+		output.SchemaVersion == "ao.foundry.rsi-next-improvement-task.v0.1" &&
+		output.Status == nextTask.Status &&
+		output.RequiredImprovementPercent == nextTask.RequiredImprovementPercent &&
+		output.ActualImprovementPercent == nextTask.ActualImprovementPercent &&
+		output.AutonomousClaim == nextTask.AutonomousClaim &&
+		!output.MutatesRepositories &&
+		!nextTask.MutatesRepositories
+}
+
+func retainedCommandHealthPassed(output forgeRetainedOutput, families []rsiFamilyStatus) bool {
+	return output.Command == "ao-command rsi health" &&
+		output.Status == "passed" &&
+		output.RSIMode == "governed_fixture_local" &&
+		output.RSICapability == "demonstrated_local_fixture_loop" &&
+		output.OperatorMode == operatorMode &&
+		!output.MutatesRepositories &&
+		retainedFamiliesMatch(output.Families, families)
+}
+
+func retainedFamiliesMatch(retained []retainedRSIFamily, current []rsiFamilyStatus) bool {
+	if len(retained) != len(current) {
+		return false
+	}
+	byFamily := make(map[string]retainedRSIFamily, len(retained))
+	for _, family := range retained {
+		byFamily[family.Family] = family
+	}
+	for _, family := range current {
+		retainedFamily, ok := byFamily[family.Family]
+		if !ok || retainedFamily.Status != family.Status || retainedFamily.Passed != family.Passed {
+			return false
+		}
+	}
+	return true
 }
 
 func foundryGateCandidateEvidence(gate foundryRSIImprovementGate) (foundryEvalResultRef, bool) {
