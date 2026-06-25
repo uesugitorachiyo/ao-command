@@ -908,6 +908,9 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	if !ok || !hasAOCovenantRetainedRollbackBoundary(aoCovenant) {
 		return errors.New("AO Covenant retained rollback-only denial evidence is required")
 	}
+	if !hasAOCovenantLiveSelfChangeAuthorityPacket(aoCovenant) {
+		return errors.New("AO Covenant live self-change authority packet evidence is required")
+	}
 	ao2, ok := findManifestRepository(manifest.ActiveRepositories, "ao2")
 	if !ok || !hasAO2RSISelfChangeDryRun(ao2) {
 		return errors.New("AO2 RSI self-change dry-run evidence is required")
@@ -999,6 +1002,13 @@ func hasAOCovenantRetainedRollbackBoundary(repo rsiManifestRepository) bool {
 		manifestEvidenceContains(repo.Evidence, "examples/full-rsi-claim-boundary/rollback-retained-ticket.json") &&
 		manifestEvidenceContains(repo.Evidence, "retained rollback rehearsal alone is insufficient") &&
 		hasManifestKnownPR(repo.KnownPRs, 57, "Deny full RSI with retained rollback only")
+}
+
+func hasAOCovenantLiveSelfChangeAuthorityPacket(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "examples/full-rsi-claim-boundary/live-self-change-authority.packet.json") &&
+		manifestEvidenceContains(repo.Evidence, "schemas/covenant.live-self-change-authority.v1.schema.json") &&
+		manifestEvidenceContains(repo.Evidence, "covenant.live-self-change-authority.v1") &&
+		hasManifestKnownPR(repo.KnownPRs, 58, "Add live self-change authority packet schema")
 }
 
 func hasAO2ControlPlaneRSIReadback(repo rsiManifestRepository) bool {
