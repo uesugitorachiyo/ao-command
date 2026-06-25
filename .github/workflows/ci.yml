@@ -46,6 +46,12 @@ jobs:
           repository: uesugitorachiyo/ao-covenant
           path: ao-covenant
 
+      - name: Checkout ao-architecture RSI manifest fixture
+        uses: actions/checkout@v7
+        with:
+          repository: uesugitorachiyo/ao-architecture
+          path: ao-architecture
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -354,6 +360,9 @@ jobs:
       - name: Active stack status
         run: go run ./cmd/ao-command stack --ledger ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 
+      - name: RSI claim manifest
+        run: go run ./cmd/ao-command rsi manifest --manifest ao-architecture/overview/rsi-claim-evidence-manifest.json
+
   workflow-lint:
     name: Workflow lint
     runs-on: ubuntu-latest
@@ -396,6 +405,12 @@ jobs:
         with:
           repository: uesugitorachiyo/ao-covenant
           path: ao-covenant
+
+      - name: Checkout ao-architecture RSI manifest fixture
+        uses: actions/checkout@v7
+        with:
+          repository: uesugitorachiyo/ao-architecture
+          path: ao-architecture
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -447,7 +462,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ao-forge --foundry ao-foundry --covenant ao-covenant --out tmp/production-readiness-audit.json --skip-remote-admin || {
+          scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ao-forge --foundry ao-foundry --covenant ao-covenant --architecture ao-architecture --out tmp/production-readiness-audit.json --skip-remote-admin || {
             cat tmp/production-readiness-audit.json
             exit 1
           }

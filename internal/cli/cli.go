@@ -104,6 +104,7 @@ Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
+  ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -201,10 +202,22 @@ func (a App) stack(args []string) int {
 }
 
 func (a App) rsi(args []string) int {
-	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]")
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health ... | ao-command rsi manifest --manifest PATH [--json]")
 		return 2
 	}
+	switch args[0] {
+	case "health":
+		return a.rsiHealth(args[1:])
+	case "manifest":
+		return a.rsiManifest(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health ... | ao-command rsi manifest --manifest PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) rsiHealth(args []string) int {
 	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, foundryCandidate, foundryNextTask, forgeRetainedGate, forgeRetainedCandidate, forgeRetainedNextTask, forgeRetainedCommandHealth, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
@@ -222,7 +235,7 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&forgeRetainedCommandHealth, "forge-retained-command-health", "", "path to AO Forge retained AO Command RSI health proof JSON")
 	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" || foundryCandidate == "" || foundryNextTask == "" || forgeRetainedGate == "" || forgeRetainedCandidate == "" || forgeRetainedNextTask == "" || forgeRetainedCommandHealth == "" {
@@ -289,6 +302,42 @@ func (a App) rsi(args []string) int {
 		fmt.Fprintln(a.Stderr, "ao-command rsi health: RSI health blocked")
 		return 1
 	}
+	return 0
+}
+
+func (a App) rsiManifest(args []string) int {
+	var manifestPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("rsi manifest", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&manifestPath, "manifest", "", "path to AO Architecture RSI claim evidence manifest JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(manifestPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command rsi manifest: --manifest is required")
+		return 2
+	}
+	summary, err := readRSIManifest(manifestPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command rsi manifest: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_rsi_manifest=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "schema_version=%s\n", summary.ManifestSchemaVersion)
+	fmt.Fprintf(a.Stdout, "manifest=%s\n", summary.Manifest)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, claim := range summary.ClaimLevels {
+		fmt.Fprintf(a.Stdout, "claim_level=%s decision=%s status=%s\n", claim.ClaimLevel, claim.Decision, claim.Status)
+	}
+	fmt.Fprintf(a.Stdout, "active_repositories=%d\n", len(summary.ActiveRepositories))
+	fmt.Fprintf(a.Stdout, "out_of_scope_repositories=%d\n", len(summary.DeprecatedOrOutOfScopeRepositories))
+	fmt.Fprintf(a.Stdout, "full_claim_required_evidence=%d\n", len(summary.FullClaimRequiredEvidence))
 	return 0
 }
 
@@ -556,6 +605,46 @@ type rsiClaimLevel struct {
 	Reason   string `json:"reason"`
 }
 
+type rsiManifestClaimLevel struct {
+	ClaimLevel            string   `json:"claim_level"`
+	Decision              string   `json:"decision"`
+	Status                string   `json:"status"`
+	RequiredEvidence      []string `json:"required_evidence,omitempty"`
+	RequiredBeforeAllowed []string `json:"required_before_allowed,omitempty"`
+}
+
+type rsiManifestRepository struct {
+	ID               string  `json:"id"`
+	Role             string  `json:"role,omitempty"`
+	Status           string  `json:"status,omitempty"`
+	Replacement      *string `json:"replacement,omitempty"`
+	RSIEvidenceScope string  `json:"rsi_evidence_scope,omitempty"`
+}
+
+type rsiArchitectureManifest struct {
+	SchemaVersion                      string                  `json:"schema_version"`
+	GeneratedDate                      string                  `json:"generated_date"`
+	ClaimLevels                        []rsiManifestClaimLevel `json:"claim_levels"`
+	ActiveRepositories                 []rsiManifestRepository `json:"active_repositories"`
+	DeprecatedOrOutOfScopeRepositories []rsiManifestRepository `json:"deprecated_or_out_of_scope_repositories"`
+	FullClaimRequiredEvidence          []string                `json:"full_claim_required_evidence"`
+}
+
+type rsiManifestSummary struct {
+	SchemaVersion                      string                  `json:"schema_version"`
+	CommandSchemaVersion               string                  `json:"command_schema_version"`
+	Status                             string                  `json:"status"`
+	Manifest                           string                  `json:"manifest"`
+	ManifestSchemaVersion              string                  `json:"manifest_schema_version"`
+	GeneratedDate                      string                  `json:"generated_date"`
+	OperatorMode                       string                  `json:"operator_mode"`
+	MutatesRepositories                bool                    `json:"mutates_repositories"`
+	ClaimLevels                        []rsiManifestClaimLevel `json:"claim_levels"`
+	ActiveRepositories                 []rsiManifestRepository `json:"active_repositories"`
+	DeprecatedOrOutOfScopeRepositories []rsiManifestRepository `json:"deprecated_or_out_of_scope_repositories"`
+	FullClaimRequiredEvidence          []string                `json:"full_claim_required_evidence"`
+}
+
 type rsiHealthSummary struct {
 	SchemaVersion           string                         `json:"schema_version"`
 	CommandSchemaVersion    string                         `json:"command_schema_version"`
@@ -742,6 +831,90 @@ func readActiveStackLedger(path string) (activeStackLedger, error) {
 		return ledger, errors.New("active-stack ledger requires release_handoff gates")
 	}
 	return ledger, nil
+}
+
+func readRSIManifest(path string) (rsiManifestSummary, error) {
+	var manifest rsiArchitectureManifest
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return rsiManifestSummary{}, fmt.Errorf("read manifest: %w", err)
+	}
+	if err := json.Unmarshal(bytes, &manifest); err != nil {
+		return rsiManifestSummary{}, fmt.Errorf("invalid manifest JSON: %w", err)
+	}
+	if err := validateRSIManifest(manifest); err != nil {
+		return rsiManifestSummary{}, err
+	}
+	return rsiManifestSummary{
+		SchemaVersion:                      "ao.command.rsi-manifest.v0.1",
+		CommandSchemaVersion:               commandSchemaVersion,
+		Status:                             "passed",
+		Manifest:                           path,
+		ManifestSchemaVersion:              manifest.SchemaVersion,
+		GeneratedDate:                      manifest.GeneratedDate,
+		OperatorMode:                       operatorMode,
+		MutatesRepositories:                false,
+		ClaimLevels:                        manifest.ClaimLevels,
+		ActiveRepositories:                 manifest.ActiveRepositories,
+		DeprecatedOrOutOfScopeRepositories: manifest.DeprecatedOrOutOfScopeRepositories,
+		FullClaimRequiredEvidence:          manifest.FullClaimRequiredEvidence,
+	}, nil
+}
+
+func validateRSIManifest(manifest rsiArchitectureManifest) error {
+	if manifest.SchemaVersion != "ao.architecture.rsi-claim-evidence-manifest.v0.1" {
+		return errors.New("invalid RSI manifest schema_version")
+	}
+	if !hasManifestClaimLevel(manifest.ClaimLevels, "bounded_governed_rsi", "allowed") {
+		return errors.New("bounded_governed_rsi allowed claim level is required")
+	}
+	if !hasManifestClaimLevel(manifest.ClaimLevels, "full_autonomous_self_mutating_rsi", "denied") {
+		return errors.New("full_autonomous_self_mutating_rsi denied claim level is required")
+	}
+	for _, repo := range []string{"ao-foundry", "ao-forge", "ao-command", "ao-covenant", "ao2", "ao2-control-plane"} {
+		if !hasManifestRepository(manifest.ActiveRepositories, repo) {
+			return fmt.Errorf("active repository %s is required", repo)
+		}
+	}
+	for _, repo := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms"} {
+		if !hasManifestRepository(manifest.DeprecatedOrOutOfScopeRepositories, repo) {
+			return fmt.Errorf("deprecated or out-of-scope repository %s is required", repo)
+		}
+	}
+	for _, term := range []string{"mutation authority", "rollback", "live self-change", "observer readback", "claim.publish"} {
+		if !manifestEvidenceContains(manifest.FullClaimRequiredEvidence, term) {
+			return fmt.Errorf("full claim required evidence must include %q", term)
+		}
+	}
+	return nil
+}
+
+func hasManifestClaimLevel(claims []rsiManifestClaimLevel, claimLevel string, decision string) bool {
+	for _, claim := range claims {
+		if claim.ClaimLevel == claimLevel && claim.Decision == decision && strings.TrimSpace(claim.Status) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasManifestRepository(repositories []rsiManifestRepository, id string) bool {
+	for _, repo := range repositories {
+		if repo.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestEvidenceContains(values []string, term string) bool {
+	term = strings.ToLower(term)
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(value), term) {
+			return true
+		}
+	}
+	return false
 }
 
 func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary {
