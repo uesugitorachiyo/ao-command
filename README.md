@@ -92,8 +92,11 @@ requires AO2's claim-readiness producer plus ao2-control-plane's
 `ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback, requires AO2's
 governed self-change dry-run producer
 `ao2.rsi-governed-self-change-dry-run.v1` plus ao2-control-plane's
-`ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, and reports
-`operator_mode=read_only` with `mutates_repositories=false`.
+`ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, requires
+AO2 rollback rehearsal evidence with `rollback_rehearsal.status=passed`, and
+requires ao2-control-plane to read back the same rollback rehearsal evidence
+from PR #72 after AO2 PR #200. It reports `operator_mode=read_only` with
+`mutates_repositories=false`.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
 end: it runs `foundry pulse run`, verifies the pulse evidence against AO Forge

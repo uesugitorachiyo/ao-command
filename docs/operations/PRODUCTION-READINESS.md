@@ -47,7 +47,9 @@ The audit is passing only when all gates pass:
   claim-level decisions, and includes ao2-control-plane's
   `ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback plus AO2's
   `ao2.rsi-governed-self-change-dry-run.v1` producer and ao2-control-plane's
-  `ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback;
+  `ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, including
+  `rollback_rehearsal.status=passed` from AO2 PR #200 and ao2-control-plane PR
+  #72;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;

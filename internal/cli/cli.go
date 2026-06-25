@@ -905,6 +905,9 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	if !hasAO2ControlPlaneRSISelfChangeDryRunReadback(ao2ControlPlane) {
 		return errors.New("ao2-control-plane RSI self-change dry-run readback is required")
 	}
+	if !hasAO2RSIRollbackRehearsal(ao2) || !hasAO2ControlPlaneRSIRollbackRehearsalReadback(ao2ControlPlane) {
+		return errors.New("AO2 RSI rollback rehearsal evidence and control-plane readback are required")
+	}
 	for _, repo := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms"} {
 		if !hasManifestRepository(manifest.DeprecatedOrOutOfScopeRepositories, repo) {
 			return fmt.Errorf("deprecated or out-of-scope repository %s is required", repo)
@@ -989,6 +992,13 @@ func hasAO2RSISelfChangeDryRun(repo rsiManifestRepository) bool {
 		strings.Contains(repo.Boundary, "execution_and_evidence_mechanics_only")
 }
 
+func hasAO2RSIRollbackRehearsal(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "rollback_rehearsal.status=passed") &&
+		manifestEvidenceContains(repo.Evidence, "rollback-rehearsal/worktree") &&
+		hasManifestKnownPR(repo.KnownPRs, 200, "Add RSI rollback rehearsal evidence") &&
+		manifestEvidenceContains(repo.ClaimOutput, "rollback_rehearsal=passed")
+}
+
 func hasAO2ControlPlaneRSISelfChangeDryRunReadback(repo rsiManifestRepository) bool {
 	return manifestEvidenceContains(repo.Evidence, "scripts/verify_ao2_rsi_self_change_dry_run.py") &&
 		manifestEvidenceContains(repo.Evidence, "tests/test_ao2_rsi_self_change_dry_run_readback.py") &&
@@ -1002,6 +1012,11 @@ func hasAO2ControlPlaneRSISelfChangeDryRunReadback(repo rsiManifestRepository) b
 		strings.Contains(repo.Boundary, "no_claim_approval") &&
 		strings.Contains(repo.Boundary, "no_patch_application") &&
 		strings.Contains(repo.Boundary, "no_repository_mutation")
+}
+
+func hasAO2ControlPlaneRSIRollbackRehearsalReadback(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "rollback_rehearsal.status=passed") &&
+		hasManifestKnownPR(repo.KnownPRs, 72, "Require AO2 RSI rollback rehearsal readback")
 }
 
 func manifestEvidenceContains(values []string, term string) bool {
