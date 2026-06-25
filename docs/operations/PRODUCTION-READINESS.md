@@ -52,7 +52,8 @@ The audit is passing only when all gates pass:
   #72, plus AO Forge PR #143's retained
   `ao-command-rsi-manifest-retention-proof.json`, AO Forge PR #144's
   `goalrun.architecture_rsi_pin_readback` evidence, and AO Covenant PR #57's
-  `rollback-retained.contract.json` denial fixture;
+  `rollback-retained.contract.json` denial fixture plus AO Covenant PR #58's
+  `covenant.live-self-change-authority.v1` authority packet schema;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;

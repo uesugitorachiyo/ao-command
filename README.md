@@ -99,7 +99,9 @@ from PR #72 after AO2 PR #200. It also fails closed unless AO Architecture pins
 AO Forge PR #143's retained `ao-command-rsi-manifest-retention-proof.json` and
 AO Forge PR #144's `goalrun.architecture_rsi_pin_readback` evidence plus
 `ao-architecture-rsi-pin-readback.json`, and unless Architecture pins
-AO Covenant PR #57's `rollback-retained.contract.json` denial fixture. It
+AO Covenant PR #57's `rollback-retained.contract.json` denial fixture plus
+AO Covenant PR #58's `covenant.live-self-change-authority.v1` schema and
+`live-self-change-authority.packet.json` fixture. It
 reports `operator_mode=read_only` with `mutates_repositories=false`.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
