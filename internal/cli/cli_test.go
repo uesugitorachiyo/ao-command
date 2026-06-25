@@ -912,6 +912,17 @@ func TestRSIManifestFailsClosedWithoutDeniedFullClaim(t *testing.T) {
 	}
 }
 
+func TestRSIManifestFailsClosedWithoutAO2ControlPlaneReadback(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingAO2ControlPlaneReadback(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "bounded_governed_rsi required evidence must include ao2-control-plane RSI claim-readiness readback") {
+		t.Fatalf("stderr missing ao2-control-plane readback reason: %s", stderr)
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -1113,6 +1124,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI health schema", doc: readme, want: "docs/contracts/rsi-health-v0.1.schema.json"},
 		{name: "README RSI health bundle schema", doc: readme, want: "docs/contracts/rsi-health-bundle-v0.1.schema.json"},
 		{name: "README RSI manifest read-only", doc: readme, want: "`rsi manifest` reads AO Architecture's"},
+		{name: "README RSI manifest readback schema", doc: readme, want: "ao2.cp-ao2-rsi-claim-readiness-readback.v1"},
 		{name: "README RSI manifest no mutation", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
 		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
@@ -1142,6 +1154,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs active stack gate", doc: productionReadiness, want: "active-stack handoff"},
 		{name: "production readiness docs bounded RSI claim", doc: productionReadiness, want: "claim_level=bounded_governed_rsi decision=allowed"},
 		{name: "production readiness docs full RSI claim denied", doc: productionReadiness, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
+		{name: "production readiness docs RSI readback schema", doc: productionReadiness, want: "ao2.cp-ao2-rsi-claim-readiness-readback.v1"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -1665,6 +1678,11 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
 
 func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
 	t.Helper()
+	return writeRSIManifestFixtureWithReadback(t, includeDeniedFullClaim, true)
+}
+
+func writeRSIManifestFixtureWithReadback(t *testing.T, includeDeniedFullClaim bool, includeReadback bool) string {
+	t.Helper()
 	fullClaim := ""
 	if includeDeniedFullClaim {
 		fullClaim = `,
@@ -1682,6 +1700,36 @@ func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
       ]
     }`
 	}
+	readbackRequiredEvidence := ""
+	if includeReadback {
+		readbackRequiredEvidence = `,
+        "ao2_control_plane_rsi_claim_readiness_readback"`
+	}
+	ao2ControlPlaneRepo := `{"id": "ao2-control-plane", "role": "read_only_observer_readback"}`
+	if includeReadback {
+		ao2ControlPlaneRepo = `{
+      "id": "ao2-control-plane",
+      "role": "read_only_observer_readback",
+      "evidence": [
+        "scripts/verify_ao2_rsi_claim_readiness.py",
+        "ao2.cp-ao2-rsi-claim-readiness-readback.v1"
+      ],
+      "known_prs": [
+        {
+          "number": 70,
+          "title": "Add AO2 RSI claim readiness readback",
+          "url": "https://github.com/uesugitorachiyo/ao2-control-plane/pull/70",
+          "merge_commit": "1f80530ca8430f810fbd2c7f21daa70076c689a0"
+        }
+      ],
+      "claim_output": [
+        "control_plane_ao2_rsi_claim_readiness_readback=passed",
+        "claim_level=bounded_governed_rsi decision=allowed",
+        "claim_level=full_autonomous_self_mutating_rsi decision=denied"
+      ],
+      "boundary": "observer_only_no_claim_approval_no_repository_mutation"
+    }`
+	}
 	path := filepath.Join(t.TempDir(), "rsi-claim-evidence-manifest.json")
 	manifest := `{
   "schema_version": "ao.architecture.rsi-claim-evidence-manifest.v0.1",
@@ -1697,7 +1745,7 @@ func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
         "ao_foundry_rsi_next_improvement_task",
         "ao_forge_retained_foundry_evidence",
         "ao_command_rsi_health",
-        "ao_covenant_full_claim_boundary_denial"
+        "ao_covenant_full_claim_boundary_denial"` + readbackRequiredEvidence + `
       ]
     }` + fullClaim + `
   ],
@@ -1707,7 +1755,7 @@ func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
     {"id": "ao-command", "role": "read_only_rsi_health_verifier"},
     {"id": "ao-covenant", "role": "claim_publication_policy_gate"},
     {"id": "ao2", "role": "governed_execution_and_evidence_runtime"},
-    {"id": "ao2-control-plane", "role": "read_only_observer_readback"}
+    ` + ao2ControlPlaneRepo + `
   ],
   "deprecated_or_out_of_scope_repositories": [
     {"id": "ao-operator", "status": "deprecated", "replacement": "ao2", "rsi_evidence_scope": "not_active_rsi_evidence"},
@@ -1729,6 +1777,11 @@ func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
 		t.Fatalf("write rsi manifest fixture: %v", err)
 	}
 	return path
+}
+
+func writeRSIManifestFixtureMissingAO2ControlPlaneReadback(t *testing.T) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithReadback(t, true, false)
 }
 
 func stackRepoPresent(repos []struct {

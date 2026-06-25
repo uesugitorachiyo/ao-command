@@ -88,7 +88,9 @@ manifest preserves the bounded/full RSI claim boundary. It requires
 `claim_level=bounded_governed_rsi decision=allowed`, requires
 `claim_level=full_autonomous_self_mutating_rsi decision=denied`, confirms the
 active repositories and deprecated or out-of-scope repositories are represented,
-and reports `operator_mode=read_only` with `mutates_repositories=false`.
+requires AO2's claim-readiness producer plus ao2-control-plane's
+`ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback, and reports
+`operator_mode=read_only` with `mutates_repositories=false`.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
 end: it runs `foundry pulse run`, verifies the pulse evidence against AO Forge

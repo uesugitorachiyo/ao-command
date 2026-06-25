@@ -43,8 +43,9 @@ The audit is passing only when all gates pass:
   autonomous self-mutating RSI claim until mutation authority, rollback, live
   self-change evidence, and Covenant approval exist;
 - AO Architecture's RSI claim evidence manifest validates through read-only
-  `ao-command rsi manifest --manifest` and preserves the same bounded/full
-  claim-level decisions;
+  `ao-command rsi manifest --manifest`, preserves the same bounded/full
+  claim-level decisions, and includes ao2-control-plane's
+  `ao2.cp-ao2-rsi-claim-readiness-readback.v1` observer readback;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;

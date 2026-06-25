@@ -614,11 +614,22 @@ type rsiManifestClaimLevel struct {
 }
 
 type rsiManifestRepository struct {
-	ID               string  `json:"id"`
-	Role             string  `json:"role,omitempty"`
-	Status           string  `json:"status,omitempty"`
-	Replacement      *string `json:"replacement,omitempty"`
-	RSIEvidenceScope string  `json:"rsi_evidence_scope,omitempty"`
+	ID               string               `json:"id"`
+	Role             string               `json:"role,omitempty"`
+	Status           string               `json:"status,omitempty"`
+	Replacement      *string              `json:"replacement,omitempty"`
+	RSIEvidenceScope string               `json:"rsi_evidence_scope,omitempty"`
+	Evidence         []string             `json:"evidence,omitempty"`
+	KnownPRs         []rsiManifestKnownPR `json:"known_prs,omitempty"`
+	ClaimOutput      []string             `json:"claim_output,omitempty"`
+	Boundary         string               `json:"boundary,omitempty"`
+}
+
+type rsiManifestKnownPR struct {
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	MergeCommit string `json:"merge_commit"`
 }
 
 type rsiArchitectureManifest struct {
@@ -871,10 +882,17 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	if !hasManifestClaimLevel(manifest.ClaimLevels, "full_autonomous_self_mutating_rsi", "denied") {
 		return errors.New("full_autonomous_self_mutating_rsi denied claim level is required")
 	}
+	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_claim_readiness_readback") {
+		return errors.New("bounded_governed_rsi required evidence must include ao2-control-plane RSI claim-readiness readback")
+	}
 	for _, repo := range []string{"ao-foundry", "ao-forge", "ao-command", "ao-covenant", "ao2", "ao2-control-plane"} {
 		if !hasManifestRepository(manifest.ActiveRepositories, repo) {
 			return fmt.Errorf("active repository %s is required", repo)
 		}
+	}
+	ao2ControlPlane, ok := findManifestRepository(manifest.ActiveRepositories, "ao2-control-plane")
+	if !ok || !hasAO2ControlPlaneRSIReadback(ao2ControlPlane) {
+		return errors.New("ao2-control-plane RSI claim-readiness readback is required")
 	}
 	for _, repo := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms"} {
 		if !hasManifestRepository(manifest.DeprecatedOrOutOfScopeRepositories, repo) {
@@ -887,6 +905,15 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 		}
 	}
 	return nil
+}
+
+func hasManifestClaimRequiredEvidence(claims []rsiManifestClaimLevel, claimLevel string, evidence string) bool {
+	for _, claim := range claims {
+		if claim.ClaimLevel == claimLevel {
+			return manifestEvidenceContains(claim.RequiredEvidence, evidence)
+		}
+	}
+	return false
 }
 
 func hasManifestClaimLevel(claims []rsiManifestClaimLevel, claimLevel string, decision string) bool {
@@ -905,6 +932,36 @@ func hasManifestRepository(repositories []rsiManifestRepository, id string) bool
 		}
 	}
 	return false
+}
+
+func findManifestRepository(repositories []rsiManifestRepository, id string) (rsiManifestRepository, bool) {
+	for _, repo := range repositories {
+		if repo.ID == id {
+			return repo, true
+		}
+	}
+	return rsiManifestRepository{}, false
+}
+
+func hasManifestKnownPR(prs []rsiManifestKnownPR, number int, title string) bool {
+	for _, pr := range prs {
+		if pr.Number == number && strings.Contains(pr.Title, title) && strings.TrimSpace(pr.MergeCommit) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAO2ControlPlaneRSIReadback(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "scripts/verify_ao2_rsi_claim_readiness.py") &&
+		manifestEvidenceContains(repo.Evidence, "ao2.cp-ao2-rsi-claim-readiness-readback.v1") &&
+		hasManifestKnownPR(repo.KnownPRs, 70, "Add AO2 RSI claim readiness readback") &&
+		manifestEvidenceContains(repo.ClaimOutput, "control_plane_ao2_rsi_claim_readiness_readback=passed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=bounded_governed_rsi decision=allowed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied") &&
+		strings.Contains(repo.Boundary, "observer_only") &&
+		strings.Contains(repo.Boundary, "no_claim_approval") &&
+		strings.Contains(repo.Boundary, "no_repository_mutation")
 }
 
 func manifestEvidenceContains(values []string, term string) bool {
