@@ -327,8 +327,23 @@ jobs:
             --forge-retained-next-task tmp/rsi-health/forge-retained-foundry-rsi-next-improvement-task.json \
             --forge-retained-command-health tmp/rsi-health/forge-retained-command-rsi-health.json \
             --bundle-out tmp/rsi-health/rsi-health-bundle.json \
-            --json
+            --json > tmp/rsi-health/ao-command-rsi-health.json
+          test -s tmp/rsi-health/ao-command-rsi-health.json
           test -s tmp/rsi-health/rsi-health-bundle.json
+
+      - name: Validate RSI health contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/rsi-health-v0.1.schema.json" \
+            --document "$PWD/tmp/rsi-health/ao-command-rsi-health.json"
+
+      - name: Validate RSI health bundle contract
+        run: |
+          go run ./cmd/ao-command evidence \
+            --forge ao-forge \
+            --schema "$PWD/docs/contracts/rsi-health-bundle-v0.1.schema.json" \
+            --document "$PWD/tmp/rsi-health/rsi-health-bundle.json"
 
       - name: Integration smoke
         run: scripts/ao-command-smoke.sh --forge ao-forge --out tmp/ao-command-smoke

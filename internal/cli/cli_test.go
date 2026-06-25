@@ -253,6 +253,7 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		t.Fatalf("rsi health json exit=%d stderr=%s", code, stderr)
 	}
 	var got struct {
+		SchemaVersion        string `json:"schema_version"`
 		CommandSchemaVersion string `json:"command_schema_version"`
 		Status               string `json:"status"`
 		RSIMode              string `json:"rsi_mode"`
@@ -275,7 +276,8 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("invalid rsi health JSON: %v\n%s", err, stdout)
 	}
-	if got.CommandSchemaVersion != "ao.command.v0.1" ||
+	if got.SchemaVersion != "ao.command.rsi-health.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
 		got.Status != "passed" ||
 		got.RSIMode != "governed_fixture_local" ||
 		got.RSICapability != "demonstrated_local_fixture_loop" ||
@@ -1002,6 +1004,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	installVerifyDryRun := read("scripts", "install-verify-dry-run.sh")
 	releaseGovernanceSchema := read("docs", "contracts", "release-governance-audit-v0.1.schema.json")
 	releaseGovernanceDryRun := read("scripts", "release-governance-dry-run.sh")
+	rsiHealthSchema := read("docs", "contracts", "rsi-health-v0.1.schema.json")
+	rsiHealthBundleSchema := read("docs", "contracts", "rsi-health-bundle-v0.1.schema.json")
 	rsiEvidenceChainSmoke := read("scripts", "rsi-evidence-chain-smoke.sh")
 	publicReadinessAudit := read("scripts", "public-readiness-audit.sh")
 	productionReadinessAudit := read("scripts", "production-readiness-audit.sh")
@@ -1025,6 +1029,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI bounded claim", doc: readme, want: "claim_level=bounded_governed_rsi decision=allowed"},
 		{name: "README RSI full claim denied", doc: readme, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
+		{name: "README RSI health schema", doc: readme, want: "docs/contracts/rsi-health-v0.1.schema.json"},
+		{name: "README RSI health bundle schema", doc: readme, want: "docs/contracts/rsi-health-bundle-v0.1.schema.json"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
 		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
@@ -1047,6 +1053,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs release preview", doc: productionReadiness, want: "release-preview-audit-v0.1.schema.json"},
 		{name: "production readiness docs install verify", doc: productionReadiness, want: "install-verify-audit-v0.1.schema.json"},
 		{name: "production readiness docs release governance", doc: productionReadiness, want: "release-governance-audit-v0.1.schema.json"},
+		{name: "production readiness docs RSI health schema", doc: productionReadiness, want: "rsi-health-v0.1.schema.json"},
+		{name: "production readiness docs RSI health bundle schema", doc: productionReadiness, want: "rsi-health-bundle-v0.1.schema.json"},
 		{name: "production readiness docs active stack command", doc: productionReadiness, want: "ao-command stack --ledger"},
 		{name: "production readiness docs active stack gate", doc: productionReadiness, want: "active-stack handoff"},
 		{name: "production readiness docs bounded RSI claim", doc: productionReadiness, want: "claim_level=bounded_governed_rsi decision=allowed"},
@@ -1075,6 +1083,14 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "release governance schema blocked", doc: releaseGovernanceSchema, want: "blocked_pending_operator_approval"},
 		{name: "release governance dry run blocked", doc: releaseGovernanceDryRun, want: "blocked_pending_operator_approval"},
 		{name: "release governance dry run no release create", doc: releaseGovernanceDryRun, want: "\"would_create_release\": false"},
+		{name: "RSI health schema version", doc: rsiHealthSchema, want: "ao.command.rsi-health.v0.1"},
+		{name: "RSI health schema claim levels", doc: rsiHealthSchema, want: "\"claim_levels\""},
+		{name: "RSI health schema bounded claim", doc: rsiHealthSchema, want: "bounded_governed_rsi"},
+		{name: "RSI health schema full claim", doc: rsiHealthSchema, want: "full_autonomous_self_mutating_rsi"},
+		{name: "RSI health schema strict", doc: rsiHealthSchema, want: "\"additionalProperties\": false"},
+		{name: "RSI health bundle schema version", doc: rsiHealthBundleSchema, want: "ao.command.rsi-health-bundle.v0.1"},
+		{name: "RSI health bundle schema hashes", doc: rsiHealthBundleSchema, want: "\"sha256\""},
+		{name: "RSI health bundle schema strict", doc: rsiHealthBundleSchema, want: "\"additionalProperties\": false"},
 		{name: "RSI evidence chain smoke Foundry pulse", doc: rsiEvidenceChainSmoke, want: "foundry pulse run"},
 		{name: "RSI evidence chain smoke Command health", doc: rsiEvidenceChainSmoke, want: "ao-command rsi health"},
 		{name: "RSI evidence chain smoke Covenant claim boundary", doc: rsiEvidenceChainSmoke, want: "full-autonomous-self-mutating-rsi"},
@@ -1097,6 +1113,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit release governance dry-run", doc: productionReadinessAudit, want: "release_governance_dry_run"},
 		{name: "production readiness audit active stack status", doc: productionReadinessAudit, want: "active_stack_status"},
 		{name: "production readiness audit RSI evidence chain smoke", doc: productionReadinessAudit, want: "rsi_evidence_chain_smoke"},
+		{name: "production readiness audit RSI health contract", doc: productionReadinessAudit, want: "rsi_health_contract_validate"},
+		{name: "production readiness audit RSI health bundle contract", doc: productionReadinessAudit, want: "rsi_health_bundle_contract_validate"},
 		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
 		{name: "production readiness audit operator closeout", doc: productionReadinessAudit, want: "operator_closeout"},
 		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
@@ -1124,6 +1142,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow RSI health Forge retained gate", doc: workflow, want: "--forge-retained-gate tmp/rsi-health/forge-retained-foundry-rsi-improvement-gate.json"},
 		{name: "workflow RSI health Forge retained command", doc: workflow, want: "--forge-retained-command-health tmp/rsi-health/forge-retained-command-rsi-health.json"},
 		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
+		{name: "workflow RSI health schema validation", doc: workflow, want: "Validate RSI health contract"},
+		{name: "workflow RSI health bundle schema validation", doc: workflow, want: "Validate RSI health bundle contract"},
 		{name: "workflow RSI evidence chain smoke", doc: workflow, want: "scripts/rsi-evidence-chain-smoke.sh --forge ao-forge --foundry ao-foundry --covenant ao-covenant"},
 	} {
 		if !strings.Contains(check.doc, check.want) {

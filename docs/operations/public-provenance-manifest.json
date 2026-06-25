@@ -30,6 +30,24 @@
       "mutates_repositories": false,
       "mutates_releases": false,
       "uploads_artifacts": false
+    },
+    {
+      "evidence_id": "rsi-health",
+      "producer": "ao-command rsi health --json",
+      "contract": "docs/contracts/rsi-health-v0.1.schema.json",
+      "public_safe": true,
+      "mutates_repositories": false,
+      "mutates_releases": false,
+      "uploads_artifacts": false
+    },
+    {
+      "evidence_id": "rsi-health-bundle",
+      "producer": "ao-command rsi health --bundle-out",
+      "contract": "docs/contracts/rsi-health-bundle-v0.1.schema.json",
+      "public_safe": true,
+      "mutates_repositories": false,
+      "mutates_releases": false,
+      "uploads_artifacts": false
     }
   ],
   "blocked_content": [
