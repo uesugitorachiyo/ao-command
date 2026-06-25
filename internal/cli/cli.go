@@ -885,14 +885,25 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_claim_readiness_readback") {
 		return errors.New("bounded_governed_rsi required evidence must include ao2-control-plane RSI claim-readiness readback")
 	}
+	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_rsi_self_change_dry_run") ||
+		!hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_self_change_dry_run_readback") {
+		return errors.New("bounded_governed_rsi required evidence must include AO2 self-change dry-run and control-plane readback")
+	}
 	for _, repo := range []string{"ao-foundry", "ao-forge", "ao-command", "ao-covenant", "ao2", "ao2-control-plane"} {
 		if !hasManifestRepository(manifest.ActiveRepositories, repo) {
 			return fmt.Errorf("active repository %s is required", repo)
 		}
 	}
+	ao2, ok := findManifestRepository(manifest.ActiveRepositories, "ao2")
+	if !ok || !hasAO2RSISelfChangeDryRun(ao2) {
+		return errors.New("AO2 RSI self-change dry-run evidence is required")
+	}
 	ao2ControlPlane, ok := findManifestRepository(manifest.ActiveRepositories, "ao2-control-plane")
 	if !ok || !hasAO2ControlPlaneRSIReadback(ao2ControlPlane) {
 		return errors.New("ao2-control-plane RSI claim-readiness readback is required")
+	}
+	if !hasAO2ControlPlaneRSISelfChangeDryRunReadback(ao2ControlPlane) {
+		return errors.New("ao2-control-plane RSI self-change dry-run readback is required")
 	}
 	for _, repo := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms"} {
 		if !hasManifestRepository(manifest.DeprecatedOrOutOfScopeRepositories, repo) {
@@ -961,6 +972,35 @@ func hasAO2ControlPlaneRSIReadback(repo rsiManifestRepository) bool {
 		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied") &&
 		strings.Contains(repo.Boundary, "observer_only") &&
 		strings.Contains(repo.Boundary, "no_claim_approval") &&
+		strings.Contains(repo.Boundary, "no_repository_mutation")
+}
+
+func hasAO2RSISelfChangeDryRun(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "scripts/rsi-governed-self-change-dry-run.sh") &&
+		manifestEvidenceContains(repo.Evidence, "tests/test_ao2_rsi_governed_self_change_dry_run.py") &&
+		manifestEvidenceContains(repo.Evidence, "target/rsi-self-change-dry-run/latest/summary.json") &&
+		manifestEvidenceContains(repo.Evidence, "proposed-self-change.patch") &&
+		manifestEvidenceContains(repo.Evidence, "rollback-self-change.patch") &&
+		manifestEvidenceContains(repo.Evidence, "ao2.rsi-governed-self-change-dry-run.v1") &&
+		hasManifestKnownPR(repo.KnownPRs, 199, "Add AO2 RSI self-change dry-run evidence") &&
+		manifestEvidenceContains(repo.ClaimOutput, "self_change_dry_run=passed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=bounded_governed_rsi decision=allowed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied") &&
+		strings.Contains(repo.Boundary, "execution_and_evidence_mechanics_only")
+}
+
+func hasAO2ControlPlaneRSISelfChangeDryRunReadback(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "scripts/verify_ao2_rsi_self_change_dry_run.py") &&
+		manifestEvidenceContains(repo.Evidence, "tests/test_ao2_rsi_self_change_dry_run_readback.py") &&
+		manifestEvidenceContains(repo.Evidence, "target/ao2-rsi-self-change-dry-run-readback/summary.json") &&
+		manifestEvidenceContains(repo.Evidence, "ao2.cp-ao2-rsi-self-change-dry-run-readback.v1") &&
+		hasManifestKnownPR(repo.KnownPRs, 71, "Add AO2 RSI self-change dry-run readback") &&
+		manifestEvidenceContains(repo.ClaimOutput, "control_plane_ao2_rsi_self_change_dry_run_readback=passed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=bounded_governed_rsi decision=allowed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied") &&
+		strings.Contains(repo.Boundary, "observer_only") &&
+		strings.Contains(repo.Boundary, "no_claim_approval") &&
+		strings.Contains(repo.Boundary, "no_patch_application") &&
 		strings.Contains(repo.Boundary, "no_repository_mutation")
 }
 
