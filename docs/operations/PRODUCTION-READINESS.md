@@ -49,7 +49,9 @@ The audit is passing only when all gates pass:
   `ao2.rsi-governed-self-change-dry-run.v1` producer and ao2-control-plane's
   `ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, including
   `rollback_rehearsal.status=passed` from AO2 PR #200 and ao2-control-plane PR
-  #72;
+  #72, plus AO Forge PR #143's retained
+  `ao-command-rsi-manifest-retention-proof.json` and AO Covenant PR #57's
+  `rollback-retained.contract.json` denial fixture;
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;

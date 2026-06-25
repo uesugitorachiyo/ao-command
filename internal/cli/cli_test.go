@@ -945,6 +945,28 @@ func TestRSIManifestFailsClosedWithoutAO2RollbackRehearsalReadback(t *testing.T)
 	}
 }
 
+func TestRSIManifestFailsClosedWithoutForgeManifestRetentionPin(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingForgeManifestRetentionPin(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "AO Forge retained AO Command RSI manifest evidence is required") {
+		t.Fatalf("stderr missing AO Forge manifest retention reason: %s", stderr)
+	}
+}
+
+func TestRSIManifestFailsClosedWithoutCovenantRetainedRollbackBoundaryPin(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingCovenantRetainedRollbackBoundaryPin(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "AO Covenant retained rollback-only denial evidence is required") {
+		t.Fatalf("stderr missing AO Covenant retained rollback boundary reason: %s", stderr)
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -1151,6 +1173,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI self-change readback schema", doc: readme, want: "ao2.cp-ao2-rsi-self-change-dry-run-readback.v1"},
 		{name: "README RSI rollback rehearsal status", doc: readme, want: "rollback_rehearsal.status=passed"},
 		{name: "README RSI rollback rehearsal PRs", doc: readme, want: "AO2 PR #200"},
+		{name: "README RSI Forge manifest retention pin", doc: readme, want: "ao-command-rsi-manifest-retention-proof.json"},
+		{name: "README RSI Covenant rollback-retained pin", doc: readme, want: "rollback-retained.contract.json"},
 		{name: "README RSI manifest no mutation", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
 		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
@@ -1185,6 +1209,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs RSI self-change readback schema", doc: productionReadiness, want: "ao2.cp-ao2-rsi-self-change-dry-run-readback.v1"},
 		{name: "production readiness docs RSI rollback rehearsal status", doc: productionReadiness, want: "rollback_rehearsal.status=passed"},
 		{name: "production readiness docs RSI rollback rehearsal PRs", doc: productionReadiness, want: "ao2-control-plane PR\n  #72"},
+		{name: "production readiness docs RSI Forge manifest retention pin", doc: productionReadiness, want: "ao-command-rsi-manifest-retention-proof.json"},
+		{name: "production readiness docs RSI Covenant rollback-retained pin", doc: productionReadiness, want: "rollback-retained.contract.json"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -1708,10 +1734,15 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
 
 func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithReadbacks(t, includeDeniedFullClaim, true, true, true)
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, true, true, true, true, true)
 }
 
 func writeRSIManifestFixtureWithReadbacks(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, includeClaimReadinessReadback, includeSelfChangeReadback, includeRollbackRehearsalReadback, true, true)
+}
+
+func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool, includeForgeManifestRetentionPin bool, includeCovenantRetainedRollbackBoundaryPin bool) string {
 	t.Helper()
 	fullClaim := ""
 	if includeDeniedFullClaim {
@@ -1857,6 +1888,78 @@ func writeRSIManifestFixtureWithReadbacks(t *testing.T, includeDeniedFullClaim b
       "boundary": "` + boundary + `"
     }`
 	}
+	aoForgeEvidence := `
+        "docs/contracts/goal-run-retained-evidence-v0.1.schema.json",
+        "docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json",
+        "docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/bounded-rsi-improvement-chain-retention-proof.json"`
+	aoForgePRs := `
+        {
+          "number": 142,
+          "title": "Retain RSI claim levels",
+          "url": "https://github.com/uesugitorachiyo/ao-forge/pull/142",
+          "merge_commit": "037f505a30bcff2536175b76021cfdd5f5f5a562"
+        }`
+	if includeForgeManifestRetentionPin {
+		aoForgeEvidence += `,
+        "docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-manifest-retention-proof.json",
+        "ao-command-rsi-manifest",
+        "rollback_rehearsal.status=passed"`
+		aoForgePRs += `,
+        {
+          "number": 143,
+          "title": "Retain AO Command RSI manifest evidence",
+          "url": "https://github.com/uesugitorachiyo/ao-forge/pull/143",
+          "merge_commit": "966a3022c66635ab03b0029cd6cf68aefccd11b4"
+        }`
+	}
+	aoForgeRepo := `{
+      "id": "ao-forge",
+      "role": "goalrun_retention_and_aggregate_proof",
+      "evidence": [` + aoForgeEvidence + `
+      ],
+      "known_prs": [` + aoForgePRs + `
+      ]
+    }`
+	aoCovenantEvidence := `
+        "examples/full-rsi-claim-boundary/denied.contract.json",
+        "examples/full-rsi-claim-boundary/evidence-approved.contract.json",
+        "internal/policy/evaluator.go",
+        "internal/policy/explain.go",
+        "internal/policy/spine.go"`
+	aoCovenantPRs := `
+        {
+          "number": 55,
+          "title": "Add full RSI claim boundary fixtures",
+          "url": "https://github.com/uesugitorachiyo/ao-covenant/pull/55",
+          "merge_commit": "c5ff915d65b6159bc64df88805b52959052fd397"
+        },
+        {
+          "number": 56,
+          "title": "Define RSI claim level vocabulary",
+          "url": "https://github.com/uesugitorachiyo/ao-covenant/pull/56",
+          "merge_commit": "60f5b4a45c0b420c9224075edd258170a549416d"
+        }`
+	if includeCovenantRetainedRollbackBoundaryPin {
+		aoCovenantEvidence += `,
+        "examples/full-rsi-claim-boundary/rollback-retained.contract.json",
+        "examples/full-rsi-claim-boundary/rollback-retained-ticket.json",
+        "retained rollback rehearsal alone is insufficient"`
+		aoCovenantPRs += `,
+        {
+          "number": 57,
+          "title": "Deny full RSI with retained rollback only",
+          "url": "https://github.com/uesugitorachiyo/ao-covenant/pull/57",
+          "merge_commit": "3a47e3845e0a0c6a2db196a00e339de425cc6c6c"
+        }`
+	}
+	aoCovenantRepo := `{
+      "id": "ao-covenant",
+      "role": "claim_publication_policy_gate",
+      "evidence": [` + aoCovenantEvidence + `
+      ],
+      "known_prs": [` + aoCovenantPRs + `
+      ]
+    }`
 	path := filepath.Join(t.TempDir(), "rsi-claim-evidence-manifest.json")
 	manifest := `{
   "schema_version": "ao.architecture.rsi-claim-evidence-manifest.v0.1",
@@ -1878,9 +1981,9 @@ func writeRSIManifestFixtureWithReadbacks(t *testing.T, includeDeniedFullClaim b
   ],
   "active_repositories": [
     {"id": "ao-foundry", "role": "pulse_candidate_and_improvement_gate_producer"},
-    {"id": "ao-forge", "role": "goalrun_retention_and_aggregate_proof"},
+    ` + aoForgeRepo + `,
     {"id": "ao-command", "role": "read_only_rsi_health_verifier"},
-    {"id": "ao-covenant", "role": "claim_publication_policy_gate"},
+    ` + aoCovenantRepo + `,
     ` + ao2Repo + `,
     ` + ao2ControlPlaneRepo + `
   ],
@@ -1919,6 +2022,16 @@ func writeRSIManifestFixtureMissingAO2SelfChangeDryRunReadback(t *testing.T) str
 func writeRSIManifestFixtureMissingAO2RollbackRehearsalReadback(t *testing.T) string {
 	t.Helper()
 	return writeRSIManifestFixtureWithReadbacks(t, true, true, true, false)
+}
+
+func writeRSIManifestFixtureMissingForgeManifestRetentionPin(t *testing.T) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, false, true)
+}
+
+func writeRSIManifestFixtureMissingCovenantRetainedRollbackBoundaryPin(t *testing.T) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, false)
 }
 
 func stackRepoPresent(repos []struct {

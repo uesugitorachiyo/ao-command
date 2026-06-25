@@ -894,6 +894,14 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 			return fmt.Errorf("active repository %s is required", repo)
 		}
 	}
+	aoForge, ok := findManifestRepository(manifest.ActiveRepositories, "ao-forge")
+	if !ok || !hasAOForgeRetainedCommandManifestEvidence(aoForge) {
+		return errors.New("AO Forge retained AO Command RSI manifest evidence is required")
+	}
+	aoCovenant, ok := findManifestRepository(manifest.ActiveRepositories, "ao-covenant")
+	if !ok || !hasAOCovenantRetainedRollbackBoundary(aoCovenant) {
+		return errors.New("AO Covenant retained rollback-only denial evidence is required")
+	}
 	ao2, ok := findManifestRepository(manifest.ActiveRepositories, "ao2")
 	if !ok || !hasAO2RSISelfChangeDryRun(ao2) {
 		return errors.New("AO2 RSI self-change dry-run evidence is required")
@@ -964,6 +972,20 @@ func hasManifestKnownPR(prs []rsiManifestKnownPR, number int, title string) bool
 		}
 	}
 	return false
+}
+
+func hasAOForgeRetainedCommandManifestEvidence(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "ao-command-rsi-manifest-retention-proof.json") &&
+		manifestEvidenceContains(repo.Evidence, "ao-command-rsi-manifest") &&
+		manifestEvidenceContains(repo.Evidence, "rollback_rehearsal.status=passed") &&
+		hasManifestKnownPR(repo.KnownPRs, 143, "Retain AO Command RSI manifest evidence")
+}
+
+func hasAOCovenantRetainedRollbackBoundary(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "examples/full-rsi-claim-boundary/rollback-retained.contract.json") &&
+		manifestEvidenceContains(repo.Evidence, "examples/full-rsi-claim-boundary/rollback-retained-ticket.json") &&
+		manifestEvidenceContains(repo.Evidence, "retained rollback rehearsal alone is insufficient") &&
+		hasManifestKnownPR(repo.KnownPRs, 57, "Deny full RSI with retained rollback only")
 }
 
 func hasAO2ControlPlaneRSIReadback(repo rsiManifestRepository) bool {
