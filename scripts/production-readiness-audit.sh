@@ -4,6 +4,7 @@ set -euo pipefail
 repo="uesugitorachiyo/ao-command"
 forge="../ao-forge"
 foundry="../ao-foundry"
+covenant="../ao-covenant"
 out="tmp/production-readiness-audit.json"
 skip_gates=0
 skip_remote_admin=0
@@ -21,6 +22,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --foundry)
       foundry="${2:-}"
+      shift 2
+      ;;
+    --covenant)
+      covenant="${2:-}"
       shift 2
       ;;
     --out)
@@ -99,7 +104,7 @@ public_scan_files="$(git ls-files | grep -v '^scripts/production-readiness-audit
 workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
 
-status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!bin' 2>&1)"
+status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!ao-covenant' ':!bin' 2>&1)"
 if [[ -n "$status_output" ]]; then
   add_check "clean_worktree" "failed" "working tree must be clean for production readiness: $status_output"
 else
@@ -264,6 +269,7 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "release_governance_dry_run" "AO Command release governance dry-run passes" scripts/release-governance-dry-run.sh --out tmp/ao-command-release-governance --tag v0.1.0 --release-preview-audit tmp/ao-command-release-preview/release-preview-audit.json --install-verify-audit tmp/ao-command-install-verify/install-verify-audit.json
   run_check "release_governance_contract_validate" "AO Command release governance audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-governance/release-governance-audit.json"
   run_check "active_stack_status" "AO Command reads AO Foundry active-stack handoff status without orchestration" go run ./cmd/ao-command stack --ledger "$foundry/examples/readiness/active-stack-readiness.ledger.json"
+  run_check "rsi_evidence_chain_smoke" "Foundry pulse, Forge retained proofs, Command health, and Covenant RSI claim boundary pass" scripts/rsi-evidence-chain-smoke.sh --forge "$forge" --foundry "$foundry" --covenant "$covenant" --out tmp/rsi-evidence-chain-smoke
 
   forge="$(cd "$forge" && pwd)"
   mkdir -p "$root/tmp"
