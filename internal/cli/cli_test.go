@@ -223,6 +223,8 @@ func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 		"family=ao-promoter status=passed",
 		"family=ao-foundry status=passed",
 		"rsi_capability=demonstrated_local_fixture_loop",
+		"claim_level=bounded_governed_rsi decision=allowed status=passed",
+		"claim_level=full_autonomous_self_mutating_rsi decision=denied status=blocked",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("rsi health stdout missing %q:\n%s", want, stdout)
@@ -257,7 +259,13 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		RSICapability        string `json:"rsi_capability"`
 		OperatorMode         string `json:"operator_mode"`
 		MutatesRepositories  bool   `json:"mutates_repositories"`
-		Families             []struct {
+		ClaimLevels          []struct {
+			Claim    string `json:"claim"`
+			Decision string `json:"decision"`
+			Status   string `json:"status"`
+			Reason   string `json:"reason"`
+		} `json:"claim_levels"`
+		Families []struct {
 			Family   string `json:"family"`
 			Status   string `json:"status"`
 			Passed   bool   `json:"passed"`
@@ -273,8 +281,23 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		got.RSICapability != "demonstrated_local_fixture_loop" ||
 		got.OperatorMode != "read_only" ||
 		got.MutatesRepositories ||
+		len(got.ClaimLevels) != 2 ||
 		len(got.Families) != 5 {
 		t.Fatalf("unexpected rsi health summary: %+v", got)
+	}
+	if got.ClaimLevels[0].Claim != "bounded_governed_rsi" ||
+		got.ClaimLevels[0].Decision != "allowed" ||
+		got.ClaimLevels[0].Status != "passed" ||
+		!strings.Contains(got.ClaimLevels[0].Reason, "5 percent") {
+		t.Fatalf("unexpected bounded RSI claim level: %+v", got.ClaimLevels)
+	}
+	if got.ClaimLevels[1].Claim != "full_autonomous_self_mutating_rsi" ||
+		got.ClaimLevels[1].Decision != "denied" ||
+		got.ClaimLevels[1].Status != "blocked" ||
+		!strings.Contains(got.ClaimLevels[1].Reason, "mutation authority") ||
+		!strings.Contains(got.ClaimLevels[1].Reason, "rollback") ||
+		!strings.Contains(got.ClaimLevels[1].Reason, "live self-change") {
+		t.Fatalf("unexpected full RSI claim level: %+v", got.ClaimLevels)
 	}
 	for _, family := range got.Families {
 		if !family.Passed || family.Evidence == "" {
@@ -736,7 +759,12 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		RSICapability        string `json:"rsi_capability"`
 		OperatorMode         string `json:"operator_mode"`
 		MutatesRepositories  bool   `json:"mutates_repositories"`
-		Families             []struct {
+		ClaimLevels          []struct {
+			Claim    string `json:"claim"`
+			Decision string `json:"decision"`
+			Status   string `json:"status"`
+		} `json:"claim_levels"`
+		Families []struct {
 			Family   string `json:"family"`
 			Status   string `json:"status"`
 			Passed   bool   `json:"passed"`
@@ -754,8 +782,17 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		got.RSICapability != "demonstrated_local_fixture_loop" ||
 		got.OperatorMode != "read_only" ||
 		got.MutatesRepositories ||
+		len(got.ClaimLevels) != 2 ||
 		len(got.Families) != 5 {
 		t.Fatalf("unexpected bundle: %+v", got)
+	}
+	if got.ClaimLevels[0].Claim != "bounded_governed_rsi" ||
+		got.ClaimLevels[0].Decision != "allowed" ||
+		got.ClaimLevels[0].Status != "passed" ||
+		got.ClaimLevels[1].Claim != "full_autonomous_self_mutating_rsi" ||
+		got.ClaimLevels[1].Decision != "denied" ||
+		got.ClaimLevels[1].Status != "blocked" {
+		t.Fatalf("unexpected bundle claim levels: %+v", got.ClaimLevels)
 	}
 	for _, family := range got.Families {
 		if !family.Passed || family.Evidence == "" || len(family.SHA256) != 64 {
@@ -986,6 +1023,10 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
 		{name: "README RSI evidence chain smoke", doc: readme, want: "scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
+		{name: "README RSI bounded claim", doc: readme, want: "claim_level=bounded_governed_rsi decision=allowed"},
+		{name: "README RSI full claim denied", doc: readme, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
+		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
+		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
 		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
 		{name: "security public", doc: security, want: "public after passing the v0.1 publication audit"},
@@ -1008,6 +1049,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs release governance", doc: productionReadiness, want: "release-governance-audit-v0.1.schema.json"},
 		{name: "production readiness docs active stack command", doc: productionReadiness, want: "ao-command stack --ledger"},
 		{name: "production readiness docs active stack gate", doc: productionReadiness, want: "active-stack handoff"},
+		{name: "production readiness docs bounded RSI claim", doc: productionReadiness, want: "claim_level=bounded_governed_rsi decision=allowed"},
+		{name: "production readiness docs full RSI claim denied", doc: productionReadiness, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -1036,6 +1079,11 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "RSI evidence chain smoke Command health", doc: rsiEvidenceChainSmoke, want: "ao-command rsi health"},
 		{name: "RSI evidence chain smoke Covenant claim boundary", doc: rsiEvidenceChainSmoke, want: "full-autonomous-self-mutating-rsi"},
 		{name: "RSI evidence chain smoke read-only", doc: rsiEvidenceChainSmoke, want: "\"mutates_repositories\": false"},
+		{name: "RSI evidence chain smoke claim levels", doc: rsiEvidenceChainSmoke, want: "\"claim_levels\""},
+		{name: "RSI evidence chain smoke bounded claim", doc: rsiEvidenceChainSmoke, want: "\"claim\": \"bounded_governed_rsi\""},
+		{name: "RSI evidence chain smoke full claim denied", doc: rsiEvidenceChainSmoke, want: "\"claim\": \"full_autonomous_self_mutating_rsi\""},
+		{name: "RSI evidence chain smoke Forge aggregate proof", doc: rsiEvidenceChainSmoke, want: "bounded-rsi-improvement-chain-retention-proof.json"},
+		{name: "RSI evidence chain smoke Covenant fixture", doc: rsiEvidenceChainSmoke, want: "examples/full-rsi-claim-boundary"},
 		{name: "public readiness audit repo private check", doc: publicReadinessAudit, want: "repository_private"},
 		{name: "public readiness audit no artifacts", doc: publicReadinessAudit, want: "ci_artifact_uploads"},
 		{name: "public readiness audit no dangerous writes", doc: publicReadinessAudit, want: "dangerous_write_surface"},

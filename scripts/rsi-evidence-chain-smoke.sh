@@ -98,6 +98,17 @@ JSON
 )
 
 proof_dir="$forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification"
+bounded_chain_proof="$proof_dir/bounded-rsi-improvement-chain-retention-proof.json"
+covenant_fixture_dir="$covenant/examples/full-rsi-claim-boundary"
+covenant_denied_fixture="$covenant_fixture_dir/denied.contract.json"
+covenant_evidence_approved_fixture="$covenant_fixture_dir/evidence-approved.contract.json"
+
+test -s "$bounded_chain_proof"
+grep -q 'bounded, governed RSI evidence chain' "$bounded_chain_proof"
+grep -q 'not a claim of full autonomous self-mutating RSI' "$bounded_chain_proof"
+test -s "$covenant_denied_fixture"
+test -s "$covenant_evidence_approved_fixture"
+
 go run ./cmd/ao-command rsi health \
   --arena-gate "$assurance_dir/arena-promotion-gate.json" \
   --crucible-gate "$assurance_dir/crucible-hardening-gate.json" \
@@ -116,6 +127,10 @@ go run ./cmd/ao-command rsi health \
 grep -q '"status": "passed"' "$out/ao-command-rsi-health.json"
 grep -q '"rsi_capability": "demonstrated_local_fixture_loop"' "$out/ao-command-rsi-health.json"
 grep -q '"mutates_repositories": false' "$out/ao-command-rsi-health.json"
+grep -q '"claim": "bounded_governed_rsi"' "$out/ao-command-rsi-health.json"
+grep -q '"decision": "allowed"' "$out/ao-command-rsi-health.json"
+grep -q '"claim": "full_autonomous_self_mutating_rsi"' "$out/ao-command-rsi-health.json"
+grep -q '"decision": "denied"' "$out/ao-command-rsi-health.json"
 
 cat > "$covenant_work_dir/brief.md" <<'EOF_BRIEF'
 Attempt to publish full autonomous self-mutating RSI without the required
@@ -203,7 +218,10 @@ shasum -a 256 \
   "$out/ao-command-rsi-health.json" \
   "$out/rsi-health-bundle.json" \
   "$out/covenant-run.stderr.txt" \
-  "$out/covenant-policy-explain.json" > "$out/checksums.txt"
+  "$out/covenant-policy-explain.json" \
+  "$bounded_chain_proof" \
+  "$covenant_denied_fixture" \
+  "$covenant_evidence_approved_fixture" > "$out/checksums.txt"
 
 cat > "$out/rsi-evidence-chain-smoke.json" <<JSON
 {
@@ -219,6 +237,23 @@ cat > "$out/rsi-evidence-chain-smoke.json" <<JSON
     "ao-covenant claim.publish denial for full-autonomous-self-mutating-rsi"
   ],
   "claim_boundary": "bounded governed RSI only; full autonomous self-mutating RSI remains denied without mutation authority, rollback, and live self-change evidence",
+  "claim_levels": [
+    {
+      "claim": "bounded_governed_rsi",
+      "decision": "allowed",
+      "status": "passed"
+    },
+    {
+      "claim": "full_autonomous_self_mutating_rsi",
+      "decision": "denied",
+      "status": "blocked"
+    }
+  ],
+  "fixture_references": [
+    "$(json_escape "$bounded_chain_proof")",
+    "$(json_escape "$covenant_denied_fixture")",
+    "$(json_escape "$covenant_evidence_approved_fixture")"
+  ],
   "mutates_repositories": false,
   "artifacts": [
     "$(json_escape "$out/foundry-pulse/rsi-candidate.json")",
