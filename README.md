@@ -95,8 +95,10 @@ governed self-change dry-run producer
 `ao2.cp-ao2-rsi-self-change-dry-run-readback.v1` observer readback, requires
 AO2 rollback rehearsal evidence with `rollback_rehearsal.status=passed`, and
 requires ao2-control-plane to read back the same rollback rehearsal evidence
-from PR #72 after AO2 PR #200. It reports `operator_mode=read_only` with
-`mutates_repositories=false`.
+from PR #72 after AO2 PR #200. It also fails closed unless AO Architecture pins
+AO Forge PR #143's retained `ao-command-rsi-manifest-retention-proof.json` and
+AO Covenant PR #57's `rollback-retained.contract.json` denial fixture. It
+reports `operator_mode=read_only` with `mutates_repositories=false`.
 
 `scripts/rsi-evidence-chain-smoke.sh` exercises the governed RSI chain end to
 end: it runs `foundry pulse run`, verifies the pulse evidence against AO Forge
