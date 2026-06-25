@@ -203,6 +203,8 @@ func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
 		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
 	}, &fakeRunner{})
 	if code != 0 {
 		t.Fatalf("rsi health exit=%d stderr=%s", code, stderr)
@@ -233,6 +235,8 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
 		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -281,6 +285,7 @@ func TestRSIHealthBindsFoundryCandidateToImprovementGate(t *testing.T) {
 		"--promoter-gate", paths.promoter,
 		"--foundry-gate", paths.foundry,
 		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -313,6 +318,109 @@ func TestRSIHealthBindsFoundryCandidateToImprovementGate(t *testing.T) {
 	}
 }
 
+func TestRSIHealthBindsFoundryNextTaskToCandidateAndGate(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health next-task binding exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                 string `json:"status"`
+		RSICapability          string `json:"rsi_capability"`
+		FoundryNextTaskBinding struct {
+			Status                     string  `json:"status"`
+			Passed                     bool    `json:"passed"`
+			NextTaskEvidence           string  `json:"next_task_evidence"`
+			CandidateEvidence          string  `json:"candidate_evidence"`
+			GateEvidence               string  `json:"gate_evidence"`
+			RequiredImprovementPercent float64 `json:"required_improvement_percent"`
+			ActualImprovementPercent   float64 `json:"actual_improvement_percent"`
+			AutonomousClaim            string  `json:"autonomous_claim"`
+			MutatesRepositories        bool    `json:"mutates_repositories"`
+		} `json:"foundry_next_task_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health next-task binding JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "passed" ||
+		got.RSICapability != "demonstrated_local_fixture_loop" ||
+		got.FoundryNextTaskBinding.Status != "passed" ||
+		!got.FoundryNextTaskBinding.Passed ||
+		got.FoundryNextTaskBinding.NextTaskEvidence != paths.foundryNextTask ||
+		got.FoundryNextTaskBinding.CandidateEvidence != paths.foundryCandidate ||
+		got.FoundryNextTaskBinding.GateEvidence != paths.foundry ||
+		got.FoundryNextTaskBinding.RequiredImprovementPercent != 5 ||
+		got.FoundryNextTaskBinding.ActualImprovementPercent < got.FoundryNextTaskBinding.RequiredImprovementPercent ||
+		got.FoundryNextTaskBinding.AutonomousClaim != "derived_local_next_improvement" ||
+		got.FoundryNextTaskBinding.MutatesRepositories {
+		t.Fatalf("unexpected Foundry next-task binding: %+v", got)
+	}
+}
+
+func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	if err := os.WriteFile(paths.foundryNextTask, []byte(`{
+  "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
+  "status": "ready",
+  "generated_by": "foundry pulse run",
+  "candidate_evidence_path": "tmp/wrong-candidate.json",
+  "gate_evidence_path": "`+paths.foundry+`",
+  "required_improvement_percent": 5,
+  "actual_improvement_percent": 10,
+  "autonomous_claim": "derived_local_next_improvement",
+  "mutates_repositories": false,
+  "next_actions": [
+    "retain rsi_next_improvement_task with RSI candidate and gate evidence"
+  ]
+}`), 0o644); err != nil {
+		t.Fatalf("write mismatched foundry next task: %v", err)
+	}
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--json",
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi health mismatched next-task exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                 string `json:"status"`
+		RSICapability          string `json:"rsi_capability"`
+		FoundryNextTaskBinding struct {
+			Status string `json:"status"`
+			Passed bool   `json:"passed"`
+		} `json:"foundry_next_task_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health mismatched next-task JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "blocked" ||
+		got.RSICapability != "not_demonstrated" ||
+		got.FoundryNextTaskBinding.Status != "blocked" ||
+		got.FoundryNextTaskBinding.Passed {
+		t.Fatalf("unexpected mismatched Foundry next-task status: %+v", got)
+	}
+	if !strings.Contains(stderr, "RSI health blocked") {
+		t.Fatalf("stderr missing blocked message: %s", stderr)
+	}
+}
+
 func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	bundleOut := filepath.Join(t.TempDir(), "rsi-health-bundle.json")
@@ -323,6 +431,8 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
 		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
 		"--bundle-out", bundleOut,
 	}, &fakeRunner{})
 	if code != 0 {
@@ -381,6 +491,8 @@ func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
 		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
 	}, &fakeRunner{})
 	if code != 1 {
 		t.Fatalf("rsi health blocked exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
@@ -581,6 +693,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
 		{name: "README RSI health Foundry candidate", doc: readme, want: "--foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json"},
+		{name: "README RSI health Foundry next task", doc: readme, want: "--foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json"},
 		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
@@ -664,6 +777,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow RSI health step", doc: workflow, want: "RSI health dry-run"},
 		{name: "workflow RSI health command", doc: workflow, want: "bin/ao-command rsi health"},
 		{name: "workflow RSI health Foundry candidate", doc: workflow, want: "--foundry-candidate tmp/rsi-health/foundry-rsi-candidate.json"},
+		{name: "workflow RSI health Foundry next task", doc: workflow, want: "--foundry-next-task tmp/rsi-health/foundry-rsi-next-improvement-task.json"},
 		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
@@ -811,6 +925,7 @@ type rsiHealthFixturePaths struct {
 	promoter         string
 	foundry          string
 	foundryCandidate string
+	foundryNextTask  string
 }
 
 func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
@@ -823,6 +938,14 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
 			t.Fatalf("write %s: %v", name, err)
 		}
 		return path
+	}
+	quote := func(value string) string {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatalf("quote path %q: %v", value, err)
+		}
+		return string(data)
 	}
 	sentinelVerdict := `"clear"`
 	sentinelSafety := `"passed"`
@@ -925,6 +1048,24 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
   },
   "mutates_repositories": false,
   "next_actions": []
+}`),
+		foundryNextTask: write("foundry-rsi-next-improvement-task.json", `{
+  "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
+  "status": "ready",
+  "generated_by": "foundry pulse run",
+  "goal_id": "ao-foundry-production-readiness",
+  "recommended_task_id": "rsi-next-example",
+  "recommended_action": "retain the next bounded RSI improvement task as governed evidence",
+  "improvement_rationale": "The local pulse produced an RSI candidate and a passing improvement gate, so the next bounded task can be retained as governed evidence before delegation.",
+  "candidate_evidence_path": `+quote(filepath.Join(dir, "foundry-rsi-candidate.json"))+`,
+  "gate_evidence_path": `+quote(filepath.Join(dir, "foundry-rsi-improvement-gate.json"))+`,
+  "required_improvement_percent": 5,
+  "actual_improvement_percent": 10,
+  "autonomous_claim": "derived_local_next_improvement",
+  "mutates_repositories": false,
+  "next_actions": [
+    "retain rsi_next_improvement_task with RSI candidate and gate evidence"
+  ]
 }`),
 	}
 }
