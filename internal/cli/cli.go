@@ -557,6 +557,7 @@ type rsiClaimLevel struct {
 }
 
 type rsiHealthSummary struct {
+	SchemaVersion           string                         `json:"schema_version"`
 	CommandSchemaVersion    string                         `json:"command_schema_version"`
 	Status                  string                         `json:"status"`
 	RSIMode                 string                         `json:"rsi_mode"`
@@ -822,6 +823,7 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		capability = "not_demonstrated"
 	}
 	return rsiHealthSummary{
+		SchemaVersion:           "ao.command.rsi-health.v0.1",
 		CommandSchemaVersion:    commandSchemaVersion,
 		Status:                  status,
 		RSIMode:                 "governed_fixture_local",

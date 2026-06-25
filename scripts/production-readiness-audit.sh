@@ -236,10 +236,23 @@ else
   add_check "release_governance_contract" "failed" "release governance dry-run contract must be present and wired into CI"
 fi
 
+if grep -qE "ao.command.rsi-health.v0.1" docs/contracts/rsi-health-v0.1.schema.json \
+  && grep -qE "ao.command.rsi-health-bundle.v0.1" docs/contracts/rsi-health-bundle-v0.1.schema.json \
+  && grep -qE '"claim_levels"' docs/contracts/rsi-health-v0.1.schema.json \
+  && grep -qE '"sha256"' docs/contracts/rsi-health-bundle-v0.1.schema.json \
+  && grep -qE "Validate RSI health contract" .github/workflows/ci.yml \
+  && grep -qE "Validate RSI health bundle contract" .github/workflows/ci.yml; then
+  add_check "rsi_health_contract" "passed" "RSI health and bundle contracts are present and wired into CI"
+else
+  add_check "rsi_health_contract" "failed" "RSI health and bundle contracts must be present and wired into CI"
+fi
+
 if grep -qE "ao.command.public-provenance-manifest.v0.1" docs/operations/public-provenance-manifest.json \
   && grep -qE "release-preview-dry-run" docs/operations/public-provenance-manifest.json \
   && grep -qE "install-verify-dry-run" docs/operations/public-provenance-manifest.json \
   && grep -qE "release-governance-dry-run" docs/operations/public-provenance-manifest.json \
+  && grep -qE "rsi-health" docs/operations/public-provenance-manifest.json \
+  && grep -qE "rsi-health-bundle" docs/operations/public-provenance-manifest.json \
   && grep -qE '"default_ci_artifact_uploads": false' docs/operations/public-provenance-manifest.json \
   && grep -qE "Do not upload CI artifacts by default" docs/operations/RETAINED-EVIDENCE.md; then
   add_check "retained_evidence_policy" "passed" "public-safe retained evidence policy and manifest are present"
@@ -270,6 +283,8 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "release_governance_contract_validate" "AO Command release governance audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-governance/release-governance-audit.json"
   run_check "active_stack_status" "AO Command reads AO Foundry active-stack handoff status without orchestration" go run ./cmd/ao-command stack --ledger "$foundry/examples/readiness/active-stack-readiness.ledger.json"
   run_check "rsi_evidence_chain_smoke" "Foundry pulse, Forge retained proofs, Command health, and Covenant RSI claim boundary pass" scripts/rsi-evidence-chain-smoke.sh --forge "$forge" --foundry "$foundry" --covenant "$covenant" --out tmp/rsi-evidence-chain-smoke
+  run_check "rsi_health_contract_validate" "AO Command RSI health JSON validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/rsi-health-v0.1.schema.json" --document "$root/tmp/rsi-evidence-chain-smoke/ao-command-rsi-health.json"
+  run_check "rsi_health_bundle_contract_validate" "AO Command RSI health bundle validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/rsi-health-bundle-v0.1.schema.json" --document "$root/tmp/rsi-evidence-chain-smoke/rsi-health-bundle.json"
 
   forge="$(cd "$forge" && pwd)"
   mkdir -p "$root/tmp"

@@ -28,6 +28,9 @@ The audit is passing only when all gates pass:
   `docs/contracts/install-verify-audit-v0.1.schema.json`;
 - release governance dry-run evidence validates against
   `docs/contracts/release-governance-audit-v0.1.schema.json`;
+- RSI health JSON and bundle evidence validate against
+  `docs/contracts/rsi-health-v0.1.schema.json` and
+  `docs/contracts/rsi-health-bundle-v0.1.schema.json`;
 - AO Foundry active-stack handoff status is visible through read-only
   `ao-command stack --ledger` output;
 - the governed RSI evidence-chain smoke passes from `foundry pulse run` through
@@ -58,6 +61,8 @@ scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/rsi-evidence-chain-smoke
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/rsi-health-v0.1.schema.json" --document "$PWD/tmp/rsi-evidence-chain-smoke/ao-command-rsi-health.json"
+go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/rsi-health-bundle-v0.1.schema.json" --document "$PWD/tmp/rsi-evidence-chain-smoke/rsi-health-bundle.json"
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 scripts/verify-branch-protection.sh

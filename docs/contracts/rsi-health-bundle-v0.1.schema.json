@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/uesugitorachiyo/ao-command/docs/contracts/rsi-health-bundle-v0.1.schema.json",
+  "title": "AO Command RSI Health Bundle v0.1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "command_schema_version",
+    "status",
+    "rsi_mode",
+    "rsi_capability",
+    "operator_mode",
+    "mutates_repositories",
+    "claim_levels",
+    "families"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ao.command.rsi-health-bundle.v0.1"
+    },
+    "command_schema_version": {
+      "const": "ao.command.v0.1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "blocked"]
+    },
+    "rsi_mode": {
+      "const": "governed_fixture_local"
+    },
+    "rsi_capability": {
+      "type": "string",
+      "enum": ["demonstrated_local_fixture_loop", "not_demonstrated"]
+    },
+    "operator_mode": {
+      "const": "read_only"
+    },
+    "mutates_repositories": {
+      "const": false
+    },
+    "claim_levels": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/claim_level"
+      }
+    },
+    "families": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "$ref": "#/$defs/bundle_family"
+      }
+    },
+    "foundry_candidate_binding": {
+      "$ref": "#/$defs/foundry_candidate_binding"
+    },
+    "foundry_next_task_binding": {
+      "$ref": "#/$defs/foundry_next_task_binding"
+    },
+    "forge_retention_binding": {
+      "$ref": "#/$defs/forge_retention_binding"
+    }
+  },
+  "$defs": {
+    "claim_level": {
+      "type": "object",
+      "required": ["claim", "decision", "status", "reason"],
+      "properties": {
+        "claim": {
+          "type": "string",
+          "enum": [
+            "bounded_governed_rsi",
+            "full_autonomous_self_mutating_rsi"
+          ]
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["allowed", "denied"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "blocked"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "bundle_family": {
+      "type": "object",
+      "required": ["family", "status", "passed", "evidence", "sha256"],
+      "properties": {
+        "family": {
+          "type": "string",
+          "enum": ["ao-arena", "ao-crucible", "ao-sentinel", "ao-promoter", "ao-foundry"]
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "foundry_candidate_binding": {
+      "type": "object",
+      "required": [
+        "status",
+        "passed",
+        "candidate_evidence",
+        "gate_evidence",
+        "matched_eval_result_path",
+        "mutates_repositories"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["passed", "blocked"]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "candidate_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gate_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "matched_eval_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mutates_repositories": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "foundry_next_task_binding": {
+      "type": "object",
+      "required": [
+        "status",
+        "passed",
+        "next_task_evidence",
+        "candidate_evidence",
+        "gate_evidence",
+        "required_improvement_percent",
+        "actual_improvement_percent",
+        "autonomous_claim",
+        "mutates_repositories"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["passed", "blocked"]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "next_task_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gate_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_improvement_percent": {
+          "type": "number",
+          "minimum": 5
+        },
+        "actual_improvement_percent": {
+          "type": "number",
+          "minimum": 5
+        },
+        "autonomous_claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mutates_repositories": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "forge_retention_binding": {
+      "type": "object",
+      "required": [
+        "status",
+        "passed",
+        "goal_id",
+        "iteration",
+        "phase",
+        "retained_evidence",
+        "retained_output_count",
+        "mutates_repositories"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["passed", "blocked"]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "iteration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retained_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "retained_output_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mutates_repositories": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
