@@ -96,6 +96,9 @@ governed self-change dry-run producer
 AO2 rollback rehearsal evidence with `rollback_rehearsal.status=passed`, and
 requires ao2-control-plane to read back the same rollback rehearsal evidence
 from PR #72 after AO2 PR #200. It also fails closed unless AO Architecture pins
+AO2 PR #201's dry-run `covenant.live-self-change-authority.v1` authority-packet
+candidate with `schema_valid_for_claim_publish=false` and ao2-control-plane PR
+#73's `ao2.cp-ao2-rsi-authority-packet-readback.v1` observer readback,
 AO Forge PR #143's retained `ao-command-rsi-manifest-retention-proof.json` and
 AO Forge PR #144's `goalrun.architecture_rsi_pin_readback` evidence plus
 `ao-architecture-rsi-pin-readback.json`, and unless Architecture pins

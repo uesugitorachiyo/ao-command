@@ -889,6 +889,10 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 		!hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_self_change_dry_run_readback") {
 		return errors.New("bounded_governed_rsi required evidence must include AO2 self-change dry-run and control-plane readback")
 	}
+	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_rsi_authority_packet_dry_run_candidate") ||
+		!hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_authority_packet_readback") {
+		return errors.New("bounded_governed_rsi required evidence must include AO2 authority packet candidate and control-plane readback")
+	}
 	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao_forge_architecture_rsi_pin_readback") {
 		return errors.New("AO Forge architecture RSI pin readback evidence is required")
 	}
@@ -924,6 +928,9 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	}
 	if !hasAO2RSIRollbackRehearsal(ao2) || !hasAO2ControlPlaneRSIRollbackRehearsalReadback(ao2ControlPlane) {
 		return errors.New("AO2 RSI rollback rehearsal evidence and control-plane readback are required")
+	}
+	if !hasAO2RSIAuthorityPacketCandidate(ao2) || !hasAO2ControlPlaneRSIAuthorityPacketReadback(ao2ControlPlane) {
+		return errors.New("AO2 RSI authority packet candidate and control-plane readback are required")
 	}
 	for _, repo := range []string{"ao-operator", "ao-runtime", "ao-control-plane", "ao-conductor", "agy-swarms"} {
 		if !hasManifestRepository(manifest.DeprecatedOrOutOfScopeRepositories, repo) {
@@ -1044,6 +1051,17 @@ func hasAO2RSIRollbackRehearsal(repo rsiManifestRepository) bool {
 		manifestEvidenceContains(repo.ClaimOutput, "rollback_rehearsal=passed")
 }
 
+func hasAO2RSIAuthorityPacketCandidate(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "live-self-change-authority.packet.json") &&
+		manifestEvidenceContains(repo.Evidence, "covenant.live-self-change-authority.v1") &&
+		manifestEvidenceContains(repo.Evidence, "mutation_authority_packet.mode=dry_run_candidate") &&
+		manifestEvidenceContains(repo.Evidence, "mutation_authority_packet.schema_valid_for_claim_publish=false") &&
+		hasManifestKnownPR(repo.KnownPRs, 201, "Emit RSI authority packet dry-run evidence") &&
+		manifestEvidenceContains(repo.ClaimOutput, "mutation_authority_packet=dry_run_candidate") &&
+		manifestEvidenceContains(repo.ClaimOutput, "schema_valid_for_claim_publish=false") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied")
+}
+
 func hasAO2ControlPlaneRSISelfChangeDryRunReadback(repo rsiManifestRepository) bool {
 	return manifestEvidenceContains(repo.Evidence, "scripts/verify_ao2_rsi_self_change_dry_run.py") &&
 		manifestEvidenceContains(repo.Evidence, "tests/test_ao2_rsi_self_change_dry_run_readback.py") &&
@@ -1062,6 +1080,23 @@ func hasAO2ControlPlaneRSISelfChangeDryRunReadback(repo rsiManifestRepository) b
 func hasAO2ControlPlaneRSIRollbackRehearsalReadback(repo rsiManifestRepository) bool {
 	return manifestEvidenceContains(repo.Evidence, "rollback_rehearsal.status=passed") &&
 		hasManifestKnownPR(repo.KnownPRs, 72, "Require AO2 RSI rollback rehearsal readback")
+}
+
+func hasAO2ControlPlaneRSIAuthorityPacketReadback(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "scripts/verify_ao2_rsi_authority_packet.py") &&
+		manifestEvidenceContains(repo.Evidence, "tests/test_ao2_rsi_authority_packet_readback.py") &&
+		manifestEvidenceContains(repo.Evidence, "target/ao2-rsi-authority-packet-readback/summary.json") &&
+		manifestEvidenceContains(repo.Evidence, "ao2.cp-ao2-rsi-authority-packet-readback.v1") &&
+		manifestEvidenceContains(repo.Evidence, "covenant.live-self-change-authority.v1") &&
+		manifestEvidenceContains(repo.Evidence, "live-self-change-authority.packet.json") &&
+		manifestEvidenceContains(repo.Evidence, "schema_valid_for_claim_publish=false") &&
+		hasManifestKnownPR(repo.KnownPRs, 73, "Add AO2 RSI authority packet readback") &&
+		manifestEvidenceContains(repo.ClaimOutput, "control_plane_ao2_rsi_authority_packet_readback=passed") &&
+		manifestEvidenceContains(repo.ClaimOutput, "claim_level=full_autonomous_self_mutating_rsi decision=denied") &&
+		strings.Contains(repo.Boundary, "observer_only") &&
+		strings.Contains(repo.Boundary, "no_claim_approval") &&
+		strings.Contains(repo.Boundary, "no_patch_application") &&
+		strings.Contains(repo.Boundary, "no_repository_mutation")
 }
 
 func manifestEvidenceContains(values []string, term string) bool {

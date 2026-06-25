@@ -989,6 +989,28 @@ func TestRSIManifestFailsClosedWithoutCovenantLiveSelfChangeAuthorityPacketPin(t
 	}
 }
 
+func TestRSIManifestFailsClosedWithoutAO2AuthorityPacketReadbackPins(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingAO2AuthorityPacketReadbackPins(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "AO2 RSI authority packet candidate and control-plane readback are required") {
+		t.Fatalf("stderr missing AO2 authority packet readback reason: %s", stderr)
+	}
+}
+
+func TestRSIManifestFailsClosedWithoutAO2AuthorityPacketRequiredEvidence(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingAO2AuthorityPacketRequiredEvidence(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "bounded_governed_rsi required evidence must include AO2 authority packet candidate and control-plane readback") {
+		t.Fatalf("stderr missing AO2 authority packet required-evidence reason: %s", stderr)
+	}
+}
+
 func TestNextUsesAOForgeNextActionsWhenPresent(t *testing.T) {
 	fake := &fakeRunner{stdout: []byte(`{
 		"status": "blocked",
@@ -1201,6 +1223,9 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI Covenant rollback-retained pin", doc: readme, want: "rollback-retained.contract.json"},
 		{name: "README RSI Covenant authority packet schema pin", doc: readme, want: "covenant.live-self-change-authority.v1"},
 		{name: "README RSI Covenant authority packet fixture pin", doc: readme, want: "live-self-change-authority.packet.json"},
+		{name: "README RSI AO2 authority packet PR", doc: readme, want: "AO2 PR #201"},
+		{name: "README RSI authority packet not publish valid", doc: readme, want: "schema_valid_for_claim_publish=false"},
+		{name: "README RSI control-plane authority packet readback", doc: readme, want: "ao2.cp-ao2-rsi-authority-packet-readback.v1"},
 		{name: "README RSI manifest no mutation", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
 		{name: "README RSI Covenant fixture", doc: readme, want: "examples/full-rsi-claim-boundary/"},
@@ -1239,6 +1264,9 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs RSI Forge architecture readback pin", doc: productionReadiness, want: "goalrun.architecture_rsi_pin_readback"},
 		{name: "production readiness docs RSI Covenant rollback-retained pin", doc: productionReadiness, want: "rollback-retained.contract.json"},
 		{name: "production readiness docs RSI Covenant authority packet schema pin", doc: productionReadiness, want: "covenant.live-self-change-authority.v1"},
+		{name: "production readiness docs RSI AO2 authority packet PR", doc: productionReadiness, want: "AO2 PR #201"},
+		{name: "production readiness docs RSI authority packet not publish valid", doc: productionReadiness, want: "schema_valid_for_claim_publish=false"},
+		{name: "production readiness docs RSI control-plane authority packet readback", doc: productionReadiness, want: "ao2.cp-ao2-rsi-authority-packet-readback.v1"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
 		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
@@ -1762,15 +1790,15 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
 
 func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, true, true, true, true, true, true, true)
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, true, true, true, true, true, true, true, true, true)
 }
 
 func writeRSIManifestFixtureWithReadbacks(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, includeClaimReadinessReadback, includeSelfChangeReadback, includeRollbackRehearsalReadback, true, true, true, true)
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, includeClaimReadinessReadback, includeSelfChangeReadback, includeRollbackRehearsalReadback, true, true, true, true, true, true)
 }
 
-func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool, includeForgeManifestRetentionPin bool, includeForgeArchitectureReadbackPin bool, includeCovenantRetainedRollbackBoundaryPin bool, includeCovenantLiveSelfChangeAuthorityPacketPin bool) string {
+func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool, includeForgeManifestRetentionPin bool, includeForgeArchitectureReadbackPin bool, includeCovenantRetainedRollbackBoundaryPin bool, includeCovenantLiveSelfChangeAuthorityPacketPin bool, includeAO2AuthorityPacketPin bool, includeAO2ControlPlaneAuthorityPacketReadbackPin bool) string {
 	t.Helper()
 	fullClaim := ""
 	if includeDeniedFullClaim {
@@ -1799,6 +1827,14 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
         "ao2_rsi_self_change_dry_run",
         "ao2_control_plane_rsi_self_change_dry_run_readback"`
 	}
+	if includeAO2AuthorityPacketPin {
+		requiredEvidence += `,
+        "ao2_rsi_authority_packet_dry_run_candidate"`
+	}
+	if includeAO2ControlPlaneAuthorityPacketReadbackPin {
+		requiredEvidence += `,
+        "ao2_control_plane_rsi_authority_packet_readback"`
+	}
 	if includeForgeArchitectureReadbackPin {
 		requiredEvidence += `,
         "ao_forge_architecture_rsi_pin_readback"`
@@ -1822,6 +1858,26 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
 			rollbackRehearsalOutput = `,
 	        "rollback_rehearsal=passed"`
 		}
+		authorityPacketEvidence := ""
+		authorityPacketPR := ""
+		authorityPacketOutput := ""
+		if includeAO2AuthorityPacketPin {
+			authorityPacketEvidence = `,
+	        "target/rsi-self-change-dry-run/latest/live-self-change-authority.packet.json",
+	        "covenant.live-self-change-authority.v1",
+	        "mutation_authority_packet.mode=dry_run_candidate",
+	        "mutation_authority_packet.schema_valid_for_claim_publish=false"`
+			authorityPacketPR = `,
+	        {
+	          "number": 201,
+	          "title": "Emit RSI authority packet dry-run evidence",
+	          "url": "https://github.com/uesugitorachiyo/ao2/pull/201",
+	          "merge_commit": "8b232431bbeb007330ebf1acfb025b2a73ba98d3"
+	        }`
+			authorityPacketOutput = `,
+	        "mutation_authority_packet=dry_run_candidate",
+	        "schema_valid_for_claim_publish=false"`
+		}
 		ao2Repo = `{
 	      "id": "ao2",
 	      "role": "governed_execution_and_evidence_runtime",
@@ -1835,7 +1891,7 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
 	        "target/rsi-self-change-dry-run/latest/proposed-self-change.patch",
 	        "target/rsi-self-change-dry-run/latest/rollback-self-change.patch",
 	        "ao2.rsi-claim-readiness-audit.v1",
-	        "ao2.rsi-governed-self-change-dry-run.v1"` + rollbackRehearsalEvidence + `
+	        "ao2.rsi-governed-self-change-dry-run.v1"` + authorityPacketEvidence + rollbackRehearsalEvidence + `
 	      ],
 	      "known_prs": [
 	        {
@@ -1849,10 +1905,10 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
 	          "title": "Add AO2 RSI self-change dry-run evidence",
 	          "url": "https://github.com/uesugitorachiyo/ao2/pull/199",
 	          "merge_commit": "204078604b8bb52b606ed2bf35ff5c5dd9654b21"
-	        }` + rollbackRehearsalPR + `
+	        }` + rollbackRehearsalPR + authorityPacketPR + `
 	      ],
 	      "claim_output": [
-	        "self_change_dry_run=passed"` + rollbackRehearsalOutput + `,
+	        "self_change_dry_run=passed"` + rollbackRehearsalOutput + authorityPacketOutput + `,
 	        "claim_level=bounded_governed_rsi decision=allowed",
 	        "claim_level=full_autonomous_self_mutating_rsi decision=denied"
 	      ],
@@ -1894,6 +1950,26 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
 			extraClaimOutput = `,
 	        "control_plane_ao2_rsi_self_change_dry_run_readback=passed"`
 			boundary = "observer_only_no_claim_approval_no_patch_application_no_repository_mutation"
+		}
+		if includeAO2ControlPlaneAuthorityPacketReadbackPin {
+			extraReadbackEvidence += `,
+	        "scripts/verify_ao2_rsi_authority_packet.py",
+	        "tests/test_ao2_rsi_authority_packet_readback.py",
+	        "target/ao2-rsi-authority-packet-readback/summary.json",
+	        "ao2.cp-ao2-rsi-authority-packet-readback.v1",
+	        "covenant.live-self-change-authority.v1",
+	        "live-self-change-authority.packet.json",
+	        "schema_valid_for_claim_publish=false"`
+			extraKnownPR += `,
+	        {
+	          "number": 73,
+	          "title": "Add AO2 RSI authority packet readback",
+	          "url": "https://github.com/uesugitorachiyo/ao2-control-plane/pull/73",
+	          "merge_commit": "6b83330c8a673b2bf210818c080ba4361062cf8f"
+	        }`
+			extraClaimOutput += `,
+	        "control_plane_ao2_rsi_authority_packet_readback=passed"`
+			boundary = "observer_only_no_claim_approval_no_patch_application_no_repository_mutation_no_claim_publish"
 		}
 		ao2ControlPlaneRepo = `{
       "id": "ao2-control-plane",
@@ -2084,22 +2160,42 @@ func writeRSIManifestFixtureMissingAO2RollbackRehearsalReadback(t *testing.T) st
 
 func writeRSIManifestFixtureMissingForgeManifestRetentionPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, false, true, true, true)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, false, true, true, true, true, true)
 }
 
 func writeRSIManifestFixtureMissingForgeArchitectureReadbackPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, false, true, true)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, false, true, true, true, true)
 }
 
 func writeRSIManifestFixtureMissingCovenantRetainedRollbackBoundaryPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, false, true)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, false, true, true, true)
 }
 
 func writeRSIManifestFixtureMissingCovenantLiveSelfChangeAuthorityPacketPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, true, false)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, true, false, true, true)
+}
+
+func writeRSIManifestFixtureMissingAO2AuthorityPacketReadbackPins(t *testing.T) string {
+	t.Helper()
+	path := writeRSIManifestFixture(t, true)
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read rsi manifest fixture: %v", err)
+	}
+	manifest := strings.ReplaceAll(string(bytes), `"number": 201`, `"number": 202`)
+	manifest = strings.ReplaceAll(manifest, `"number": 73`, `"number": 74`)
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write rsi manifest fixture without AO2 authority packet pins: %v", err)
+	}
+	return path
+}
+
+func writeRSIManifestFixtureMissingAO2AuthorityPacketRequiredEvidence(t *testing.T) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, true, true, false, false)
 }
 
 func stackRepoPresent(repos []struct {
