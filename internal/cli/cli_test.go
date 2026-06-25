@@ -268,6 +268,64 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 	}
 }
 
+func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	bundleOut := filepath.Join(t.TempDir(), "rsi-health-bundle.json")
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--bundle-out", bundleOut,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health bundle exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "bundle="+bundleOut) {
+		t.Fatalf("rsi health stdout missing bundle path:\n%s", stdout)
+	}
+
+	bytes, err := os.ReadFile(bundleOut)
+	if err != nil {
+		t.Fatalf("read bundle: %v", err)
+	}
+	var got struct {
+		SchemaVersion        string `json:"schema_version"`
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		RSIMode              string `json:"rsi_mode"`
+		RSICapability        string `json:"rsi_capability"`
+		OperatorMode         string `json:"operator_mode"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+		Families             []struct {
+			Family   string `json:"family"`
+			Status   string `json:"status"`
+			Passed   bool   `json:"passed"`
+			Evidence string `json:"evidence"`
+			SHA256   string `json:"sha256"`
+		} `json:"families"`
+	}
+	if err := json.Unmarshal(bytes, &got); err != nil {
+		t.Fatalf("invalid bundle JSON: %v\n%s", err, string(bytes))
+	}
+	if got.SchemaVersion != "ao.command.rsi-health-bundle.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "passed" ||
+		got.RSIMode != "governed_fixture_local" ||
+		got.RSICapability != "demonstrated_local_fixture_loop" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		len(got.Families) != 4 {
+		t.Fatalf("unexpected bundle: %+v", got)
+	}
+	for _, family := range got.Families {
+		if !family.Passed || family.Evidence == "" || len(family.SHA256) != 64 {
+			t.Fatalf("family missing pass/evidence/hash: %+v", family)
+		}
+	}
+}
+
 func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, false)
 	code, stdout, stderr := runWithFake([]string{
@@ -475,6 +533,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
+		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
 		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
@@ -556,6 +615,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow active stack status", doc: workflow, want: "Active stack status"},
 		{name: "workflow RSI health step", doc: workflow, want: "RSI health dry-run"},
 		{name: "workflow RSI health command", doc: workflow, want: "bin/ao-command rsi health"},
+		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)

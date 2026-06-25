@@ -95,7 +95,9 @@ jobs:
             --crucible-gate tmp/rsi-health/crucible-hardening-gate.json \
             --sentinel-verdict tmp/rsi-health/sentinel-verdict.json \
             --promoter-gate tmp/rsi-health/promoter-gate.json \
+            --bundle-out tmp/rsi-health/rsi-health-bundle.json \
             --json
+          test -s tmp/rsi-health/rsi-health-bundle.json
 
       - name: Integration smoke
         run: scripts/ao-command-smoke.sh --forge ao-forge --out tmp/ao-command-smoke
