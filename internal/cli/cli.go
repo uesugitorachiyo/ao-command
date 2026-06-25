@@ -103,7 +103,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
-  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--bundle-out PATH] [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--bundle-out PATH] [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -202,10 +202,10 @@ func (a App) stack(args []string) int {
 
 func (a App) rsi(args []string) int {
 	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--bundle-out PATH] [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH [--bundle-out PATH] [--json]")
 		return 2
 	}
-	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, bundleOut string
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -213,16 +213,17 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&crucibleGate, "crucible-gate", "", "path to AO Crucible hardening gate JSON")
 	fs.StringVar(&sentinelVerdict, "sentinel-verdict", "", "path to AO Sentinel verdict JSON")
 	fs.StringVar(&promoterGate, "promoter-gate", "", "path to AO Promoter gate JSON")
+	fs.StringVar(&foundryGate, "foundry-gate", "", "path to AO Foundry RSI improvement gate JSON")
 	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" {
+	if arenaGate == "" || crucibleGate == "" || sentinelVerdict == "" || promoterGate == "" || foundryGate == "" {
 		fmt.Fprintln(a.Stderr, "ao-command rsi health: all evidence flags are required")
 		return 2
 	}
-	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate)
+	summary, err := readRSIHealth(arenaGate, crucibleGate, sentinelVerdict, promoterGate, foundryGate)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
 		return 1
@@ -581,7 +582,7 @@ func stackSummaryFromLedger(path string, ledger activeStackLedger) stackSummary 
 	}
 }
 
-func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath string) (rsiHealthSummary, error) {
+func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promoterGatePath, foundryGatePath string) (rsiHealthSummary, error) {
 	arena, err := readArenaGate(arenaGatePath)
 	if err != nil {
 		return rsiHealthSummary{}, err
@@ -598,7 +599,11 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 	if err != nil {
 		return rsiHealthSummary{}, err
 	}
-	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter}
+	foundry, err := readFoundryRSIImprovementGate(foundryGatePath)
+	if err != nil {
+		return rsiHealthSummary{}, err
+	}
+	families := []rsiFamilyStatus{arena, crucible, sentinel, promoter, foundry}
 	status := "passed"
 	capability := "demonstrated_local_fixture_loop"
 	for _, family := range families {
@@ -736,6 +741,30 @@ func readPromoterGate(path string) (rsiFamilyStatus, error) {
 		gate.ActivationPlanAllowed &&
 		len(gate.Blockers) == 0
 	return rsiFamilyStatus{Family: "ao-promoter", Status: gate.Status, Passed: passed, Evidence: path}, nil
+}
+
+func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, error) {
+	var gate struct {
+		SchemaVersion              string  `json:"schema_version"`
+		Status                     string  `json:"status"`
+		BaselineScore              float64 `json:"baseline_score"`
+		CandidateScore             float64 `json:"candidate_score"`
+		RequiredImprovementPercent float64 `json:"required_improvement_percent"`
+		ActualImprovementPercent   float64 `json:"actual_improvement_percent"`
+		AutonomousClaim            string  `json:"autonomous_claim"`
+		MutatesRepositories        bool    `json:"mutates_repositories"`
+	}
+	if err := readJSONFile(path, &gate); err != nil {
+		return rsiFamilyStatus{}, fmt.Errorf("read foundry RSI improvement gate: %w", err)
+	}
+	passed := gate.SchemaVersion == "ao.foundry.rsi-improvement-gate.v0.1" &&
+		gate.Status == "passed" &&
+		gate.CandidateScore >= gate.BaselineScore &&
+		gate.ActualImprovementPercent >= gate.RequiredImprovementPercent &&
+		gate.RequiredImprovementPercent > 0 &&
+		gate.AutonomousClaim == "measured_local_improvement" &&
+		!gate.MutatesRepositories
+	return rsiFamilyStatus{Family: "ao-foundry", Status: gate.Status, Passed: passed, Evidence: path}, nil
 }
 
 func readJSONFile(path string, target any) error {

@@ -90,11 +90,24 @@ jobs:
             "blockers": []
           }
           JSON
+          cat > tmp/rsi-health/foundry-rsi-improvement-gate.json <<'JSON'
+          {
+            "schema_version": "ao.foundry.rsi-improvement-gate.v0.1",
+            "status": "passed",
+            "baseline_score": 90,
+            "candidate_score": 100,
+            "required_improvement_percent": 5,
+            "actual_improvement_percent": 10,
+            "autonomous_claim": "measured_local_improvement",
+            "mutates_repositories": false
+          }
+          JSON
           bin/ao-command rsi health \
             --arena-gate tmp/rsi-health/arena-promotion-gate.json \
             --crucible-gate tmp/rsi-health/crucible-hardening-gate.json \
             --sentinel-verdict tmp/rsi-health/sentinel-verdict.json \
             --promoter-gate tmp/rsi-health/promoter-gate.json \
+            --foundry-gate tmp/rsi-health/foundry-rsi-improvement-gate.json \
             --bundle-out tmp/rsi-health/rsi-health-bundle.json \
             --json
           test -s tmp/rsi-health/rsi-health-bundle.json

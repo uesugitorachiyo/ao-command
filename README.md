@@ -41,7 +41,7 @@ owner.
 ```sh
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
-go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --bundle-out tmp/rsi-health-bundle.json
+go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --bundle-out tmp/rsi-health-bundle.json
 go run ./cmd/ao-command next --forge ../ao-forge
 go run ./cmd/ao-command goals --forge ../ao-forge --goal-run ../ao-forge/examples/goals/ao2-weekend-hardening.goal-run.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema docs/contracts/production-readiness-audit-v0.1.schema.json --document /tmp/ao-forge-production-readiness.json
@@ -58,8 +58,9 @@ active repository count, release handoff gates, `operator_mode=read_only`, and
 publish releases, or write control-plane records.
 
 `rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
-Sentinel, and AO Promoter. It reports whether the governed fixture/local RSI
-chain is demonstrated and keeps `operator_mode=read_only` and
+Sentinel, AO Promoter, and AO Foundry's RSI improvement gate. It reports
+whether the governed fixture/local RSI chain is demonstrated and keeps
+`operator_mode=read_only` and
 `mutates_repositories=false`. Use `--bundle-out` to write the canonical
 `ao.command.rsi-health-bundle.v0.1` JSON artifact with the source evidence
 paths and SHA-256 hashes retained in one portable file.
@@ -111,7 +112,7 @@ AO Covenant-approved design moves that boundary.
 go test ./...
 go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
-go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --bundle-out tmp/rsi-health-bundle.json --json
+go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --bundle-out tmp/rsi-health-bundle.json --json
 scripts/ao-command-smoke.sh --forge ../ao-forge --out tmp/ao-command-smoke
 scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.0-preview
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"

@@ -202,6 +202,7 @@ func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 		"--crucible-gate", paths.crucible,
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
 	}, &fakeRunner{})
 	if code != 0 {
 		t.Fatalf("rsi health exit=%d stderr=%s", code, stderr)
@@ -214,6 +215,7 @@ func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 		"family=ao-crucible status=passed",
 		"family=ao-sentinel status=clear",
 		"family=ao-promoter status=passed",
+		"family=ao-foundry status=passed",
 		"rsi_capability=demonstrated_local_fixture_loop",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -230,6 +232,7 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		"--crucible-gate", paths.crucible,
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
 		"--json",
 	}, &fakeRunner{})
 	if code != 0 {
@@ -258,7 +261,7 @@ func TestRSIHealthJSONIncludesEvidencePathsAndNoMutation(t *testing.T) {
 		got.RSICapability != "demonstrated_local_fixture_loop" ||
 		got.OperatorMode != "read_only" ||
 		got.MutatesRepositories ||
-		len(got.Families) != 4 {
+		len(got.Families) != 5 {
 		t.Fatalf("unexpected rsi health summary: %+v", got)
 	}
 	for _, family := range got.Families {
@@ -277,6 +280,7 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		"--crucible-gate", paths.crucible,
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
 		"--bundle-out", bundleOut,
 	}, &fakeRunner{})
 	if code != 0 {
@@ -316,7 +320,7 @@ func TestRSIHealthWritesCanonicalBundle(t *testing.T) {
 		got.RSICapability != "demonstrated_local_fixture_loop" ||
 		got.OperatorMode != "read_only" ||
 		got.MutatesRepositories ||
-		len(got.Families) != 4 {
+		len(got.Families) != 5 {
 		t.Fatalf("unexpected bundle: %+v", got)
 	}
 	for _, family := range got.Families {
@@ -334,6 +338,7 @@ func TestRSIHealthFailsClosedWhenAssuranceFamilyBlocks(t *testing.T) {
 		"--crucible-gate", paths.crucible,
 		"--sentinel-verdict", paths.sentinel,
 		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
 	}, &fakeRunner{})
 	if code != 1 {
 		t.Fatalf("rsi health blocked exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
@@ -760,6 +765,7 @@ type rsiHealthFixturePaths struct {
 	crucible string
 	sentinel string
 	promoter string
+	foundry  string
 }
 
 func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
@@ -820,6 +826,16 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
     {"role": "arena_promotion_gate", "status": "passed", "accepted_status": "passed", "passed": true},
     {"role": "crucible_hardening_gate", "status": "passed", "accepted_status": "passed", "passed": true}
   ]
+}`),
+		foundry: write("foundry-rsi-improvement-gate.json", `{
+  "schema_version": "ao.foundry.rsi-improvement-gate.v0.1",
+  "status": "passed",
+  "baseline_score": 90,
+  "candidate_score": 100,
+  "required_improvement_percent": 5,
+  "actual_improvement_percent": 10,
+  "autonomous_claim": "measured_local_improvement",
+  "mutates_repositories": false
 }`),
 	}
 }
