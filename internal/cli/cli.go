@@ -889,6 +889,9 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 		!hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao2_control_plane_rsi_self_change_dry_run_readback") {
 		return errors.New("bounded_governed_rsi required evidence must include AO2 self-change dry-run and control-plane readback")
 	}
+	if !hasManifestClaimRequiredEvidence(manifest.ClaimLevels, "bounded_governed_rsi", "ao_forge_architecture_rsi_pin_readback") {
+		return errors.New("AO Forge architecture RSI pin readback evidence is required")
+	}
 	for _, repo := range []string{"ao-foundry", "ao-forge", "ao-command", "ao-covenant", "ao2", "ao2-control-plane"} {
 		if !hasManifestRepository(manifest.ActiveRepositories, repo) {
 			return fmt.Errorf("active repository %s is required", repo)
@@ -897,6 +900,9 @@ func validateRSIManifest(manifest rsiArchitectureManifest) error {
 	aoForge, ok := findManifestRepository(manifest.ActiveRepositories, "ao-forge")
 	if !ok || !hasAOForgeRetainedCommandManifestEvidence(aoForge) {
 		return errors.New("AO Forge retained AO Command RSI manifest evidence is required")
+	}
+	if !hasAOForgeArchitectureRSIPinReadback(aoForge) {
+		return errors.New("AO Forge architecture RSI pin readback evidence is required")
 	}
 	aoCovenant, ok := findManifestRepository(manifest.ActiveRepositories, "ao-covenant")
 	if !ok || !hasAOCovenantRetainedRollbackBoundary(aoCovenant) {
@@ -979,6 +985,13 @@ func hasAOForgeRetainedCommandManifestEvidence(repo rsiManifestRepository) bool 
 		manifestEvidenceContains(repo.Evidence, "ao-command-rsi-manifest") &&
 		manifestEvidenceContains(repo.Evidence, "rollback_rehearsal.status=passed") &&
 		hasManifestKnownPR(repo.KnownPRs, 143, "Retain AO Command RSI manifest evidence")
+}
+
+func hasAOForgeArchitectureRSIPinReadback(repo rsiManifestRepository) bool {
+	return manifestEvidenceContains(repo.Evidence, "docs/contracts/architecture-rsi-pin-readback-v0.1.schema.json") &&
+		manifestEvidenceContains(repo.Evidence, "docs/evidence/architecture/ao-architecture-rsi-pin-readback.json") &&
+		manifestEvidenceContains(repo.Evidence, "goalrun.architecture_rsi_pin_readback") &&
+		hasManifestKnownPR(repo.KnownPRs, 144, "Require architecture RSI pin readback readiness")
 }
 
 func hasAOCovenantRetainedRollbackBoundary(repo rsiManifestRepository) bool {

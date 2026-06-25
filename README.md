@@ -97,6 +97,8 @@ AO2 rollback rehearsal evidence with `rollback_rehearsal.status=passed`, and
 requires ao2-control-plane to read back the same rollback rehearsal evidence
 from PR #72 after AO2 PR #200. It also fails closed unless AO Architecture pins
 AO Forge PR #143's retained `ao-command-rsi-manifest-retention-proof.json` and
+AO Forge PR #144's `goalrun.architecture_rsi_pin_readback` evidence plus
+`ao-architecture-rsi-pin-readback.json`, and unless Architecture pins
 AO Covenant PR #57's `rollback-retained.contract.json` denial fixture. It
 reports `operator_mode=read_only` with `mutates_repositories=false`.
 

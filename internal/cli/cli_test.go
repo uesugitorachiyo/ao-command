@@ -956,6 +956,17 @@ func TestRSIManifestFailsClosedWithoutForgeManifestRetentionPin(t *testing.T) {
 	}
 }
 
+func TestRSIManifestFailsClosedWithoutForgeArchitectureReadbackPin(t *testing.T) {
+	manifest := writeRSIManifestFixtureMissingForgeArchitectureReadbackPin(t)
+	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi manifest invalid exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "AO Forge architecture RSI pin readback evidence is required") {
+		t.Fatalf("stderr missing AO Forge architecture readback reason: %s", stderr)
+	}
+}
+
 func TestRSIManifestFailsClosedWithoutCovenantRetainedRollbackBoundaryPin(t *testing.T) {
 	manifest := writeRSIManifestFixtureMissingCovenantRetainedRollbackBoundaryPin(t)
 	code, stdout, stderr := runWithFake([]string{"rsi", "manifest", "--manifest", manifest, "--json"}, &fakeRunner{})
@@ -1174,6 +1185,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI rollback rehearsal status", doc: readme, want: "rollback_rehearsal.status=passed"},
 		{name: "README RSI rollback rehearsal PRs", doc: readme, want: "AO2 PR #200"},
 		{name: "README RSI Forge manifest retention pin", doc: readme, want: "ao-command-rsi-manifest-retention-proof.json"},
+		{name: "README RSI Forge architecture readback pin", doc: readme, want: "goalrun.architecture_rsi_pin_readback"},
+		{name: "README RSI Forge architecture readback document", doc: readme, want: "ao-architecture-rsi-pin-readback.json"},
 		{name: "README RSI Covenant rollback-retained pin", doc: readme, want: "rollback-retained.contract.json"},
 		{name: "README RSI manifest no mutation", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI Forge aggregate proof", doc: readme, want: "bounded-rsi-improvement-chain-retention-proof.json"},
@@ -1210,6 +1223,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs RSI rollback rehearsal status", doc: productionReadiness, want: "rollback_rehearsal.status=passed"},
 		{name: "production readiness docs RSI rollback rehearsal PRs", doc: productionReadiness, want: "ao2-control-plane PR\n  #72"},
 		{name: "production readiness docs RSI Forge manifest retention pin", doc: productionReadiness, want: "ao-command-rsi-manifest-retention-proof.json"},
+		{name: "production readiness docs RSI Forge architecture readback pin", doc: productionReadiness, want: "goalrun.architecture_rsi_pin_readback"},
 		{name: "production readiness docs RSI Covenant rollback-retained pin", doc: productionReadiness, want: "rollback-retained.contract.json"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
 		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
@@ -1734,15 +1748,15 @@ func writeRSIHealthFixtures(t *testing.T, clear bool) rsiHealthFixturePaths {
 
 func writeRSIManifestFixture(t *testing.T, includeDeniedFullClaim bool) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, true, true, true, true, true)
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, true, true, true, true, true, true)
 }
 
 func writeRSIManifestFixtureWithReadbacks(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, includeClaimReadinessReadback, includeSelfChangeReadback, includeRollbackRehearsalReadback, true, true)
+	return writeRSIManifestFixtureWithPins(t, includeDeniedFullClaim, includeClaimReadinessReadback, includeSelfChangeReadback, includeRollbackRehearsalReadback, true, true, true)
 }
 
-func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool, includeForgeManifestRetentionPin bool, includeCovenantRetainedRollbackBoundaryPin bool) string {
+func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, includeClaimReadinessReadback bool, includeSelfChangeReadback bool, includeRollbackRehearsalReadback bool, includeForgeManifestRetentionPin bool, includeForgeArchitectureReadbackPin bool, includeCovenantRetainedRollbackBoundaryPin bool) string {
 	t.Helper()
 	fullClaim := ""
 	if includeDeniedFullClaim {
@@ -1770,6 +1784,10 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
 		requiredEvidence += `,
         "ao2_rsi_self_change_dry_run",
         "ao2_control_plane_rsi_self_change_dry_run_readback"`
+	}
+	if includeForgeArchitectureReadbackPin {
+		requiredEvidence += `,
+        "ao_forge_architecture_rsi_pin_readback"`
 	}
 	ao2Repo := `{"id": "ao2", "role": "governed_execution_and_evidence_runtime"}`
 	if includeSelfChangeReadback {
@@ -1912,6 +1930,19 @@ func writeRSIManifestFixtureWithPins(t *testing.T, includeDeniedFullClaim bool, 
           "merge_commit": "966a3022c66635ab03b0029cd6cf68aefccd11b4"
         }`
 	}
+	if includeForgeArchitectureReadbackPin {
+		aoForgeEvidence += `,
+        "docs/contracts/architecture-rsi-pin-readback-v0.1.schema.json",
+        "docs/evidence/architecture/ao-architecture-rsi-pin-readback.json",
+        "goalrun.architecture_rsi_pin_readback"`
+		aoForgePRs += `,
+        {
+          "number": 144,
+          "title": "Require architecture RSI pin readback readiness",
+          "url": "https://github.com/uesugitorachiyo/ao-forge/pull/144",
+          "merge_commit": "c196384c854448ee327f8ce4dbeb346c84ab649a"
+        }`
+	}
 	aoForgeRepo := `{
       "id": "ao-forge",
       "role": "goalrun_retention_and_aggregate_proof",
@@ -2026,12 +2057,17 @@ func writeRSIManifestFixtureMissingAO2RollbackRehearsalReadback(t *testing.T) st
 
 func writeRSIManifestFixtureMissingForgeManifestRetentionPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, false, true)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, false, true, true)
+}
+
+func writeRSIManifestFixtureMissingForgeArchitectureReadbackPin(t *testing.T) string {
+	t.Helper()
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, false, true)
 }
 
 func writeRSIManifestFixtureMissingCovenantRetainedRollbackBoundaryPin(t *testing.T) string {
 	t.Helper()
-	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, false)
+	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, false)
 }
 
 func stackRepoPresent(repos []struct {
