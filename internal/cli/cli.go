@@ -628,6 +628,8 @@ type foundryRSIImprovementGate struct {
 	Status                     string                 `json:"status"`
 	BaselineScore              float64                `json:"baseline_score"`
 	CandidateScore             float64                `json:"candidate_score"`
+	BaselineScorePercent       *float64               `json:"baseline_score_percent,omitempty"`
+	CandidateScorePercent      *float64               `json:"candidate_score_percent,omitempty"`
 	RequiredImprovementPercent float64                `json:"required_improvement_percent"`
 	ActualImprovementPercent   float64                `json:"actual_improvement_percent"`
 	AutonomousClaim            string                 `json:"autonomous_claim"`
@@ -948,6 +950,7 @@ func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, foundryRSIImpr
 	if err := readJSONFile(path, &gate); err != nil {
 		return rsiFamilyStatus{}, foundryRSIImprovementGate{}, fmt.Errorf("read foundry RSI improvement gate: %w", err)
 	}
+	gate.normalizeScoreFields()
 	passed := gate.SchemaVersion == "ao.foundry.rsi-improvement-gate.v0.1" &&
 		gate.Status == "passed" &&
 		gate.CandidateScore >= gate.BaselineScore &&
@@ -956,6 +959,15 @@ func readFoundryRSIImprovementGate(path string) (rsiFamilyStatus, foundryRSIImpr
 		gate.AutonomousClaim == "measured_local_improvement" &&
 		!gate.MutatesRepositories
 	return rsiFamilyStatus{Family: "ao-foundry", Status: gate.Status, Passed: passed, Evidence: path}, gate, nil
+}
+
+func (gate *foundryRSIImprovementGate) normalizeScoreFields() {
+	if gate.BaselineScore == 0 && gate.BaselineScorePercent != nil {
+		gate.BaselineScore = *gate.BaselineScorePercent
+	}
+	if gate.CandidateScore == 0 && gate.CandidateScorePercent != nil {
+		gate.CandidateScore = *gate.CandidateScorePercent
+	}
 }
 
 func readFoundryRSICandidateBinding(candidatePath, gatePath string, gate foundryRSIImprovementGate) (foundryCandidateBindingStatus, error) {

@@ -582,6 +582,65 @@ func TestRSIHealthFailsClosedWhenForgeRetainedProofViolatesSchema(t *testing.T) 
 	}
 }
 
+func TestRSIHealthAcceptsFoundryPulseScorePercentGate(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	if err := os.WriteFile(paths.foundry, []byte(`{
+  "schema_version": "ao.foundry.rsi-improvement-gate.v0.1",
+  "status": "passed",
+  "baseline_score_percent": 90,
+  "candidate_score_percent": 100,
+  "required_improvement_percent": 5,
+  "actual_improvement_percent": 10,
+  "autonomous_claim": "measured_local_improvement",
+  "mutates_repositories": false,
+  "evidence": [
+    {
+      "label": "baseline",
+      "path": "examples/evals/rsi-baseline.eval-result.json",
+      "schema_version": "ao.foundry.eval-result.v0.1",
+      "status": "ready",
+      "score": 90,
+      "max_score": 100,
+      "sha256": "e5824cee9ef1455fcdc74dfecc7e30710edb5ef67cb939eff92d57283dfdc52e"
+    },
+    {
+      "label": "candidate",
+      "path": "tmp/pulse-rsi-verify/eval-result.json",
+      "schema_version": "ao.foundry.eval-result.v0.1",
+      "status": "ready",
+      "score": 100,
+      "max_score": 100,
+      "sha256": "cf3f99d1b1639ef2fd2ba24cb75481211c0c4b0ad8e81605be5fbd6e3f7f39ec"
+    }
+  ],
+  "next_actions": []
+}`), 0o644); err != nil {
+		t.Fatalf("write foundry pulse score-percent gate: %v", err)
+	}
+
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("rsi health with Foundry pulse score-percent gate exit=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "ao_command_rsi_health=passed") ||
+		!strings.Contains(stdout, "rsi_capability=demonstrated_local_fixture_loop") {
+		t.Fatalf("stdout missing passed health:\n%s", stdout)
+	}
+}
+
 func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	if err := os.WriteFile(paths.foundryNextTask, []byte(`{
@@ -906,6 +965,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	installVerifyDryRun := read("scripts", "install-verify-dry-run.sh")
 	releaseGovernanceSchema := read("docs", "contracts", "release-governance-audit-v0.1.schema.json")
 	releaseGovernanceDryRun := read("scripts", "release-governance-dry-run.sh")
+	rsiEvidenceChainSmoke := read("scripts", "rsi-evidence-chain-smoke.sh")
 	publicReadinessAudit := read("scripts", "public-readiness-audit.sh")
 	productionReadinessAudit := read("scripts", "production-readiness-audit.sh")
 	workflow := read(".github", "workflows", "ci.yml")
@@ -924,6 +984,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README RSI health Forge retained gate", doc: readme, want: "--forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json"},
 		{name: "README RSI health Forge retained command", doc: readme, want: "--forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json"},
 		{name: "README RSI health bundle", doc: readme, want: "--bundle-out tmp/rsi-health-bundle.json"},
+		{name: "README RSI evidence chain smoke", doc: readme, want: "scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant"},
 		{name: "README RSI health read-only", doc: readme, want: "mutates_repositories=false"},
 		{name: "README Foundry owner", doc: readme, want: "orchestration_owner=ao-foundry"},
 		{name: "README deprecated repos out of scope", doc: readme, want: "Deprecated standalone runtime"},
@@ -971,6 +1032,10 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "release governance schema blocked", doc: releaseGovernanceSchema, want: "blocked_pending_operator_approval"},
 		{name: "release governance dry run blocked", doc: releaseGovernanceDryRun, want: "blocked_pending_operator_approval"},
 		{name: "release governance dry run no release create", doc: releaseGovernanceDryRun, want: "\"would_create_release\": false"},
+		{name: "RSI evidence chain smoke Foundry pulse", doc: rsiEvidenceChainSmoke, want: "foundry pulse run"},
+		{name: "RSI evidence chain smoke Command health", doc: rsiEvidenceChainSmoke, want: "ao-command rsi health"},
+		{name: "RSI evidence chain smoke Covenant claim boundary", doc: rsiEvidenceChainSmoke, want: "full-autonomous-self-mutating-rsi"},
+		{name: "RSI evidence chain smoke read-only", doc: rsiEvidenceChainSmoke, want: "\"mutates_repositories\": false"},
 		{name: "public readiness audit repo private check", doc: publicReadinessAudit, want: "repository_private"},
 		{name: "public readiness audit no artifacts", doc: publicReadinessAudit, want: "ci_artifact_uploads"},
 		{name: "public readiness audit no dangerous writes", doc: publicReadinessAudit, want: "dangerous_write_surface"},
@@ -983,6 +1048,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness audit release governance contract", doc: productionReadinessAudit, want: "release_governance_contract"},
 		{name: "production readiness audit release governance dry-run", doc: productionReadinessAudit, want: "release_governance_dry_run"},
 		{name: "production readiness audit active stack status", doc: productionReadinessAudit, want: "active_stack_status"},
+		{name: "production readiness audit RSI evidence chain smoke", doc: productionReadinessAudit, want: "rsi_evidence_chain_smoke"},
 		{name: "production readiness audit retained evidence policy", doc: productionReadinessAudit, want: "retained_evidence_policy"},
 		{name: "production readiness audit operator closeout", doc: productionReadinessAudit, want: "operator_closeout"},
 		{name: "production readiness audit public repo", doc: productionReadinessAudit, want: "repository_public"},
@@ -1010,6 +1076,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "workflow RSI health Forge retained gate", doc: workflow, want: "--forge-retained-gate tmp/rsi-health/forge-retained-foundry-rsi-improvement-gate.json"},
 		{name: "workflow RSI health Forge retained command", doc: workflow, want: "--forge-retained-command-health tmp/rsi-health/forge-retained-command-rsi-health.json"},
 		{name: "workflow RSI health bundle", doc: workflow, want: "--bundle-out tmp/rsi-health/rsi-health-bundle.json"},
+		{name: "workflow RSI evidence chain smoke", doc: workflow, want: "scripts/rsi-evidence-chain-smoke.sh --forge ao-forge --foundry ao-foundry --covenant ao-covenant"},
 	} {
 		if !strings.Contains(check.doc, check.want) {
 			t.Fatalf("%s missing %q", check.name, check.want)
@@ -1017,7 +1084,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	}
 }
 
-func TestDryRunCleanTreeAllowlistIncludesFoundryFixture(t *testing.T) {
+func TestDryRunCleanTreeAllowlistIncludesReadOnlyFixtureCheckouts(t *testing.T) {
 	root := repoRoot(t)
 	for _, script := range []string{
 		"scripts/release-preview-dry-run.sh",
@@ -1031,6 +1098,9 @@ func TestDryRunCleanTreeAllowlistIncludesFoundryFixture(t *testing.T) {
 		}
 		if !strings.Contains(string(content), "':!ao-foundry'") {
 			t.Fatalf("%s clean-tree allowlist must include the read-only ao-foundry fixture checkout", script)
+		}
+		if !strings.Contains(string(content), "':!ao-covenant'") {
+			t.Fatalf("%s clean-tree allowlist must include the read-only ao-covenant fixture checkout", script)
 		}
 	}
 }

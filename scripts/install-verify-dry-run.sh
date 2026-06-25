@@ -31,9 +31,9 @@ forge="$(cd "$forge" && pwd)"
 mkdir -p "$out/bin" "$out/commands"
 out="$(cd "$out" && pwd)"
 
-status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!bin' 2>&1)"
+status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!ao-covenant' ':!bin' 2>&1)"
 if [[ -n "$status_output" ]]; then
-  echo "install-verify-dry-run: working tree must be clean except tmp, ao-forge, ao-foundry, and bin outputs" >&2
+  echo "install-verify-dry-run: working tree must be clean except tmp, ao-forge, ao-foundry, ao-covenant, and bin outputs" >&2
   printf '%s\n' "$status_output" >&2
   exit 1
 fi
