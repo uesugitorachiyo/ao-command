@@ -174,6 +174,7 @@ jobs:
             "goal_id": "ao2-weekend-hardening",
             "iteration": "20260619T180000Z-verification",
             "phase": "verification",
+            "summary": "Retained AO Foundry RSI improvement gate.",
             "captured_outputs": [
               {
                 "label": "ao-foundry-rsi-improvement-gate",
@@ -208,6 +209,7 @@ jobs:
             "goal_id": "ao2-weekend-hardening",
             "iteration": "20260619T180000Z-verification",
             "phase": "verification",
+            "summary": "Retained AO Foundry RSI candidate evidence.",
             "captured_outputs": [
               {
                 "label": "ao-foundry-rsi-candidate",
@@ -240,6 +242,7 @@ jobs:
             "goal_id": "ao2-weekend-hardening",
             "iteration": "20260619T180000Z-verification",
             "phase": "verification",
+            "summary": "Retained AO Foundry RSI next improvement task.",
             "captured_outputs": [
               {
                 "label": "ao-foundry-rsi-next-improvement-task",
@@ -272,6 +275,7 @@ jobs:
             "goal_id": "ao2-weekend-hardening",
             "iteration": "20260619T180000Z-verification",
             "phase": "verification",
+            "summary": "Retained AO Command RSI health output.",
             "captured_outputs": [
               {
                 "label": "ao-command-rsi-health",

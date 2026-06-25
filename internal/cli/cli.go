@@ -662,9 +662,12 @@ type forgeRetainedEvidence struct {
 	GoalID            string                 `json:"goal_id"`
 	Iteration         string                 `json:"iteration"`
 	Phase             string                 `json:"phase"`
+	Summary           string                 `json:"summary"`
 	CapturedOutputs   []forgeRetainedOutput  `json:"captured_outputs"`
 	RetentionPolicy   forgeRetentionPolicy   `json:"retention_policy"`
 	RetentionMetadata forgeRetentionMetadata `json:"retention_metadata"`
+	SchemaValid       bool                   `json:"-"`
+	SchemaError       string                 `json:"-"`
 }
 
 type forgeRetainedOutput struct {
@@ -692,14 +695,17 @@ type retainedRSIFamily struct {
 }
 
 type forgeRetentionPolicy struct {
-	TemporaryPathsAllowed                  bool `json:"temporary_paths_allowed"`
-	MinimumRetentionDaysAfterTerminalPhase int  `json:"minimum_retention_days_after_terminal_phase"`
+	Layout                                 string `json:"layout"`
+	TemporaryPathsAllowed                  bool   `json:"temporary_paths_allowed"`
+	MinimumRetentionDaysAfterTerminalPhase int    `json:"minimum_retention_days_after_terminal_phase"`
 }
 
 type forgeRetentionMetadata struct {
-	RetentionClass         string `json:"retention_class"`
-	RetainWhileGoalActive  bool   `json:"retain_while_goal_active"`
-	DeletionRequiresReview bool   `json:"deletion_requires_review"`
+	RetainedAt             string   `json:"retained_at"`
+	RetentionClass         string   `json:"retention_class"`
+	RetainWhileGoalActive  bool     `json:"retain_while_goal_active"`
+	DeletionRequiresReview bool     `json:"deletion_requires_review"`
+	CleanupChangeMustName  []string `json:"cleanup_change_must_name"`
 }
 
 func readActiveStackLedger(path string) (activeStackLedger, error) {
@@ -1059,7 +1065,7 @@ func readForgeRSIRetentionBinding(gateProofPath, candidateProofPath, nextTaskPro
 	mutatesRepositories := false
 	for _, proof := range proofs {
 		outputCount += len(proof.CapturedOutputs)
-		passed = passed && forgeRetentionBasePassed(proof, goalID, iteration, phase)
+		passed = passed && proof.SchemaValid && forgeRetentionBasePassed(proof, goalID, iteration, phase)
 		for _, output := range proof.CapturedOutputs {
 			mutatesRepositories = mutatesRepositories || output.MutatesRepositories
 		}
@@ -1098,11 +1104,269 @@ func readForgeRSIRetentionBinding(gateProofPath, candidateProofPath, nextTaskPro
 }
 
 func readForgeRetainedEvidence(path string) (forgeRetainedEvidence, error) {
-	var retained forgeRetainedEvidence
-	if err := readJSONFile(path, &retained); err != nil {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
 		return forgeRetainedEvidence{}, err
 	}
+	var retained forgeRetainedEvidence
+	if err := json.Unmarshal(bytes, &retained); err != nil {
+		return forgeRetainedEvidence{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(bytes, &raw); err != nil {
+		return forgeRetainedEvidence{}, err
+	}
+	if err := validateForgeRetainedEvidenceContract(raw); err != nil {
+		retained.SchemaError = err.Error()
+	} else {
+		retained.SchemaValid = true
+	}
 	return retained, nil
+}
+
+func validateForgeRetainedEvidenceContract(raw map[string]json.RawMessage) error {
+	schemaVersion, err := requireJSONString(raw, "schema_version")
+	if err != nil {
+		return err
+	}
+	if schemaVersion != "ao.forge.goal-run-retained-evidence.v0.1" {
+		return fmt.Errorf("schema_version must be ao.forge.goal-run-retained-evidence.v0.1")
+	}
+	if _, err := requireJSONString(raw, "goal_id"); err != nil {
+		return err
+	}
+	if _, err := requireJSONString(raw, "iteration"); err != nil {
+		return err
+	}
+	phase, err := requireJSONString(raw, "phase")
+	if err != nil {
+		return err
+	}
+	if !stringIn(phase, []string{"planning", "implementation", "verification", "blocked", "backoff", "stopped", "complete"}) {
+		return fmt.Errorf("phase has unsupported value %q", phase)
+	}
+	if summary, err := requireJSONString(raw, "summary"); err != nil {
+		return err
+	} else if strings.TrimSpace(summary) == "" {
+		return fmt.Errorf("summary must not be empty")
+	}
+
+	policy, err := requireJSONObject(raw, "retention_policy")
+	if err != nil {
+		return err
+	}
+	layout, err := requireJSONString(policy, "layout")
+	if err != nil {
+		return fmt.Errorf("retention_policy.%w", err)
+	}
+	if layout != "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/" {
+		return fmt.Errorf("retention_policy.layout must match AO Forge retained evidence layout")
+	}
+	temporaryPathsAllowed, err := requireJSONBool(policy, "temporary_paths_allowed")
+	if err != nil {
+		return fmt.Errorf("retention_policy.%w", err)
+	}
+	if temporaryPathsAllowed {
+		return fmt.Errorf("retention_policy.temporary_paths_allowed must be false")
+	}
+	minRetentionDays, err := requireJSONNumber(policy, "minimum_retention_days_after_terminal_phase")
+	if err != nil {
+		return fmt.Errorf("retention_policy.%w", err)
+	}
+	if minRetentionDays < 90 {
+		return fmt.Errorf("retention_policy.minimum_retention_days_after_terminal_phase must be at least 90")
+	}
+
+	metadata, err := requireJSONObject(raw, "retention_metadata")
+	if err != nil {
+		return err
+	}
+	retainedAt, err := requireJSONString(metadata, "retained_at")
+	if err != nil {
+		return fmt.Errorf("retention_metadata.%w", err)
+	}
+	if _, err := time.Parse(time.RFC3339, retainedAt); err != nil {
+		return fmt.Errorf("retention_metadata.retained_at must be RFC3339: %w", err)
+	}
+	retentionClass, err := requireJSONString(metadata, "retention_class")
+	if err != nil {
+		return fmt.Errorf("retention_metadata.%w", err)
+	}
+	if !stringIn(retentionClass, []string{"loop_evidence", "release_provenance", "promotion_provenance"}) {
+		return fmt.Errorf("retention_metadata.retention_class has unsupported value %q", retentionClass)
+	}
+	retainWhileGoalActive, err := requireJSONBool(metadata, "retain_while_goal_active")
+	if err != nil {
+		return fmt.Errorf("retention_metadata.%w", err)
+	}
+	if !retainWhileGoalActive {
+		return fmt.Errorf("retention_metadata.retain_while_goal_active must be true")
+	}
+	deletionRequiresReview, err := requireJSONBool(metadata, "deletion_requires_review")
+	if err != nil {
+		return fmt.Errorf("retention_metadata.%w", err)
+	}
+	if !deletionRequiresReview {
+		return fmt.Errorf("retention_metadata.deletion_requires_review must be true")
+	}
+	cleanupFields, err := requireJSONStringArray(metadata, "cleanup_change_must_name")
+	if err != nil {
+		return fmt.Errorf("retention_metadata.%w", err)
+	}
+	if len(cleanupFields) < 3 ||
+		!stringIn("goal_id", cleanupFields) ||
+		!stringIn("iteration", cleanupFields) ||
+		!stringIn("reason", cleanupFields) {
+		return fmt.Errorf("retention_metadata.cleanup_change_must_name must include goal_id, iteration, and reason")
+	}
+
+	outputs, ok, err := optionalJSONArray(raw, "captured_outputs")
+	if err != nil {
+		return err
+	}
+	if ok {
+		for i, output := range outputs {
+			if err := validateForgeRetainedOutputContract(output); err != nil {
+				return fmt.Errorf("captured_outputs[%d].%w", i, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateForgeRetainedOutputContract(output map[string]json.RawMessage) error {
+	label, err := requireJSONString(output, "label")
+	if err != nil {
+		return err
+	}
+	if _, err := requireJSONString(output, "command"); err != nil {
+		return err
+	}
+	if _, err := requireJSONString(output, "status"); err != nil {
+		return err
+	}
+
+	switch label {
+	case "ao-command-rsi-health":
+		if err := requireStringConst(output, "command", "ao-command rsi health"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "status", "passed"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "rsi_mode", "governed_fixture_local"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "rsi_capability", "demonstrated_local_fixture_loop"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "operator_mode", "read_only"); err != nil {
+			return err
+		}
+		if err := requireBoolConst(output, "mutates_repositories", false); err != nil {
+			return err
+		}
+		families, ok, err := optionalJSONArray(output, "families")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("missing property %q", "families")
+		}
+		for _, family := range []string{"ao-arena", "ao-crucible", "ao-sentinel", "ao-promoter", "ao-foundry"} {
+			if !retainedFamilyPassed(families, family) {
+				return fmt.Errorf("families must include passed %s", family)
+			}
+		}
+	case "ao-foundry-rsi-candidate":
+		if err := requireStringConst(output, "command", "foundry pulse run"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "schema_version", "ao.foundry.rsi-candidate.v0.1"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "status", "ready"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "generated_by", "foundry pulse run"); err != nil {
+			return err
+		}
+		if _, err := requireJSONNumber(output, "baseline_score"); err != nil {
+			return err
+		}
+		if _, err := requireJSONNumber(output, "candidate_score"); err != nil {
+			return err
+		}
+		if err := requireBoolConst(output, "mutates_repositories", false); err != nil {
+			return err
+		}
+	case "ao-foundry-rsi-improvement-gate":
+		if err := requireStringConst(output, "command", "foundry pulse run"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "schema_version", "ao.foundry.rsi-improvement-gate.v0.1"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "status", "passed"); err != nil {
+			return err
+		}
+		for _, field := range []string{"baseline_score", "candidate_score"} {
+			if _, err := requireJSONNumber(output, field); err != nil {
+				return err
+			}
+		}
+		requiredImprovement, err := requireJSONNumber(output, "required_improvement_percent")
+		if err != nil {
+			return err
+		}
+		if requiredImprovement < 5 {
+			return fmt.Errorf("required_improvement_percent must be at least 5")
+		}
+		actualImprovement, err := requireJSONNumber(output, "actual_improvement_percent")
+		if err != nil {
+			return err
+		}
+		if actualImprovement < 5 {
+			return fmt.Errorf("actual_improvement_percent must be at least 5")
+		}
+		if err := requireStringConst(output, "autonomous_claim", "measured_local_improvement"); err != nil {
+			return err
+		}
+		if err := requireBoolConst(output, "mutates_repositories", false); err != nil {
+			return err
+		}
+	case "ao-foundry-rsi-next-improvement-task":
+		if err := requireStringConst(output, "command", "foundry pulse run"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "schema_version", "ao.foundry.rsi-next-improvement-task.v0.1"); err != nil {
+			return err
+		}
+		if err := requireStringConst(output, "status", "ready"); err != nil {
+			return err
+		}
+		requiredImprovement, err := requireJSONNumber(output, "required_improvement_percent")
+		if err != nil {
+			return err
+		}
+		if requiredImprovement < 5 {
+			return fmt.Errorf("required_improvement_percent must be at least 5")
+		}
+		actualImprovement, err := requireJSONNumber(output, "actual_improvement_percent")
+		if err != nil {
+			return err
+		}
+		if actualImprovement < 5 {
+			return fmt.Errorf("actual_improvement_percent must be at least 5")
+		}
+		if err := requireStringConst(output, "autonomous_claim", "derived_local_next_improvement"); err != nil {
+			return err
+		}
+		if err := requireBoolConst(output, "mutates_repositories", false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func forgeRetentionBasePassed(proof forgeRetainedEvidence, goalID, iteration, phase string) bool {
@@ -1110,12 +1374,18 @@ func forgeRetentionBasePassed(proof forgeRetainedEvidence, goalID, iteration, ph
 		proof.GoalID == goalID &&
 		proof.Iteration == iteration &&
 		proof.Phase == phase &&
+		proof.Summary != "" &&
 		len(proof.CapturedOutputs) == 1 &&
+		proof.RetentionPolicy.Layout == "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/" &&
 		!proof.RetentionPolicy.TemporaryPathsAllowed &&
 		proof.RetentionPolicy.MinimumRetentionDaysAfterTerminalPhase >= 90 &&
+		proof.RetentionMetadata.RetainedAt != "" &&
 		proof.RetentionMetadata.RetentionClass == "loop_evidence" &&
 		proof.RetentionMetadata.RetainWhileGoalActive &&
-		proof.RetentionMetadata.DeletionRequiresReview
+		proof.RetentionMetadata.DeletionRequiresReview &&
+		stringIn("goal_id", proof.RetentionMetadata.CleanupChangeMustName) &&
+		stringIn("iteration", proof.RetentionMetadata.CleanupChangeMustName) &&
+		stringIn("reason", proof.RetentionMetadata.CleanupChangeMustName)
 }
 
 func retainedOutput(proof forgeRetainedEvidence, label string) (forgeRetainedOutput, bool) {
@@ -1187,6 +1457,130 @@ func retainedFamiliesMatch(retained []retainedRSIFamily, current []rsiFamilyStat
 		}
 	}
 	return true
+}
+
+func retainedFamilyPassed(families []map[string]json.RawMessage, target string) bool {
+	for _, family := range families {
+		name, err := requireJSONString(family, "family")
+		if err != nil || name != target {
+			continue
+		}
+		passed, err := requireJSONBool(family, "passed")
+		if err != nil || !passed {
+			continue
+		}
+		if _, err := requireJSONString(family, "status"); err != nil {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func requireStringConst(raw map[string]json.RawMessage, field, want string) error {
+	got, err := requireJSONString(raw, field)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("%s must be %q", field, want)
+	}
+	return nil
+}
+
+func requireBoolConst(raw map[string]json.RawMessage, field string, want bool) error {
+	got, err := requireJSONBool(raw, field)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("%s must be %t", field, want)
+	}
+	return nil
+}
+
+func requireJSONString(raw map[string]json.RawMessage, field string) (string, error) {
+	value, ok := raw[field]
+	if !ok {
+		return "", fmt.Errorf("missing property %q", field)
+	}
+	var got string
+	if err := json.Unmarshal(value, &got); err != nil {
+		return "", fmt.Errorf("%s must be a string", field)
+	}
+	if strings.TrimSpace(got) == "" {
+		return "", fmt.Errorf("%s must not be empty", field)
+	}
+	return got, nil
+}
+
+func requireJSONBool(raw map[string]json.RawMessage, field string) (bool, error) {
+	value, ok := raw[field]
+	if !ok {
+		return false, fmt.Errorf("missing property %q", field)
+	}
+	var got bool
+	if err := json.Unmarshal(value, &got); err != nil {
+		return false, fmt.Errorf("%s must be a boolean", field)
+	}
+	return got, nil
+}
+
+func requireJSONNumber(raw map[string]json.RawMessage, field string) (float64, error) {
+	value, ok := raw[field]
+	if !ok {
+		return 0, fmt.Errorf("missing property %q", field)
+	}
+	var got float64
+	if err := json.Unmarshal(value, &got); err != nil {
+		return 0, fmt.Errorf("%s must be a number", field)
+	}
+	return got, nil
+}
+
+func requireJSONObject(raw map[string]json.RawMessage, field string) (map[string]json.RawMessage, error) {
+	value, ok := raw[field]
+	if !ok {
+		return nil, fmt.Errorf("missing property %q", field)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(value, &got); err != nil {
+		return nil, fmt.Errorf("%s must be an object", field)
+	}
+	return got, nil
+}
+
+func requireJSONStringArray(raw map[string]json.RawMessage, field string) ([]string, error) {
+	value, ok := raw[field]
+	if !ok {
+		return nil, fmt.Errorf("missing property %q", field)
+	}
+	var got []string
+	if err := json.Unmarshal(value, &got); err != nil {
+		return nil, fmt.Errorf("%s must be a string array", field)
+	}
+	return got, nil
+}
+
+func optionalJSONArray(raw map[string]json.RawMessage, field string) ([]map[string]json.RawMessage, bool, error) {
+	value, ok := raw[field]
+	if !ok {
+		return nil, false, nil
+	}
+	var got []map[string]json.RawMessage
+	if err := json.Unmarshal(value, &got); err != nil {
+		return nil, false, fmt.Errorf("%s must be an array", field)
+	}
+	return got, true, nil
+}
+
+func stringIn(target string, values []string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func foundryGateCandidateEvidence(gate foundryRSIImprovementGate) (foundryEvalResultRef, bool) {

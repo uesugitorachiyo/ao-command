@@ -64,9 +64,10 @@ verifies the candidate eval result is the same candidate evidence used by the
 improvement gate, then verifies the next-task artifact binds to both the
 candidate and gate evidence. It also verifies AO Forge retained evidence for
 the Foundry gate, Foundry candidate, Foundry next task, and AO Command health
-output. It reports whether the governed fixture/local RSI chain is demonstrated
-from Foundry pulse through Forge retention to Command health while keeping
-`operator_mode=read_only` and
+output against the AO Forge retained-evidence contract before trusting the
+semantic proof fields. It reports whether the governed fixture/local RSI chain
+is demonstrated from Foundry pulse through Forge retention to Command health
+while keeping `operator_mode=read_only` and
 `mutates_repositories=false`. Use `--bundle-out` to write the canonical
 `ao.command.rsi-health-bundle.v0.1` JSON artifact with the source evidence
 paths and SHA-256 hashes retained in one portable file.

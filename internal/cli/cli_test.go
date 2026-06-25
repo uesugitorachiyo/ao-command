@@ -505,6 +505,83 @@ func TestRSIHealthFailsClosedWhenForgeRetentionDoesNotBind(t *testing.T) {
 	}
 }
 
+func TestRSIHealthFailsClosedWhenForgeRetainedProofViolatesSchema(t *testing.T) {
+	paths := writeRSIHealthFixtures(t, true)
+	if err := os.WriteFile(paths.forgeRetainedGate, []byte(`{
+  "schema_version": "ao.forge.goal-run-retained-evidence.v0.1",
+  "goal_id": "ao2-weekend-hardening",
+  "iteration": "20260619T180000Z-verification",
+  "phase": "verification",
+  "summary": "Schema-invalid retained AO Foundry RSI improvement gate.",
+  "captured_outputs": [
+    {
+      "label": "ao-foundry-rsi-improvement-gate",
+      "command": "foundry pulse run",
+      "schema_version": "ao.foundry.rsi-improvement-gate.v0.1",
+      "status": "passed",
+      "baseline_score": 90,
+      "candidate_score": 100,
+      "required_improvement_percent": 5,
+      "actual_improvement_percent": 10,
+      "autonomous_claim": "measured_local_improvement",
+      "mutates_repositories": false
+    }
+  ],
+  "retention_policy": {
+    "layout": "docs/evidence/goals/<goal_id>/<YYYYMMDDTHHMMSSZ>-<phase>/",
+    "temporary_paths_allowed": false,
+    "minimum_retention_days_after_terminal_phase": 90
+  },
+  "retention_metadata": {
+    "retained_at": "2026-06-19T18:00:00Z",
+    "retention_class": "loop_evidence",
+    "retain_while_goal_active": true,
+    "deletion_requires_review": true
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write schema-invalid forge retained gate: %v", err)
+	}
+
+	code, stdout, stderr := runWithFake([]string{
+		"rsi", "health",
+		"--arena-gate", paths.arena,
+		"--crucible-gate", paths.crucible,
+		"--sentinel-verdict", paths.sentinel,
+		"--promoter-gate", paths.promoter,
+		"--foundry-gate", paths.foundry,
+		"--foundry-candidate", paths.foundryCandidate,
+		"--foundry-next-task", paths.foundryNextTask,
+		"--forge-retained-gate", paths.forgeRetainedGate,
+		"--forge-retained-candidate", paths.forgeRetainedCandidate,
+		"--forge-retained-next-task", paths.forgeRetainedNextTask,
+		"--forge-retained-command-health", paths.forgeRetainedCommandHealth,
+		"--json",
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("rsi health schema-invalid forge retention exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	var got struct {
+		Status                string `json:"status"`
+		RSICapability         string `json:"rsi_capability"`
+		ForgeRetentionBinding struct {
+			Status string `json:"status"`
+			Passed bool   `json:"passed"`
+		} `json:"forge_retention_binding"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid rsi health schema-invalid forge retention JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "blocked" ||
+		got.RSICapability != "not_demonstrated" ||
+		got.ForgeRetentionBinding.Status != "blocked" ||
+		got.ForgeRetentionBinding.Passed {
+		t.Fatalf("unexpected schema-invalid Forge retention status: %+v", got)
+	}
+	if !strings.Contains(stderr, "RSI health blocked") {
+		t.Fatalf("stderr missing blocked message: %s", stderr)
+	}
+}
+
 func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	if err := os.WriteFile(paths.foundryNextTask, []byte(`{
