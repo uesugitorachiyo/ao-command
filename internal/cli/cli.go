@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -102,7 +103,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
-  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--json]
+  ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--bundle-out PATH] [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
   ao-command goals --goal-run PATH [--forge PATH] [--forge-bin PATH] [--json]
   ao-command evidence --schema PATH --document PATH [--forge PATH] [--forge-bin PATH] [--json]
@@ -201,10 +202,10 @@ func (a App) stack(args []string) int {
 
 func (a App) rsi(args []string) int {
 	if len(args) == 0 || args[0] != "health" {
-		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command rsi: usage: ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH [--bundle-out PATH] [--json]")
 		return 2
 	}
-	var arenaGate, crucibleGate, sentinelVerdict, promoterGate string
+	var arenaGate, crucibleGate, sentinelVerdict, promoterGate, bundleOut string
 	var jsonOut bool
 	fs := flag.NewFlagSet("rsi health", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -212,6 +213,7 @@ func (a App) rsi(args []string) int {
 	fs.StringVar(&crucibleGate, "crucible-gate", "", "path to AO Crucible hardening gate JSON")
 	fs.StringVar(&sentinelVerdict, "sentinel-verdict", "", "path to AO Sentinel verdict JSON")
 	fs.StringVar(&promoterGate, "promoter-gate", "", "path to AO Promoter gate JSON")
+	fs.StringVar(&bundleOut, "bundle-out", "", "write canonical RSI health bundle JSON to path")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
@@ -225,6 +227,12 @@ func (a App) rsi(args []string) int {
 		fmt.Fprintf(a.Stderr, "ao-command rsi health: %v\n", err)
 		return 1
 	}
+	if strings.TrimSpace(bundleOut) != "" {
+		if err := writeRSIHealthBundle(bundleOut, summary); err != nil {
+			fmt.Fprintf(a.Stderr, "ao-command rsi health: write bundle: %v\n", err)
+			return 1
+		}
+	}
 	if jsonOut {
 		return a.writeJSON(summary)
 	}
@@ -234,6 +242,9 @@ func (a App) rsi(args []string) int {
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
 	for _, family := range summary.Families {
 		fmt.Fprintf(a.Stdout, "family=%s status=%s passed=%t evidence=%s\n", family.Family, family.Status, family.Passed, family.Evidence)
+	}
+	if strings.TrimSpace(bundleOut) != "" {
+		fmt.Fprintf(a.Stdout, "bundle=%s\n", bundleOut)
 	}
 	fmt.Fprintf(a.Stdout, "rsi_capability=%s\n", summary.RSICapability)
 	if summary.Status != "passed" {
@@ -510,6 +521,25 @@ type rsiHealthSummary struct {
 	Families             []rsiFamilyStatus `json:"families"`
 }
 
+type rsiHealthBundle struct {
+	SchemaVersion        string                  `json:"schema_version"`
+	CommandSchemaVersion string                  `json:"command_schema_version"`
+	Status               string                  `json:"status"`
+	RSIMode              string                  `json:"rsi_mode"`
+	RSICapability        string                  `json:"rsi_capability"`
+	OperatorMode         string                  `json:"operator_mode"`
+	MutatesRepositories  bool                    `json:"mutates_repositories"`
+	Families             []rsiBundleFamilyStatus `json:"families"`
+}
+
+type rsiBundleFamilyStatus struct {
+	Family   string `json:"family"`
+	Status   string `json:"status"`
+	Passed   bool   `json:"passed"`
+	Evidence string `json:"evidence"`
+	SHA256   string `json:"sha256"`
+}
+
 func readActiveStackLedger(path string) (activeStackLedger, error) {
 	var ledger activeStackLedger
 	bytes, err := os.ReadFile(path)
@@ -587,6 +617,59 @@ func readRSIHealth(arenaGatePath, crucibleGatePath, sentinelVerdictPath, promote
 		MutatesRepositories:  false,
 		Families:             families,
 	}, nil
+}
+
+func writeRSIHealthBundle(path string, summary rsiHealthSummary) error {
+	bundle, err := rsiHealthBundleFromSummary(summary)
+	if err != nil {
+		return err
+	}
+	bytes, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return err
+	}
+	bytes = append(bytes, '\n')
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, bytes, 0o644)
+}
+
+func rsiHealthBundleFromSummary(summary rsiHealthSummary) (rsiHealthBundle, error) {
+	bundle := rsiHealthBundle{
+		SchemaVersion:        "ao.command.rsi-health-bundle.v0.1",
+		CommandSchemaVersion: summary.CommandSchemaVersion,
+		Status:               summary.Status,
+		RSIMode:              summary.RSIMode,
+		RSICapability:        summary.RSICapability,
+		OperatorMode:         summary.OperatorMode,
+		MutatesRepositories:  summary.MutatesRepositories,
+		Families:             make([]rsiBundleFamilyStatus, 0, len(summary.Families)),
+	}
+	for _, family := range summary.Families {
+		hash, err := sha256File(family.Evidence)
+		if err != nil {
+			return rsiHealthBundle{}, fmt.Errorf("hash %s evidence: %w", family.Family, err)
+		}
+		bundle.Families = append(bundle.Families, rsiBundleFamilyStatus{
+			Family:   family.Family,
+			Status:   family.Status,
+			Passed:   family.Passed,
+			Evidence: family.Evidence,
+			SHA256:   hash,
+		})
+	}
+	return bundle, nil
+}
+
+func sha256File(path string) (string, error) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(bytes)), nil
 }
 
 func readArenaGate(path string) (rsiFamilyStatus, error) {
