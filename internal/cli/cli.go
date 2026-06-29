@@ -116,6 +116,7 @@ Usage:
   ao-command complex-refactor status --summary PATH [--json]
   ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
   ao-command live-mutation approval --request PATH --ticket PATH [--json]
+  ao-command live-mutation pr-rehearsal --gate PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -396,16 +397,18 @@ func (a App) complexRefactorStatus(args []string) int {
 
 func (a App) liveMutation(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval> ...")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal> ...")
 		return 2
 	}
 	switch args[0] {
 	case "approval":
 		return a.liveMutationApproval(args[1:])
+	case "pr-rehearsal":
+		return a.liveMutationPRRehearsal(args[1:])
 	case "status":
 		return a.liveMutationStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval> ...")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal> ...")
 		return 2
 	}
 }
@@ -445,6 +448,48 @@ func (a App) liveMutationApproval(args []string) int {
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
 	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	return 0
+}
+
+func (a App) liveMutationPRRehearsal(args []string) int {
+	var gatePath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("live-mutation pr-rehearsal", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&gatePath, "gate", "", "path to AO Foundry live docs PR rehearsal gate JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if gatePath == "" {
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation pr-rehearsal: --gate is required")
+		return 2
+	}
+	summary, err := readLiveMutationPRRehearsal(gatePath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command live-mutation pr-rehearsal: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_live_pr_rehearsal=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "first_live_class=%s\n", summary.FirstLiveClass)
+	fmt.Fprintf(a.Stdout, "safe_to_request=%t\n", summary.SafeToRequest)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "exact_next_step=%s\n", summary.ExactNextStep)
+	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
+	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "creates_branch=%t\n", summary.CreatesBranch)
+	fmt.Fprintf(a.Stdout, "creates_worktree=%t\n", summary.CreatesWorktree)
+	fmt.Fprintf(a.Stdout, "opens_pr=%t\n", summary.OpensPR)
+	fmt.Fprintf(a.Stdout, "merges_pr=%t\n", summary.MergesPR)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
 	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
 	return 0
 }
@@ -1147,6 +1192,35 @@ type liveMutationApprovalSummary struct {
 	CallsProviders       bool   `json:"calls_providers"`
 }
 
+type liveMutationPRRehearsalSummary struct {
+	SchemaVersion           string         `json:"schema_version"`
+	CommandSchemaVersion    string         `json:"command_schema_version"`
+	Status                  string         `json:"status"`
+	Gate                    string         `json:"gate"`
+	GateSchemaVersion       string         `json:"gate_schema_version"`
+	FirstLiveClass          string         `json:"first_live_class"`
+	SafeToRequest           bool           `json:"safe_to_request"`
+	SafeToExecute           bool           `json:"safe_to_execute"`
+	ExactNextStep           string         `json:"exact_next_step"`
+	AllowedNextAction       string         `json:"allowed_next_action"`
+	FirstFailingCheck       string         `json:"first_failing_check"`
+	BlockingNextActions     []string       `json:"blocking_next_actions"`
+	MaintenanceSuggestions  []string       `json:"maintenance_suggestions"`
+	SourceHashes            []pulseSource  `json:"source_hashes"`
+	OperatorMode            string         `json:"operator_mode"`
+	MutatesRepositories     bool           `json:"mutates_repositories"`
+	CreatesBranch           bool           `json:"creates_branch"`
+	CreatesWorktree         bool           `json:"creates_worktree"`
+	OpensPR                 bool           `json:"opens_pr"`
+	MergesPR                bool           `json:"merges_pr"`
+	SchedulesWork           bool           `json:"schedules_work"`
+	ExecutesWork            bool           `json:"executes_work"`
+	ApprovesWork            bool           `json:"approves_work"`
+	CallsProviders          bool           `json:"calls_providers"`
+	ReleaseOrPublishAllowed bool           `json:"release_or_publish_allowed"`
+	RawGate                 map[string]any `json:"-"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -1645,6 +1719,109 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		MaintenanceSuggestions:  uniqueStrings(maintenance),
 		OperatorMode:            operatorMode,
 		MutatesRepositories:     false,
+		SchedulesWork:           false,
+		ExecutesWork:            false,
+		ApprovesWork:            false,
+		CallsProviders:          false,
+		ReleaseOrPublishAllowed: false,
+	}, nil
+}
+
+func readLiveMutationPRRehearsal(gatePath string) (liveMutationPRRehearsalSummary, error) {
+	var gate struct {
+		SchemaVersion          string         `json:"schema_version"`
+		Status                 string         `json:"status"`
+		FirstLiveClass         string         `json:"first_live_class"`
+		SafeToRequest          bool           `json:"safe_to_request"`
+		SafeToExecute          bool           `json:"safe_to_execute"`
+		ExactNextStep          string         `json:"exact_next_step"`
+		AllowedNextAction      string         `json:"allowed_next_action"`
+		FirstFailingCheck      string         `json:"first_failing_check"`
+		BlockingNextActions    []string       `json:"blocking_next_actions"`
+		MaintenanceSuggestions []string       `json:"maintenance_suggestions"`
+		SourceHashes           []pulseSource  `json:"source_hashes"`
+		AuthorityBoundaries    map[string]any `json:"authority_boundaries"`
+	}
+	if err := readPublicJSONFile(gatePath, &gate); err != nil {
+		return liveMutationPRRehearsalSummary{}, fmt.Errorf("read gate: %w", err)
+	}
+	if gate.SchemaVersion != "ao.foundry.live-docs-pr-rehearsal-gate.v0.1" {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate schema_version must be ao.foundry.live-docs-pr-rehearsal-gate.v0.1")
+	}
+	if gate.Status != "ready" && gate.Status != "blocked" {
+		return liveMutationPRRehearsalSummary{}, fmt.Errorf("gate status must be ready or blocked, got %q", gate.Status)
+	}
+	if gate.FirstLiveClass != "docs_only" {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate first_live_class must be docs_only")
+	}
+	if !gate.SafeToRequest {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate safe_to_request must be true")
+	}
+	if len(gate.SourceHashes) == 0 {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate requires source_hashes")
+	}
+	for _, source := range gate.SourceHashes {
+		if source.Name == "" || source.Path == "" || source.SchemaVersion == "" || len(source.SHA256) != 64 {
+			return liveMutationPRRehearsalSummary{}, errors.New("gate source_hashes must include name, path, schema_version, and sha256")
+		}
+	}
+	if gate.Status == "ready" {
+		if !gate.SafeToExecute || gate.ExactNextStep != "start_first_docs_only_live_pr_rehearsal" || gate.FirstFailingCheck != "" {
+			return liveMutationPRRehearsalSummary{}, errors.New("ready gate must allow only start_first_docs_only_live_pr_rehearsal with no failing check")
+		}
+	} else {
+		if gate.SafeToExecute || gate.FirstFailingCheck == "" {
+			return liveMutationPRRehearsalSummary{}, errors.New("blocked gate must keep safe_to_execute=false and report first_failing_check")
+		}
+	}
+	if gate.AuthorityBoundaries == nil {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate authority_boundaries are required")
+	}
+	if !liveMutationMapBool(gate.AuthorityBoundaries, "emits_decision_only") {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate must emit decisions only")
+	}
+	if liveMutationMapString(gate.AuthorityBoundaries, "first_live_class") != "docs_only" {
+		return liveMutationPRRehearsalSummary{}, errors.New("gate authority_boundaries.first_live_class must be docs_only")
+	}
+	for _, field := range []string{
+		"broad_live_mutation_allowed",
+		"fully_unsupervised_complex_mutation_claimed",
+		"mutates_repositories",
+		"creates_branch",
+		"creates_worktree",
+		"opens_pr",
+		"merges_pr",
+		"schedules_work",
+		"executes_work",
+		"approves_work",
+		"provider_calls_allowed",
+		"release_or_publish_allowed",
+	} {
+		if liveMutationMapBool(gate.AuthorityBoundaries, field) {
+			return liveMutationPRRehearsalSummary{}, fmt.Errorf("gate expands forbidden authority via authority_boundaries.%s", field)
+		}
+	}
+	return liveMutationPRRehearsalSummary{
+		SchemaVersion:           "ao.command.live-docs-pr-rehearsal-status.v0.1",
+		CommandSchemaVersion:    commandSchemaVersion,
+		Status:                  gate.Status,
+		Gate:                    gatePath,
+		GateSchemaVersion:       gate.SchemaVersion,
+		FirstLiveClass:          gate.FirstLiveClass,
+		SafeToRequest:           gate.SafeToRequest,
+		SafeToExecute:           gate.SafeToExecute,
+		ExactNextStep:           gate.ExactNextStep,
+		AllowedNextAction:       gate.AllowedNextAction,
+		FirstFailingCheck:       gate.FirstFailingCheck,
+		BlockingNextActions:     uniqueStrings(gate.BlockingNextActions),
+		MaintenanceSuggestions:  uniqueStrings(gate.MaintenanceSuggestions),
+		SourceHashes:            gate.SourceHashes,
+		OperatorMode:            operatorMode,
+		MutatesRepositories:     false,
+		CreatesBranch:           false,
+		CreatesWorktree:         false,
+		OpensPR:                 false,
+		MergesPR:                false,
 		SchedulesWork:           false,
 		ExecutesWork:            false,
 		ApprovesWork:            false,

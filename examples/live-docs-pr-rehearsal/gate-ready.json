@@ -1,0 +1,52 @@
+{
+  "schema_version": "ao.foundry.live-docs-pr-rehearsal-gate.v0.1",
+  "status": "ready",
+  "first_live_class": "docs_only",
+  "safe_to_request": true,
+  "safe_to_execute": true,
+  "exact_next_step": "start_first_docs_only_live_pr_rehearsal",
+  "allowed_next_action": "start_first_docs_only_live_pr_rehearsal",
+  "first_failing_check": "",
+  "checks": [
+    {
+      "name": "approval_artifact",
+      "status": "passed",
+      "summary": "explicit approval artifact is approved, unconsumed, and digest-bound"
+    }
+  ],
+  "source_hashes": [
+    {
+      "name": "approved_live_docs_dry_run_chain",
+      "path": "examples/live-docs-pr-rehearsal/approved-live-docs-dry-run-chain.json",
+      "schema_version": "ao.foundry.approved-live-docs-dry-run-chain.v0.1",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "approval_artifact",
+      "path": "examples/live-docs-pr-rehearsal/approval-ticket.json",
+      "schema_version": "covenant.live-docs-approval-ticket.v1",
+      "status": "approved",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "blocking_next_actions": [],
+  "maintenance_suggestions": [
+    "Keep the first live branch/PR rehearsal docs-only and exact-scope approved."
+  ],
+  "authority_boundaries": {
+    "emits_decision_only": true,
+    "first_live_class": "docs_only",
+    "broad_live_mutation_allowed": false,
+    "fully_unsupervised_complex_mutation_claimed": false,
+    "mutates_repositories": false,
+    "creates_branch": false,
+    "creates_worktree": false,
+    "opens_pr": false,
+    "merges_pr": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false
+  }
+}

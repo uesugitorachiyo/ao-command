@@ -757,6 +757,95 @@ func TestLiveMutationApprovalBlocksPendingTicketReadOnly(t *testing.T) {
 	}
 }
 
+func TestLiveMutationPRRehearsalReadbackReportsGateDecisionOnly(t *testing.T) {
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "pr-rehearsal",
+		"--gate", filepath.Join("..", "..", "examples", "live-docs-pr-rehearsal", "gate-ready.json"),
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation pr-rehearsal exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_pr_rehearsal=ready",
+		"first_live_class=docs_only",
+		"safe_to_request=true",
+		"safe_to_execute=true",
+		"exact_next_step=start_first_docs_only_live_pr_rehearsal",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"creates_branch=false",
+		"creates_worktree=false",
+		"opens_pr=false",
+		"merges_pr=false",
+		"executes_work=false",
+		"approves_work=false",
+		"calls_providers=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("live-mutation pr-rehearsal stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestLiveMutationPRRehearsalBlocksMissingApprovalReadOnly(t *testing.T) {
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "pr-rehearsal",
+		"--gate", filepath.Join("..", "..", "examples", "live-docs-pr-rehearsal", "gate-blocked.json"),
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation pr-rehearsal blocked exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion       string `json:"schema_version"`
+		CommandSchema       string `json:"command_schema_version"`
+		Status              string `json:"status"`
+		SafeToExecute       bool   `json:"safe_to_execute"`
+		ExactNextStep       string `json:"exact_next_step"`
+		FirstFailingCheck   string `json:"first_failing_check"`
+		OperatorMode        string `json:"operator_mode"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		OpensPR             bool   `json:"opens_pr"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid live-mutation pr-rehearsal JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.live-docs-pr-rehearsal-status.v0.1" ||
+		got.CommandSchema != "ao.command.v0.1" ||
+		got.Status != "blocked" ||
+		got.SafeToExecute ||
+		got.ExactNextStep != "request_operator_approval" ||
+		got.FirstFailingCheck != "approval_artifact" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		got.OpensPR {
+		t.Fatalf("unexpected blocked live docs PR rehearsal readback: %+v", got)
+	}
+}
+
+func TestLiveMutationPRRehearsalFailsClosedForUnsafeAuthority(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "examples", "live-docs-pr-rehearsal", "gate-ready.json"))
+	if err != nil {
+		t.Fatalf("read ready gate fixture: %v", err)
+	}
+	unsafe := strings.Replace(string(body), `"opens_pr": false`, `"opens_pr": true`, 1)
+	path := filepath.Join(t.TempDir(), "unsafe-gate.json")
+	if err := os.WriteFile(path, []byte(unsafe), 0o600); err != nil {
+		t.Fatalf("write unsafe gate: %v", err)
+	}
+	code, _, stderr := runWithFake([]string{
+		"live-mutation", "pr-rehearsal",
+		"--gate", path,
+		"--json",
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("live-mutation pr-rehearsal unsafe exit=%d want 1 stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "authority_boundaries.opens_pr") {
+		t.Fatalf("stderr missing unsafe authority reason: %s", stderr)
+	}
+}
+
 func TestLiveMutationStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
 	paths := liveMutationFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
