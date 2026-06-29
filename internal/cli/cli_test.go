@@ -440,6 +440,175 @@ func TestPulseStatusFailsClosedForMalformedAndUnsafeInputs(t *testing.T) {
 	}
 }
 
+func TestComplexRefactorStatusReportsReadOnlySummary(t *testing.T) {
+	summary := writeComplexRefactorSummaryFixture(t, "ready")
+	code, stdout, stderr := runWithFake([]string{"complex-refactor", "status", "--summary", summary}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("complex-refactor status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_complex_refactor_status=ready",
+		"summary=" + summary,
+		"mode=fixture_only_rehearsal",
+		"next_action=start_next_ready_task",
+		"next_recommended_factory_task=complex-refactor-pulse-runner-split-task",
+		"total_tasks=5",
+		"ready_tasks=2",
+		"blocked_tasks=2",
+		"completed_tasks=1",
+		"failed_tasks=0",
+		"first_failing_check=",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("complex-refactor status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestComplexRefactorStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
+	summary := writeComplexRefactorSummaryFixture(t, "ready")
+	code, stdout, stderr := runWithFake([]string{"complex-refactor", "status", "--summary", summary, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("complex-refactor status json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion              string `json:"schema_version"`
+		CommandSchemaVersion       string `json:"command_schema_version"`
+		Status                     string `json:"status"`
+		Mode                       string `json:"mode"`
+		NextAction                 string `json:"next_action"`
+		NextRecommendedFactoryTask string `json:"next_recommended_factory_task"`
+		TaskCounts                 struct {
+			Total     int `json:"total"`
+			Ready     int `json:"ready"`
+			Blocked   int `json:"blocked"`
+			Completed int `json:"completed"`
+			Failed    int `json:"failed"`
+		} `json:"task_counts"`
+		OperatorMode        string `json:"operator_mode"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		SchedulesWork       bool   `json:"schedules_work"`
+		ExecutesWork        bool   `json:"executes_work"`
+		ApprovesWork        bool   `json:"approves_work"`
+		CallsProviders      bool   `json:"calls_providers"`
+		SourceDigests       []struct {
+			Name   string `json:"name"`
+			SHA256 string `json:"sha256"`
+		} `json:"source_digests"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid complex-refactor status JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.complex-refactor-status.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "ready" ||
+		got.Mode != "fixture_only_rehearsal" ||
+		got.NextAction != "start_next_ready_task" ||
+		got.NextRecommendedFactoryTask != "complex-refactor-pulse-runner-split-task" ||
+		got.TaskCounts.Total != 5 ||
+		got.TaskCounts.Ready != 2 ||
+		got.TaskCounts.Blocked != 2 ||
+		got.TaskCounts.Completed != 1 ||
+		got.TaskCounts.Failed != 0 ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		got.SchedulesWork ||
+		got.ExecutesWork ||
+		got.ApprovesWork ||
+		got.CallsProviders ||
+		len(got.SourceDigests) != 2 {
+		t.Fatalf("unexpected complex-refactor status summary: %+v", got)
+	}
+}
+
+func TestComplexRefactorStatusReportsBlockedAndFailedInputs(t *testing.T) {
+	for _, tc := range []struct {
+		mode string
+		want string
+	}{
+		{mode: "blocked", want: "repair_blocked_nodes"},
+		{mode: "failed", want: "stop_blocked"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			summary := writeComplexRefactorSummaryFixture(t, tc.mode)
+			code, stdout, stderr := runWithFake([]string{"complex-refactor", "status", "--summary", summary, "--json"}, &fakeRunner{})
+			if code != 0 {
+				t.Fatalf("complex-refactor status %s exit=%d stderr=%s", tc.mode, code, stderr)
+			}
+			var got struct {
+				Status            string `json:"status"`
+				NextAction        string `json:"next_action"`
+				FirstFailingCheck string `json:"first_failing_check"`
+				OperatorMode      string `json:"operator_mode"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+				t.Fatalf("invalid complex-refactor status JSON: %v\n%s", err, stdout)
+			}
+			if got.Status != tc.mode || got.NextAction != tc.want || got.FirstFailingCheck == "" || got.OperatorMode != "read_only" {
+				t.Fatalf("unexpected %s complex-refactor status: %+v", tc.mode, got)
+			}
+		})
+	}
+}
+
+func TestComplexRefactorStatusFailsClosedForMalformedUnsafeAndAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(path string)
+		want   string
+	}{
+		{
+			name: "wrong_schema",
+			mutate: func(path string) {
+				writeFile(t, path, `{"schema_version":"wrong","status":"ready"}`)
+			},
+			want: "invalid complex-refactor rehearsal schema_version",
+		},
+		{
+			name: "forbidden_authority",
+			mutate: func(path string) {
+				body := complexRefactorSummaryJSON("ready")
+				body = strings.Replace(body, `"executes_work": false`, `"executes_work": true`, 1)
+				writeFile(t, path, body)
+			},
+			want: "complex-refactor rehearsal must remain read-only",
+		},
+		{
+			name: "unsafe_path",
+			mutate: func(path string) {
+				body := complexRefactorSummaryJSON("ready")
+				unsafePath := "/" + "Users/example/private.json"
+				body = strings.Replace(body, `"path": "examples/complex-refactor-workgraph/workgraph.json"`, `"path": "`+unsafePath+`"`, 1)
+				writeFile(t, path, body)
+			},
+			want: "unsafe public artifact value",
+		},
+		{
+			name: "missing_digest",
+			mutate: func(path string) {
+				body := complexRefactorSummaryJSON("ready")
+				body = strings.Replace(body, `"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`, `"sha256": "bad"`, 1)
+				writeFile(t, path, body)
+			},
+			want: "source_digests require 64-character sha256",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeComplexRefactorSummaryFixture(t, "ready")
+			tc.mutate(path)
+			code, stdout, stderr := runWithFake([]string{"complex-refactor", "status", "--summary", path, "--json"}, &fakeRunner{})
+			if code != 1 {
+				t.Fatalf("complex-refactor status malformed exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Fatalf("stderr missing %q:\n%s", tc.want, stderr)
+			}
+		})
+	}
+}
+
 func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	code, stdout, stderr := runWithFake([]string{
@@ -2569,6 +2738,83 @@ func writePulseGateFixtures(t *testing.T, mode string) pulseGateFixturePaths {
   ]
 }`)
 	return paths
+}
+
+func writeComplexRefactorSummaryFixture(t *testing.T, mode string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "complex-refactor-summary.json")
+	writeFile(t, path, complexRefactorSummaryJSON(mode))
+	return path
+}
+
+func complexRefactorSummaryJSON(mode string) string {
+	status := mode
+	nextAction := "start_next_ready_task"
+	firstFailingCheck := ""
+	mayStart := "true"
+	if mode == "blocked" {
+		nextAction = "repair_blocked_nodes"
+		firstFailingCheck = "blocked_workgraph_nodes"
+		mayStart = "false"
+	} else if mode == "failed" {
+		nextAction = "stop_blocked"
+		firstFailingCheck = "complex_refactor_rehearsal"
+		mayStart = "false"
+	}
+	return `{
+  "schema_version": "ao.foundry.complex-refactor-workgraph-rehearsal.v0.1",
+  "status": "` + status + `",
+  "mode": "fixture_only_rehearsal",
+  "mutates_repositories": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "calls_providers": false,
+  "no_duplicated_stack_folders": true,
+  "task_counts": {
+    "total": 5,
+    "ready": 2,
+    "blocked": 2,
+    "completed": 1,
+    "failed": 0
+  },
+  "next_recommended_factory_task": {
+    "node_id": "pulse-runner-module-split",
+    "task_id": "complex-refactor-pulse-runner-split-task",
+    "target_factory_repo": "ao-foundry"
+  },
+  "loop_decision": {
+    "may_start_next_ready_task": ` + mayStart + `,
+    "must_not_start_blocked_tasks": true,
+    "ready_gate_action": "start_next_slice",
+    "blocked_blueprint_action": "request_blueprint_clarification",
+    "next_action": "` + nextAction + `",
+    "first_failing_check": "` + firstFailingCheck + `",
+    "why": "fixture-only complex refactor rehearsal keeps implementation gated"
+  },
+  "source_digests": [
+    {
+      "name": "workgraph",
+      "path": "examples/complex-refactor-workgraph/workgraph.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "runner_decision",
+      "path": "examples/complex-refactor-workgraph/runner-start-decision.json",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "artifacts": {
+    "atlas_next_ready": "docs/evidence/pulse/complex-refactor-workgraph-rehearsal-local/atlas-next-ready.json",
+    "command_status": "docs/evidence/pulse/complex-refactor-workgraph-rehearsal-local/command-status.json"
+  },
+  "blocking_next_actions": [
+    "repair blocked nodes before stitch task"
+  ],
+  "maintenance_suggestions": [
+    "keep this rehearsal fixture-only until a governed run is authorized"
+  ]
+}`
 }
 
 func writeFile(t *testing.T, path, contents string) {

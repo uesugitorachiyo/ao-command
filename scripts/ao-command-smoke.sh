@@ -50,6 +50,9 @@ go run ./cmd/ao-command pulse status \
   --lifecycle "$foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json" \
   --start-gate "$foundry/examples/pulse-overnight-start-gate/ready.json" \
   --json > "$out/pulse-status.json"
+go run ./cmd/ao-command complex-refactor status \
+  --summary examples/complex-refactor/ready-summary.json \
+  --json > "$out/complex-refactor-status.json"
 go run ./cmd/ao-command next --forge "$forge" --json > "$out/next.json"
 go run ./cmd/ao-command goals \
   --forge "$forge" \
@@ -66,7 +69,7 @@ go run ./cmd/ao-command evidence \
   --schema docs/contracts/production-readiness-audit-v0.1.schema.json \
   --document "$out/ao-forge-production-readiness.json" > "$out/evidence.txt"
 
-shasum -a 256 "$out"/status.json "$out"/atlas-status.json "$out"/pulse-status.json "$out"/next.json "$out"/goal.json "$out"/ao-forge-production-readiness.json "$out"/evidence.txt > "$out/checksums.txt"
+shasum -a 256 "$out"/status.json "$out"/atlas-status.json "$out"/pulse-status.json "$out"/complex-refactor-status.json "$out"/next.json "$out"/goal.json "$out"/ao-forge-production-readiness.json "$out"/evidence.txt > "$out/checksums.txt"
 
 cat > "$out/ao-command-smoke.json" <<JSON
 {
@@ -77,6 +80,7 @@ cat > "$out/ao-command-smoke.json" <<JSON
     "$out/status.json",
     "$out/atlas-status.json",
     "$out/pulse-status.json",
+    "$out/complex-refactor-status.json",
     "$out/next.json",
     "$out/goal.json",
     "$out/ao-forge-production-readiness.json",

@@ -1,0 +1,54 @@
+{
+  "schema_version": "ao.foundry.complex-refactor-workgraph-rehearsal.v0.1",
+  "status": "ready",
+  "mode": "fixture_only_rehearsal",
+  "mutates_repositories": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "calls_providers": false,
+  "no_duplicated_stack_folders": true,
+  "task_counts": {
+    "total": 5,
+    "ready": 2,
+    "blocked": 2,
+    "completed": 1,
+    "failed": 0
+  },
+  "next_recommended_factory_task": {
+    "node_id": "pulse-runner-module-split",
+    "task_id": "complex-refactor-pulse-runner-split-task",
+    "target_factory_repo": "ao-foundry"
+  },
+  "loop_decision": {
+    "may_start_next_ready_task": true,
+    "must_not_start_blocked_tasks": true,
+    "ready_gate_action": "start_next_slice",
+    "blocked_blueprint_action": "request_blueprint_clarification",
+    "next_action": "start_next_ready_task",
+    "first_failing_check": "",
+    "why": "fixture-only complex refactor rehearsal keeps implementation gated"
+  },
+  "source_digests": [
+    {
+      "name": "workgraph",
+      "path": "examples/complex-refactor-workgraph/workgraph.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "runner_decision",
+      "path": "examples/complex-refactor-workgraph/runner-start-decision.json",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "artifacts": {
+    "atlas_next_ready": "docs/evidence/pulse/complex-refactor-workgraph-rehearsal-local/atlas-next-ready.json",
+    "command_status": "docs/evidence/pulse/complex-refactor-workgraph-rehearsal-local/command-status.json"
+  },
+  "blocking_next_actions": [
+    "repair blocked nodes before stitch task"
+  ],
+  "maintenance_suggestions": [
+    "keep this rehearsal fixture-only until a governed run is authorized"
+  ]
+}

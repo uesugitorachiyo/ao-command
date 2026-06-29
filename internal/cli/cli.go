@@ -84,6 +84,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.atlas(args[1:])
 	case "pulse":
 		return a.pulse(args[1:])
+	case "complex-refactor":
+		return a.complexRefactor(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -109,6 +111,7 @@ Usage:
   ao-command stack --ledger PATH [--json]
   ao-command atlas status --status PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
+  ao-command complex-refactor status --summary PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -311,6 +314,69 @@ func (a App) pulseStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, action := range summary.BlockingNextActions {
+		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
+	}
+	for _, suggestion := range summary.MaintenanceSuggestions {
+		fmt.Fprintf(a.Stdout, "maintenance_suggestion=%s\n", suggestion)
+	}
+	return 0
+}
+
+func (a App) complexRefactor(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command complex-refactor: usage: ao-command complex-refactor status --summary PATH [--json]")
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.complexRefactorStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command complex-refactor: usage: ao-command complex-refactor status --summary PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) complexRefactorStatus(args []string) int {
+	var summaryPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("complex-refactor status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&summaryPath, "summary", "", "path to AO Foundry complex-refactor rehearsal summary JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(summaryPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command complex-refactor status: --summary is required")
+		return 2
+	}
+	summary, err := readComplexRefactorStatus(summaryPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command complex-refactor status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_complex_refactor_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "summary=%s\n", summary.Summary)
+	fmt.Fprintf(a.Stdout, "mode=%s\n", summary.Mode)
+	fmt.Fprintf(a.Stdout, "next_action=%s\n", summary.NextAction)
+	fmt.Fprintf(a.Stdout, "next_recommended_factory_task=%s\n", summary.NextRecommendedFactoryTask)
+	fmt.Fprintf(a.Stdout, "target_factory_repo=%s\n", summary.TargetFactoryRepo)
+	fmt.Fprintf(a.Stdout, "total_tasks=%d\n", summary.TaskCounts.Total)
+	fmt.Fprintf(a.Stdout, "ready_tasks=%d\n", summary.TaskCounts.Ready)
+	fmt.Fprintf(a.Stdout, "blocked_tasks=%d\n", summary.TaskCounts.Blocked)
+	fmt.Fprintf(a.Stdout, "completed_tasks=%d\n", summary.TaskCounts.Completed)
+	fmt.Fprintf(a.Stdout, "failed_tasks=%d\n", summary.TaskCounts.Failed)
+	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "schedules_work=%t\n", summary.SchedulesWork)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
 	for _, action := range summary.BlockingNextActions {
 		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
 	}
@@ -827,6 +893,79 @@ type pulseGateStatusSummary struct {
 	MutatesRepositories    bool          `json:"mutates_repositories"`
 }
 
+type foundryComplexRefactorSummary struct {
+	SchemaVersion              string                      `json:"schema_version"`
+	Status                     string                      `json:"status"`
+	Mode                       string                      `json:"mode"`
+	MutatesRepositories        bool                        `json:"mutates_repositories"`
+	SchedulesWork              bool                        `json:"schedules_work"`
+	ExecutesWork               bool                        `json:"executes_work"`
+	ApprovesWork               bool                        `json:"approves_work"`
+	CallsProviders             bool                        `json:"calls_providers"`
+	NoDuplicatedStackFolders   bool                        `json:"no_duplicated_stack_folders"`
+	TaskCounts                 complexRefactorTaskCounts   `json:"task_counts"`
+	NextRecommendedFactoryTask complexRefactorFactoryTask  `json:"next_recommended_factory_task"`
+	LoopDecision               complexRefactorLoopDecision `json:"loop_decision"`
+	SourceDigests              []complexRefactorSource     `json:"source_digests"`
+	Artifacts                  map[string]string           `json:"artifacts"`
+	BlockingNextActions        []string                    `json:"blocking_next_actions"`
+	MaintenanceSuggestions     []string                    `json:"maintenance_suggestions"`
+}
+
+type complexRefactorTaskCounts struct {
+	Total     int `json:"total"`
+	Ready     int `json:"ready"`
+	Blocked   int `json:"blocked"`
+	Completed int `json:"completed"`
+	Failed    int `json:"failed"`
+}
+
+type complexRefactorFactoryTask struct {
+	NodeID            string `json:"node_id"`
+	TaskID            string `json:"task_id"`
+	TargetFactoryRepo string `json:"target_factory_repo"`
+}
+
+type complexRefactorLoopDecision struct {
+	MayStartNextReadyTask    bool   `json:"may_start_next_ready_task"`
+	MustNotStartBlockedTasks bool   `json:"must_not_start_blocked_tasks"`
+	ReadyGateAction          string `json:"ready_gate_action"`
+	BlockedBlueprintAction   string `json:"blocked_blueprint_action"`
+	NextAction               string `json:"next_action"`
+	FirstFailingCheck        string `json:"first_failing_check"`
+	Why                      string `json:"why"`
+}
+
+type complexRefactorSource struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+}
+
+type complexRefactorStatusSummary struct {
+	SchemaVersion              string                    `json:"schema_version"`
+	CommandSchemaVersion       string                    `json:"command_schema_version"`
+	Status                     string                    `json:"status"`
+	Summary                    string                    `json:"summary"`
+	Mode                       string                    `json:"mode"`
+	NextAction                 string                    `json:"next_action"`
+	NextRecommendedFactoryTask string                    `json:"next_recommended_factory_task"`
+	NextRecommendedNode        string                    `json:"next_recommended_node"`
+	TargetFactoryRepo          string                    `json:"target_factory_repo"`
+	TaskCounts                 complexRefactorTaskCounts `json:"task_counts"`
+	FirstFailingCheck          string                    `json:"first_failing_check"`
+	BlockingNextActions        []string                  `json:"blocking_next_actions"`
+	MaintenanceSuggestions     []string                  `json:"maintenance_suggestions"`
+	SourceDigests              []complexRefactorSource   `json:"source_digests"`
+	Artifacts                  map[string]string         `json:"artifacts"`
+	OperatorMode               string                    `json:"operator_mode"`
+	MutatesRepositories        bool                      `json:"mutates_repositories"`
+	SchedulesWork              bool                      `json:"schedules_work"`
+	ExecutesWork               bool                      `json:"executes_work"`
+	ApprovesWork               bool                      `json:"approves_work"`
+	CallsProviders             bool                      `json:"calls_providers"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -1180,6 +1319,57 @@ func readPulseGateStatus(preflightPath, lifecyclePath, startGatePath string) (pu
 	}, nil
 }
 
+func readComplexRefactorStatus(summaryPath string) (complexRefactorStatusSummary, error) {
+	var summary foundryComplexRefactorSummary
+	if err := readPublicJSONFile(summaryPath, &summary); err != nil {
+		return complexRefactorStatusSummary{}, fmt.Errorf("read summary: %w", err)
+	}
+	if err := validateComplexRefactorSummary(summary); err != nil {
+		return complexRefactorStatusSummary{}, err
+	}
+	nextAction := summary.LoopDecision.NextAction
+	if strings.TrimSpace(nextAction) == "" {
+		nextAction = deriveComplexRefactorNextAction(summary)
+	}
+	firstFailingCheck := summary.LoopDecision.FirstFailingCheck
+	if summary.Status != "ready" && strings.TrimSpace(firstFailingCheck) == "" {
+		firstFailingCheck = "complex_refactor_rehearsal"
+	}
+	return complexRefactorStatusSummary{
+		SchemaVersion:              "ao.command.complex-refactor-status.v0.1",
+		CommandSchemaVersion:       commandSchemaVersion,
+		Status:                     summary.Status,
+		Summary:                    summaryPath,
+		Mode:                       summary.Mode,
+		NextAction:                 nextAction,
+		NextRecommendedFactoryTask: summary.NextRecommendedFactoryTask.TaskID,
+		NextRecommendedNode:        summary.NextRecommendedFactoryTask.NodeID,
+		TargetFactoryRepo:          summary.NextRecommendedFactoryTask.TargetFactoryRepo,
+		TaskCounts:                 summary.TaskCounts,
+		FirstFailingCheck:          firstFailingCheck,
+		BlockingNextActions:        uniqueStrings(summary.BlockingNextActions),
+		MaintenanceSuggestions:     uniqueStrings(summary.MaintenanceSuggestions),
+		SourceDigests:              summary.SourceDigests,
+		Artifacts:                  summary.Artifacts,
+		OperatorMode:               operatorMode,
+		MutatesRepositories:        false,
+		SchedulesWork:              false,
+		ExecutesWork:               false,
+		ApprovesWork:               false,
+		CallsProviders:             false,
+	}, nil
+}
+
+func deriveComplexRefactorNextAction(summary foundryComplexRefactorSummary) string {
+	if summary.Status == "ready" && summary.LoopDecision.MayStartNextReadyTask {
+		return "start_next_ready_task"
+	}
+	if summary.Status == "blocked" {
+		return "repair_blocked_nodes"
+	}
+	return "stop_blocked"
+}
+
 func readPublicJSONFile(path string, target any) error {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -1190,6 +1380,79 @@ func readPublicJSONFile(path string, target any) error {
 	}
 	if err := json.Unmarshal(bytes, target); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+func validateComplexRefactorSummary(summary foundryComplexRefactorSummary) error {
+	if summary.SchemaVersion != "ao.foundry.complex-refactor-workgraph-rehearsal.v0.1" {
+		return errors.New("invalid complex-refactor rehearsal schema_version")
+	}
+	if !isPulseStatus(summary.Status) {
+		return fmt.Errorf("invalid complex-refactor rehearsal status %q", summary.Status)
+	}
+	if summary.Mode != "fixture_only_rehearsal" {
+		return errors.New("complex-refactor rehearsal mode must be fixture_only_rehearsal")
+	}
+	if summary.MutatesRepositories || summary.SchedulesWork || summary.ExecutesWork || summary.ApprovesWork || summary.CallsProviders {
+		return errors.New("complex-refactor rehearsal must remain read-only and cannot schedule, execute, approve, call providers, or mutate repositories")
+	}
+	if !summary.NoDuplicatedStackFolders {
+		return errors.New("complex-refactor rehearsal must prove no duplicated stack folders")
+	}
+	if err := validateComplexRefactorTaskCounts(summary.TaskCounts); err != nil {
+		return err
+	}
+	if summary.TaskCounts.Ready > 0 {
+		if strings.TrimSpace(summary.NextRecommendedFactoryTask.NodeID) == "" ||
+			strings.TrimSpace(summary.NextRecommendedFactoryTask.TaskID) == "" ||
+			strings.TrimSpace(summary.NextRecommendedFactoryTask.TargetFactoryRepo) == "" {
+			return errors.New("complex-refactor rehearsal requires next_recommended_factory_task when ready tasks exist")
+		}
+	}
+	if !summary.LoopDecision.MustNotStartBlockedTasks {
+		return errors.New("complex-refactor rehearsal must block unsafe/blocked tasks")
+	}
+	if summary.Status == "ready" && summary.TaskCounts.Ready > 0 && !summary.LoopDecision.MayStartNextReadyTask {
+		return errors.New("ready complex-refactor rehearsal must allow the next ready task")
+	}
+	if len(summary.SourceDigests) == 0 {
+		return errors.New("complex-refactor rehearsal requires source_digests")
+	}
+	for _, source := range summary.SourceDigests {
+		if strings.TrimSpace(source.Name) == "" || strings.TrimSpace(source.Path) == "" {
+			return errors.New("complex-refactor source_digests require name and path")
+		}
+		if !isHexSHA256(source.SHA256) {
+			return errors.New("complex-refactor source_digests require 64-character sha256")
+		}
+		if err := validatePublicSafeText(source.Path); err != nil {
+			return err
+		}
+	}
+	if len(summary.Artifacts) == 0 {
+		return errors.New("complex-refactor rehearsal requires artifacts")
+	}
+	for key, value := range summary.Artifacts {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			return errors.New("complex-refactor artifacts require non-empty keys and paths")
+		}
+		if err := validatePublicSafeText(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateComplexRefactorTaskCounts(counts complexRefactorTaskCounts) error {
+	if counts.Total < 0 || counts.Ready < 0 || counts.Blocked < 0 || counts.Completed < 0 || counts.Failed < 0 {
+		return errors.New("complex-refactor task counts must not be negative")
+	}
+	if counts.Total == 0 {
+		return errors.New("complex-refactor task counts require at least one task")
+	}
+	if counts.Ready+counts.Blocked+counts.Completed+counts.Failed != counts.Total {
+		return errors.New("complex-refactor task counts must sum to total")
 	}
 	return nil
 }
