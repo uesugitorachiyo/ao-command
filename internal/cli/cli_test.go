@@ -695,6 +695,68 @@ func TestLiveMutationStatusReportsReadOnlySummary(t *testing.T) {
 	}
 }
 
+func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
+	paths := liveDocsApprovalFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "approval",
+		"--request", paths.request,
+		"--ticket", paths.approvedTicket,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation approval exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_approval=approved",
+		"safe_to_request=true",
+		"safe_to_execute=true",
+		"approval_state=approved",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"request_id=first-live-docs-only-approval-request",
+		"ticket_id=live-docs-approval-ticket",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("live-mutation approval stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestLiveMutationApprovalBlocksPendingTicketReadOnly(t *testing.T) {
+	paths := liveDocsApprovalFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "approval",
+		"--request", paths.request,
+		"--ticket", paths.pendingTicket,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation approval pending exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion        string `json:"schema_version"`
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		SafeToRequest        bool   `json:"safe_to_request"`
+		SafeToExecute        bool   `json:"safe_to_execute"`
+		ApprovalState        string `json:"approval_state"`
+		OperatorMode         string `json:"operator_mode"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid live-mutation approval JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.live-mutation-approval-status.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "blocked" ||
+		!got.SafeToRequest ||
+		got.SafeToExecute ||
+		got.ApprovalState != "pending" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories {
+		t.Fatalf("unexpected pending approval summary: %+v", got)
+	}
+}
+
 func TestLiveMutationStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
 	paths := liveMutationFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
@@ -3050,6 +3112,23 @@ func copyLiveMutationFixtures(t *testing.T) liveMutationPaths {
 		isolation:  copyOne("isolation", src.isolation),
 		rollback:   copyOne("rollback", src.rollback),
 		killSwitch: copyOne("kill-switch", src.killSwitch),
+	}
+}
+
+type liveDocsApprovalPaths struct {
+	request        string
+	approvedTicket string
+	pendingTicket  string
+}
+
+func liveDocsApprovalFixturePaths() liveDocsApprovalPaths {
+	fixture := func(name string) string {
+		return filepath.Join("..", "..", "examples", "live-docs-approval", name)
+	}
+	return liveDocsApprovalPaths{
+		request:        fixture("request.json"),
+		approvedTicket: fixture("ticket-approved.json"),
+		pendingTicket:  fixture("ticket-pending.json"),
 	}
 }
 
