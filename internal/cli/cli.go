@@ -80,6 +80,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.status(ctx, args[1:])
 	case "stack":
 		return a.stack(args[1:])
+	case "atlas":
+		return a.atlas(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -103,6 +105,7 @@ func (a App) printHelp() {
 Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
+  ao-command atlas status --status PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -198,6 +201,64 @@ func (a App) stack(args []string) int {
 		fmt.Fprintf(a.Stdout, "gate=%s status=%s required_before_promotion=%t\n", gate.Name, gate.Status, gate.RequiredBeforePromotion)
 	}
 	fmt.Fprintf(a.Stdout, "out_of_scope=%s\n", strings.Join(summary.OutOfScope, ","))
+	return 0
+}
+
+func (a App) atlas(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas status --status PATH [--json]")
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.atlasStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas status --status PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) atlasStatus(args []string) int {
+	var statusPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("atlas status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&statusPath, "status", "", "path to AO Foundry atlas status JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(statusPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command atlas status: --status is required")
+		return 2
+	}
+	summary, err := readAtlasStatus(statusPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command atlas status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_atlas_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "foundry_status=%s\n", summary.FoundryStatus)
+	fmt.Fprintf(a.Stdout, "mode=%s\n", summary.Mode)
+	fmt.Fprintf(a.Stdout, "registry_id=%s\n", summary.RegistryID)
+	fmt.Fprintf(a.Stdout, "import_id=%s\n", summary.ImportID)
+	fmt.Fprintf(a.Stdout, "workgraph_id=%s\n", summary.WorkgraphID)
+	fmt.Fprintf(a.Stdout, "target_instance=%s\n", summary.TargetInstance)
+	fmt.Fprintf(a.Stdout, "readback_status=%s\n", summary.ReadbackStatus)
+	fmt.Fprintf(a.Stdout, "task_id=%s\n", summary.TaskID)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "orchestration_owner=%s\n", summary.OrchestrationOwner)
+	fmt.Fprintf(a.Stdout, "atlas_authority=%s\n", summary.AtlasAuthority)
+	fmt.Fprintf(a.Stdout, "schedules_work=%t\n", summary.SchedulesWork)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, action := range summary.NextActions {
+		fmt.Fprintf(a.Stdout, "next_action=%s\n", action)
+	}
 	return 0
 }
 
@@ -591,6 +652,50 @@ type stackSummary struct {
 	OutOfScope           []string                `json:"out_of_scope"`
 }
 
+type foundryAtlasStatus struct {
+	SchemaVersion  string            `json:"schema_version"`
+	Status         string            `json:"status"`
+	Mode           string            `json:"mode"`
+	RegistryID     string            `json:"registry_id"`
+	ImportID       string            `json:"import_id"`
+	WorkgraphID    string            `json:"workgraph_id"`
+	TargetInstance string            `json:"target_instance"`
+	ReadbackStatus string            `json:"readback_status"`
+	TaskID         string            `json:"task_id"`
+	TaskDigest     string            `json:"task_digest"`
+	RunLinkDigest  string            `json:"run_link_digest"`
+	SchedulesWork  bool              `json:"schedules_work"`
+	ExecutesWork   bool              `json:"executes_work"`
+	ApprovesWork   bool              `json:"approves_work"`
+	Evidence       map[string]string `json:"evidence"`
+	NextActions    []string          `json:"next_actions"`
+}
+
+type atlasStatusSummary struct {
+	SchemaVersion        string            `json:"schema_version"`
+	CommandSchemaVersion string            `json:"command_schema_version"`
+	Status               string            `json:"status"`
+	FoundryStatus        string            `json:"foundry_status"`
+	Mode                 string            `json:"mode"`
+	RegistryID           string            `json:"registry_id"`
+	ImportID             string            `json:"import_id"`
+	WorkgraphID          string            `json:"workgraph_id"`
+	TargetInstance       string            `json:"target_instance"`
+	ReadbackStatus       string            `json:"readback_status"`
+	TaskID               string            `json:"task_id"`
+	TaskDigest           string            `json:"task_digest"`
+	RunLinkDigest        string            `json:"run_link_digest"`
+	OperatorMode         string            `json:"operator_mode"`
+	OrchestrationOwner   string            `json:"orchestration_owner"`
+	AtlasAuthority       string            `json:"atlas_authority"`
+	SchedulesWork        bool              `json:"schedules_work"`
+	ExecutesWork         bool              `json:"executes_work"`
+	ApprovesWork         bool              `json:"approves_work"`
+	MutatesRepositories  bool              `json:"mutates_repositories"`
+	Evidence             map[string]string `json:"evidence"`
+	NextActions          []string          `json:"next_actions"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -842,6 +947,96 @@ func readActiveStackLedger(path string) (activeStackLedger, error) {
 		return ledger, errors.New("active-stack ledger requires release_handoff gates")
 	}
 	return ledger, nil
+}
+
+func readAtlasStatus(path string) (atlasStatusSummary, error) {
+	var status foundryAtlasStatus
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return atlasStatusSummary{}, fmt.Errorf("read status: %w", err)
+	}
+	if err := json.Unmarshal(bytes, &status); err != nil {
+		return atlasStatusSummary{}, fmt.Errorf("invalid status JSON: %w", err)
+	}
+	if err := validateFoundryAtlasStatus(status); err != nil {
+		return atlasStatusSummary{}, err
+	}
+	return atlasStatusSummary{
+		SchemaVersion:        "ao.command.atlas-status.v0.1",
+		CommandSchemaVersion: commandSchemaVersion,
+		Status:               status.Status,
+		FoundryStatus:        path,
+		Mode:                 status.Mode,
+		RegistryID:           status.RegistryID,
+		ImportID:             status.ImportID,
+		WorkgraphID:          status.WorkgraphID,
+		TargetInstance:       status.TargetInstance,
+		ReadbackStatus:       status.ReadbackStatus,
+		TaskID:               status.TaskID,
+		TaskDigest:           status.TaskDigest,
+		RunLinkDigest:        status.RunLinkDigest,
+		OperatorMode:         operatorMode,
+		OrchestrationOwner:   "ao-foundry",
+		AtlasAuthority:       "compile_only",
+		SchedulesWork:        status.SchedulesWork,
+		ExecutesWork:         status.ExecutesWork,
+		ApprovesWork:         status.ApprovesWork,
+		MutatesRepositories:  false,
+		Evidence:             status.Evidence,
+		NextActions:          status.NextActions,
+	}, nil
+}
+
+func validateFoundryAtlasStatus(status foundryAtlasStatus) error {
+	if status.SchemaVersion != "ao.foundry.atlas-status.v0.1" {
+		return errors.New("invalid Foundry Atlas status schema_version")
+	}
+	if status.Status != "ready" || status.ReadbackStatus != "ready" {
+		return errors.New("Foundry Atlas status and readback_status must be ready")
+	}
+	if status.Mode != "fixture_only_readback" {
+		return errors.New("Foundry Atlas status mode must be fixture_only_readback")
+	}
+	for field, value := range map[string]string{
+		"registry_id":     status.RegistryID,
+		"import_id":       status.ImportID,
+		"workgraph_id":    status.WorkgraphID,
+		"target_instance": status.TargetInstance,
+		"task_id":         status.TaskID,
+		"task_digest":     status.TaskDigest,
+		"run_link_digest": status.RunLinkDigest,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("Foundry Atlas status missing %s", field)
+		}
+	}
+	if !isSHA256Digest(status.TaskDigest) || !isSHA256Digest(status.RunLinkDigest) {
+		return errors.New("Foundry Atlas status requires sha256 task and run-link digests")
+	}
+	if status.SchedulesWork || status.ExecutesWork || status.ApprovesWork {
+		return errors.New("Foundry Atlas status must remain observer-only and cannot schedule, execute, or approve work")
+	}
+	if len(status.Evidence) == 0 {
+		return errors.New("Foundry Atlas status requires evidence")
+	}
+	for key, value := range status.Evidence {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			return errors.New("Foundry Atlas status evidence keys and paths must not be empty")
+		}
+	}
+	return nil
+}
+
+func isSHA256Digest(value string) bool {
+	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	for _, ch := range strings.TrimPrefix(value, "sha256:") {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func readRSIManifest(path string) (rsiManifestSummary, error) {

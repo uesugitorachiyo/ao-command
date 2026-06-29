@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -191,6 +192,92 @@ func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 		if !contains(got.OutOfScope, want) {
 			t.Fatalf("stack JSON missing out-of-scope repo %q: %+v", want, got.OutOfScope)
 		}
+	}
+}
+
+func TestAtlasStatusReadsFoundryObserverArtifact(t *testing.T) {
+	status := writeAtlasStatusFixture(t, false)
+	code, stdout, stderr := runWithFake([]string{"atlas", "status", "--status", status}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("atlas status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_atlas_status=ready",
+		"foundry_status=" + status,
+		"mode=fixture_only_readback",
+		"registry_id=atlas-demo-stack",
+		"workgraph_id=atlas-readiness-workgraph",
+		"target_instance=demo-stack",
+		"task_id=atlas-readiness-task",
+		"operator_mode=read_only",
+		"orchestration_owner=ao-foundry",
+		"atlas_authority=compile_only",
+		"schedules_work=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("atlas status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestAtlasStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
+	status := writeAtlasStatusFixture(t, false)
+	code, stdout, stderr := runWithFake([]string{"atlas", "status", "--status", status, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("atlas status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion        string `json:"schema_version"`
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		FoundryStatus        string `json:"foundry_status"`
+		Mode                 string `json:"mode"`
+		RegistryID           string `json:"registry_id"`
+		WorkgraphID          string `json:"workgraph_id"`
+		TargetInstance       string `json:"target_instance"`
+		TaskID               string `json:"task_id"`
+		OperatorMode         string `json:"operator_mode"`
+		OrchestrationOwner   string `json:"orchestration_owner"`
+		AtlasAuthority       string `json:"atlas_authority"`
+		SchedulesWork        bool   `json:"schedules_work"`
+		ExecutesWork         bool   `json:"executes_work"`
+		ApprovesWork         bool   `json:"approves_work"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid atlas status JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.atlas-status.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "ready" ||
+		got.FoundryStatus != status ||
+		got.Mode != "fixture_only_readback" ||
+		got.RegistryID != "atlas-demo-stack" ||
+		got.WorkgraphID != "atlas-readiness-workgraph" ||
+		got.TargetInstance != "demo-stack" ||
+		got.TaskID != "atlas-readiness-task" ||
+		got.OperatorMode != "read_only" ||
+		got.OrchestrationOwner != "ao-foundry" ||
+		got.AtlasAuthority != "compile_only" ||
+		got.SchedulesWork ||
+		got.ExecutesWork ||
+		got.ApprovesWork ||
+		got.MutatesRepositories {
+		t.Fatalf("unexpected atlas status summary: %+v", got)
+	}
+}
+
+func TestAtlasStatusRejectsAuthorityDrift(t *testing.T) {
+	status := writeAtlasStatusFixture(t, true)
+	code, _, stderr := runWithFake([]string{"atlas", "status", "--status", status}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("atlas status exit=%d, want 1", code)
+	}
+	if !strings.Contains(stderr, "must remain observer-only") {
+		t.Fatalf("stderr missing observer-only boundary reason: %s", stderr)
 	}
 }
 
@@ -1198,6 +1285,11 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
+		{name: "README Atlas status command", doc: readme, want: "go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json"},
+		{name: "README Atlas observer schema", doc: readme, want: "ao.foundry.atlas-status.v0.1"},
+		{name: "README Atlas compile-only boundary", doc: readme, want: "atlas_authority=compile_only"},
+		{name: "README Atlas no scheduling", doc: readme, want: "schedules_work=false"},
+		{name: "README Atlas read-only mutation boundary", doc: readme, want: "mutates_repositories=false"},
 		{name: "README RSI health command", doc: readme, want: "go run ./cmd/ao-command rsi health"},
 		{name: "README RSI manifest command", doc: readme, want: "go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json"},
 		{name: "README RSI health Foundry candidate", doc: readme, want: "--foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json"},
@@ -1253,6 +1345,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs RSI health bundle schema", doc: productionReadiness, want: "rsi-health-bundle-v0.1.schema.json"},
 		{name: "production readiness docs active stack command", doc: productionReadiness, want: "ao-command stack --ledger"},
 		{name: "production readiness docs active stack gate", doc: productionReadiness, want: "active-stack handoff"},
+		{name: "production readiness docs Atlas status command", doc: productionReadiness, want: "ao-command atlas status --status"},
+		{name: "production readiness docs Atlas compile-only boundary", doc: productionReadiness, want: "atlas_authority=compile_only"},
 		{name: "production readiness docs bounded RSI claim", doc: productionReadiness, want: "claim_level=bounded_governed_rsi decision=allowed"},
 		{name: "production readiness docs full RSI claim denied", doc: productionReadiness, want: "claim_level=full_autonomous_self_mutating_rsi decision=denied"},
 		{name: "production readiness docs RSI readback schema", doc: productionReadiness, want: "ao2.cp-ao2-rsi-claim-readiness-readback.v1"},
@@ -1496,6 +1590,37 @@ func writeStackLedgerFixture(t *testing.T) string {
 }`
 	if err := os.WriteFile(path, []byte(ledger), 0o644); err != nil {
 		t.Fatalf("write stack ledger fixture: %v", err)
+	}
+	return path
+}
+
+func writeAtlasStatusFixture(t *testing.T, schedulesWork bool) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "foundry-atlas-status.json")
+	status := fmt.Sprintf(`{
+  "schema_version": "ao.foundry.atlas-status.v0.1",
+  "status": "ready",
+  "mode": "fixture_only_readback",
+  "registry_id": "atlas-demo-stack",
+  "import_id": "atlas-readiness-workgraph-foundry-import",
+  "workgraph_id": "atlas-readiness-workgraph",
+  "target_instance": "demo-stack",
+  "readback_status": "ready",
+  "task_id": "atlas-readiness-task",
+  "task_digest": "sha256:7a3df442c6a8268de6e7b963bb55759aa15039e724f3291b7bf902a37cd43d99",
+  "run_link_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "schedules_work": %t,
+  "executes_work": false,
+  "approves_work": false,
+  "evidence": {
+    "foundry": "evidence/foundry/atlas-readiness.json"
+  },
+  "next_actions": [
+    "keep Atlas status as observer-only readback"
+  ]
+}`, schedulesWork)
+	if err := os.WriteFile(path, []byte(status), 0o644); err != nil {
+		t.Fatalf("write atlas status fixture: %v", err)
 	}
 	return path
 }

@@ -33,6 +33,10 @@ The audit is passing only when all gates pass:
   `docs/contracts/rsi-health-bundle-v0.1.schema.json`;
 - AO Foundry active-stack handoff status is visible through read-only
   `ao-command stack --ledger` output;
+- AO Foundry Atlas observer status is visible through read-only
+  `ao-command atlas status --status` output and preserves
+  `schedules_work=false`, `executes_work=false`, `approves_work=false`, and
+  `atlas_authority=compile_only`;
 - the governed RSI evidence-chain smoke passes from `foundry pulse run` through
   AO Forge retained proofs, `ao-command rsi health`, and AO Covenant's denied
   full autonomous self-mutating RSI claim boundary;
@@ -76,6 +80,7 @@ go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contrac
 scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
+go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/rsi-evidence-chain-smoke
 go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/rsi-health-v0.1.schema.json" --document "$PWD/tmp/rsi-evidence-chain-smoke/ao-command-rsi-health.json"
