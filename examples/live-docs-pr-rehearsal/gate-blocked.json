@@ -1,0 +1,47 @@
+{
+  "schema_version": "ao.foundry.live-docs-pr-rehearsal-gate.v0.1",
+  "status": "blocked",
+  "first_live_class": "docs_only",
+  "safe_to_request": true,
+  "safe_to_execute": false,
+  "exact_next_step": "request_operator_approval",
+  "allowed_next_action": "request_operator_approval",
+  "first_failing_check": "approval_artifact",
+  "checks": [
+    {
+      "name": "approval_artifact",
+      "status": "blocked",
+      "summary": "explicit approval artifact is required before the first docs-only PR rehearsal can execute"
+    }
+  ],
+  "source_hashes": [
+    {
+      "name": "approved_live_docs_dry_run_chain",
+      "path": "examples/live-docs-pr-rehearsal/approved-live-docs-dry-run-chain.json",
+      "schema_version": "ao.foundry.approved-live-docs-dry-run-chain.v0.1",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "blocking_next_actions": [
+    "request_operator_approval"
+  ],
+  "maintenance_suggestions": [
+    "Do not start a live branch until explicit approval exists."
+  ],
+  "authority_boundaries": {
+    "emits_decision_only": true,
+    "first_live_class": "docs_only",
+    "broad_live_mutation_allowed": false,
+    "fully_unsupervised_complex_mutation_claimed": false,
+    "mutates_repositories": false,
+    "creates_branch": false,
+    "creates_worktree": false,
+    "opens_pr": false,
+    "merges_pr": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false
+  }
+}
