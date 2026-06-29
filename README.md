@@ -102,7 +102,9 @@ is readback only; it does not grant or perform live mutation.
 request and Covenant ticket. It reports `safe_to_request`, `safe_to_execute`,
 approval state, request id, ticket id, and read-only boundaries. It never calls
 Covenant, starts a branch, mutates a repository, publishes, uploads, or calls a
-provider.
+provider. If the ticket is pending, denied, stale, consumed, missing an
+approver, or mismatched to the request, the readback reports the blocker instead
+of trying to repair or override the approval state.
 
 `live-mutation pr-rehearsal` reads AO Foundry's
 `ao.foundry.live-docs-pr-rehearsal-gate.v0.1` decision. It reports whether the
@@ -110,6 +112,12 @@ first docs-only branch/PR rehearsal may start or whether the operator must
 request approval first. AO Command remains read-only: it does not create
 branches, create worktrees, open PRs, merge, mutate repositories, execute work,
 approve work, call providers, publish, upload, tag, or release.
+
+Reading `safe_to_execute=true` is not the same as executing. AO Command only
+explains that the exact-scope first docs-only PR rehearsal gate is ready for an
+operator-controlled action. It does not grant broad live mutation authority,
+does not approve fully unsupervised complex repository mutation, and does not
+convert readback evidence into permission.
 
 `rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
 Sentinel, AO Promoter, AO Foundry's RSI improvement gate, AO Foundry's RSI
