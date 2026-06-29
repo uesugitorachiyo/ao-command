@@ -457,6 +457,10 @@ func TestComplexRefactorStatusReportsReadOnlySummary(t *testing.T) {
 		"blocked_tasks=2",
 		"completed_tasks=1",
 		"failed_tasks=0",
+		"repair_plan_status=repair_required",
+		"repair_task=repair-complex-refactor-command-readback-task",
+		"context_repack_status=ready",
+		"context_repack_reason=run-link evidence needs_context=evidence/foundry/complex-refactor/command-readback-needs-context.json",
 		"first_failing_check=",
 		"operator_mode=read_only",
 		"mutates_repositories=false",
@@ -493,7 +497,21 @@ func TestComplexRefactorStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
 		ExecutesWork        bool   `json:"executes_work"`
 		ApprovesWork        bool   `json:"approves_work"`
 		CallsProviders      bool   `json:"calls_providers"`
-		SourceDigests       []struct {
+		RepairPlan          struct {
+			Status        string `json:"status"`
+			RepairTaskID  string `json:"repair_task_id"`
+			SchedulesWork bool   `json:"schedules_work"`
+			ExecutesWork  bool   `json:"executes_work"`
+			ApprovesWork  bool   `json:"approves_work"`
+		} `json:"repair_plan"`
+		ContextRepack struct {
+			Status               string `json:"status"`
+			MissingContextReason string `json:"missing_context_reason"`
+			SchedulesWork        bool   `json:"schedules_work"`
+			ExecutesWork         bool   `json:"executes_work"`
+			ApprovesWork         bool   `json:"approves_work"`
+		} `json:"context_repack"`
+		SourceDigests []struct {
 			Name   string `json:"name"`
 			SHA256 string `json:"sha256"`
 		} `json:"source_digests"`
@@ -518,6 +536,16 @@ func TestComplexRefactorStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
 		got.ExecutesWork ||
 		got.ApprovesWork ||
 		got.CallsProviders ||
+		got.RepairPlan.Status != "repair_required" ||
+		got.RepairPlan.RepairTaskID != "repair-complex-refactor-command-readback-task" ||
+		got.RepairPlan.SchedulesWork ||
+		got.RepairPlan.ExecutesWork ||
+		got.RepairPlan.ApprovesWork ||
+		got.ContextRepack.Status != "ready" ||
+		!strings.Contains(got.ContextRepack.MissingContextReason, "needs_context") ||
+		got.ContextRepack.SchedulesWork ||
+		got.ContextRepack.ExecutesWork ||
+		got.ContextRepack.ApprovesWork ||
 		len(got.SourceDigests) != 2 {
 		t.Fatalf("unexpected complex-refactor status summary: %+v", got)
 	}
@@ -593,6 +621,28 @@ func TestComplexRefactorStatusFailsClosedForMalformedUnsafeAndAuthority(t *testi
 				writeFile(t, path, body)
 			},
 			want: "source_digests require 64-character sha256",
+		},
+		{
+			name: "repair_plan_authority",
+			mutate: func(path string) {
+				body := complexRefactorSummaryJSON("ready")
+				body = strings.Replace(body, `"repair_task_id": "repair-complex-refactor-command-readback-task",
+    "schedules_work": false`, `"repair_task_id": "repair-complex-refactor-command-readback-task",
+    "schedules_work": true`, 1)
+				writeFile(t, path, body)
+			},
+			want: "repair_plan must remain read-only",
+		},
+		{
+			name: "context_repack_authority",
+			mutate: func(path string) {
+				body := complexRefactorSummaryJSON("ready")
+				body = strings.Replace(body, `"missing_context_reason": "run-link evidence needs_context=evidence/foundry/complex-refactor/command-readback-needs-context.json",
+    "schedules_work": false`, `"missing_context_reason": "run-link evidence needs_context=evidence/foundry/complex-refactor/command-readback-needs-context.json",
+    "schedules_work": true`, 1)
+				writeFile(t, path, body)
+			},
+			want: "context_repack must remain read-only",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2791,6 +2841,22 @@ func complexRefactorSummaryJSON(mode string) string {
     "next_action": "` + nextAction + `",
     "first_failing_check": "` + firstFailingCheck + `",
     "why": "fixture-only complex refactor rehearsal keeps implementation gated"
+  },
+  "repair_plan": {
+    "status": "repair_required",
+    "path": "target/complex-refactor-summary/atlas-repair-plan.json",
+    "repair_task_id": "repair-complex-refactor-command-readback-task",
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false
+  },
+  "context_repack": {
+    "status": "ready",
+    "path": "target/complex-refactor-summary/atlas-context-repack.json",
+    "missing_context_reason": "run-link evidence needs_context=evidence/foundry/complex-refactor/command-readback-needs-context.json",
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false
   },
   "source_digests": [
     {

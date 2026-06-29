@@ -29,6 +29,22 @@
     "first_failing_check": "",
     "why": "fixture-only complex refactor rehearsal keeps implementation gated"
   },
+  "repair_plan": {
+    "status": "repair_required",
+    "path": "target/complex-refactor-summary/atlas-repair-plan.json",
+    "repair_task_id": "repair-complex-refactor-command-readback-task",
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false
+  },
+  "context_repack": {
+    "status": "ready",
+    "path": "target/complex-refactor-summary/atlas-context-repack.json",
+    "missing_context_reason": "run-link evidence needs_context=evidence/foundry/complex-refactor/command-readback-needs-context.json",
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false
+  },
   "source_digests": [
     {
       "name": "workgraph",
