@@ -45,6 +45,9 @@ out="$(cd "$out" && pwd)"
 
 go run ./cmd/ao-command status --forge "$forge" --json > "$out/status.json"
 go run ./cmd/ao-command atlas status --status "$foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json" --json > "$out/atlas-status.json"
+go run ./cmd/ao-command atlas authority-ladder \
+  --mission-status examples/authority-ladder/status.blocked.json \
+  --json > "$out/atlas-authority-ladder.json"
 go run ./cmd/ao-command pulse status \
   --preflight "$foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json" \
   --lifecycle "$foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json" \
@@ -85,7 +88,7 @@ go run ./cmd/ao-command evidence \
   --schema docs/contracts/production-readiness-audit-v0.1.schema.json \
   --document "$out/ao-forge-production-readiness.json" > "$out/evidence.txt"
 
-shasum -a 256 "$out"/status.json "$out"/atlas-status.json "$out"/pulse-status.json "$out"/complex-refactor-status.json "$out"/live-mutation-status.json "$out"/live-mutation-approval.json "$out"/live-docs-pr-rehearsal.json "$out"/next.json "$out"/goal.json "$out"/ao-forge-production-readiness.json "$out"/evidence.txt > "$out/checksums.txt"
+shasum -a 256 "$out"/status.json "$out"/atlas-status.json "$out"/atlas-authority-ladder.json "$out"/pulse-status.json "$out"/complex-refactor-status.json "$out"/live-mutation-status.json "$out"/live-mutation-approval.json "$out"/live-docs-pr-rehearsal.json "$out"/next.json "$out"/goal.json "$out"/ao-forge-production-readiness.json "$out"/evidence.txt > "$out/checksums.txt"
 
 cat > "$out/ao-command-smoke.json" <<JSON
 {
@@ -95,6 +98,7 @@ cat > "$out/ao-command-smoke.json" <<JSON
   "artifacts": [
     "$out/status.json",
     "$out/atlas-status.json",
+    "$out/atlas-authority-ladder.json",
     "$out/pulse-status.json",
     "$out/complex-refactor-status.json",
     "$out/live-mutation-status.json",

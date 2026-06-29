@@ -1,0 +1,67 @@
+{
+  "contract_version": "ao.atlas.mission-status.v0.1",
+  "intake_id": "authority-ladder-intake",
+  "workgraph_id": "ao-stack-authority-ladder-workgraph",
+  "target_instance": "demo-stack",
+  "completion_status": "blocked",
+  "node_counts": {
+    "blocked": 13,
+    "completed": 1,
+    "failed": 0,
+    "ready": 2
+  },
+  "run_links": {
+    "authority-docs-single-live-task": "completed"
+  },
+  "missing_context_packs": [],
+  "missing_handoffs": [
+    "authority-docs-multi-repack-task",
+    "authority-docs-multi-covenant-ticket-task"
+  ],
+  "next_recommended_action": "emit repair plan for blocked task",
+  "next_actions": [
+    "emit repair plan or context repack for blocked task"
+  ],
+  "authority_ladder": {
+    "current_class": "docs_only_single_file",
+    "next_class": "docs_only_multi_file",
+    "proven_live_classes": [
+      "docs_only_single_file"
+    ],
+    "dry_run_ready_classes": [],
+    "blockers": [
+      "docs-multi-sentinel-evidence-blocked: docs_only_multi_file Sentinel no-hold evidence is missing",
+      "docs-multi-promoter-evidence-blocked: docs_only_multi_file Promoter readiness is missing",
+      "docs-multi-command-readback-blocked: docs_only_multi_file Command readback is missing",
+      "docs-multi-live-rehearsal-blocked: docs_only_multi_file live rehearsal waits for all evidence gates",
+      "test-only-dry-run-blocked: test_only dry run waits for docs_only_multi_file live evidence"
+    ],
+    "required_evidence": [
+      "ci_passed:docs_only_multi_file",
+      "command_readback:docs_only_multi_file",
+      "context_repack:docs_only_multi_file",
+      "covenant_ticket:docs_only_multi_file",
+      "live_rehearsal:docs_only_multi_file",
+      "promoter_ready:docs_only_multi_file",
+      "rollback_proof:docs_only_multi_file",
+      "sentinel_no_hold:docs_only_multi_file"
+    ],
+    "denied_higher_classes": {
+      "complex_repo_mutation": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+      "docs_config_only": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+      "low_risk_code": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+      "multi_repo_low_risk": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+      "test_only": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete"
+    },
+    "do_not_advance_gates": [
+      "do_not_advance:command_readback_missing",
+      "do_not_advance:covenant_ticket_missing",
+      "do_not_advance:docs_multi_live_missing",
+      "do_not_advance:promoter_denial_or_missing_readback",
+      "do_not_advance:sentinel_hold_or_missing_readback",
+      "do_not_advance:fully_unsupervised_complex_repo_mutation_denied"
+    ]
+  },
+  "schedules_work": false,
+  "executes_work": false
+}

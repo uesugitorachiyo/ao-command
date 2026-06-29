@@ -281,6 +281,96 @@ func TestAtlasStatusRejectsAuthorityDrift(t *testing.T) {
 	}
 }
 
+func TestAtlasAuthorityLadderReportsDeniedHigherClasses(t *testing.T) {
+	status := writeAtlasAuthorityLadderStatusFixture(t, false)
+	code, stdout, stderr := runWithFake([]string{"atlas", "authority-ladder", "--mission-status", status}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("atlas authority-ladder exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_atlas_authority_ladder=blocked",
+		"mission_status=" + status,
+		"current_class=docs_only_single_file",
+		"next_class=docs_only_multi_file",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"schedules_work=false",
+		"executes_work=false",
+		"blocker=docs-multi-sentinel-evidence-blocked: docs_only_multi_file Sentinel no-hold evidence is missing",
+		"required_evidence=sentinel_no_hold:docs_only_multi_file",
+		"denied_higher_class=test_only reason=denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+		"do_not_advance_gate=do_not_advance:command_readback_missing",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("atlas authority-ladder stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, forbidden := range []string{"creates_branch=true", "opens_pr=true", "merges_pr=true"} {
+		if strings.Contains(stdout, forbidden) {
+			t.Fatalf("atlas authority-ladder output contains mutation signal %q:\n%s", forbidden, stdout)
+		}
+	}
+}
+
+func TestAtlasAuthorityLadderJSONReportsRequiredEvidence(t *testing.T) {
+	status := writeAtlasAuthorityLadderStatusFixture(t, false)
+	code, stdout, stderr := runWithFake([]string{"atlas", "authority-ladder", "--mission-status", status, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("atlas authority-ladder json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion        string            `json:"schema_version"`
+		CommandSchemaVersion string            `json:"command_schema_version"`
+		Status               string            `json:"status"`
+		MissionStatus        string            `json:"mission_status"`
+		CurrentClass         string            `json:"current_class"`
+		NextClass            string            `json:"next_class"`
+		OperatorMode         string            `json:"operator_mode"`
+		MutatesRepositories  bool              `json:"mutates_repositories"`
+		SchedulesWork        bool              `json:"schedules_work"`
+		ExecutesWork         bool              `json:"executes_work"`
+		Blockers             []string          `json:"blockers"`
+		RequiredEvidence     []string          `json:"required_evidence"`
+		DeniedHigherClasses  map[string]string `json:"denied_higher_classes"`
+		DoNotAdvanceGates    []string          `json:"do_not_advance_gates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid atlas authority-ladder JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.atlas-authority-ladder.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "blocked" ||
+		got.MissionStatus != status ||
+		got.CurrentClass != "docs_only_single_file" ||
+		got.NextClass != "docs_only_multi_file" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		got.SchedulesWork ||
+		got.ExecutesWork {
+		t.Fatalf("unexpected atlas authority-ladder summary: %+v", got)
+	}
+	if !contains(got.RequiredEvidence, "sentinel_no_hold:docs_only_multi_file") {
+		t.Fatalf("missing required evidence in JSON: %+v", got.RequiredEvidence)
+	}
+	if got.DeniedHigherClasses["test_only"] == "" {
+		t.Fatalf("missing denied test_only reason: %+v", got.DeniedHigherClasses)
+	}
+	if !contains(got.DoNotAdvanceGates, "do_not_advance:command_readback_missing") {
+		t.Fatalf("missing do-not-advance gate: %+v", got.DoNotAdvanceGates)
+	}
+}
+
+func TestAtlasAuthorityLadderRejectsMutationAuthorityDrift(t *testing.T) {
+	status := writeAtlasAuthorityLadderStatusFixture(t, true)
+	code, _, stderr := runWithFake([]string{"atlas", "authority-ladder", "--mission-status", status}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("atlas authority-ladder exit=%d, want 1", code)
+	}
+	if !strings.Contains(stderr, "must remain read-only") {
+		t.Fatalf("stderr missing read-only boundary reason: %s", stderr)
+	}
+}
+
 func TestPulseStatusReportsReadyGateReadback(t *testing.T) {
 	paths := writePulseGateFixtures(t, "ready")
 	code, stdout, stderr := runWithFake([]string{
@@ -2354,6 +2444,67 @@ func writeAtlasStatusFixture(t *testing.T, schedulesWork bool) string {
 }`, schedulesWork)
 	if err := os.WriteFile(path, []byte(status), 0o644); err != nil {
 		t.Fatalf("write atlas status fixture: %v", err)
+	}
+	return path
+}
+
+func writeAtlasAuthorityLadderStatusFixture(t *testing.T, schedulesWork bool) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "atlas-authority-ladder-status.json")
+	status := fmt.Sprintf(`{
+  "contract_version": "ao.atlas.mission-status.v0.1",
+  "intake_id": "authority-ladder-intake",
+  "workgraph_id": "ao-stack-authority-ladder-workgraph",
+  "target_instance": "demo-stack",
+  "completion_status": "blocked",
+  "node_counts": {
+    "blocked": 13,
+    "completed": 1,
+    "failed": 0,
+    "ready": 2
+  },
+  "run_links": {
+    "authority-docs-single-live-task": "completed"
+  },
+  "missing_context_packs": [],
+  "missing_handoffs": [
+    "authority-docs-multi-repack-task",
+    "authority-docs-multi-covenant-ticket-task"
+  ],
+  "next_recommended_action": "emit repair plan for blocked task",
+  "next_actions": [
+    "emit repair plan or context repack for blocked task"
+  ],
+  "authority_ladder": {
+    "current_class": "docs_only_single_file",
+    "next_class": "docs_only_multi_file",
+    "proven_live_classes": [
+      "docs_only_single_file"
+    ],
+    "dry_run_ready_classes": [],
+    "blockers": [
+      "docs-multi-sentinel-evidence-blocked: docs_only_multi_file Sentinel no-hold evidence is missing",
+      "docs-multi-command-readback-blocked: docs_only_multi_file Command readback is missing"
+    ],
+    "required_evidence": [
+      "command_readback:docs_only_multi_file",
+      "promoter_ready:docs_only_multi_file",
+      "sentinel_no_hold:docs_only_multi_file"
+    ],
+    "denied_higher_classes": {
+      "low_risk_code": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete",
+      "test_only": "denied until docs_only_multi_file live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete"
+    },
+    "do_not_advance_gates": [
+      "do_not_advance:command_readback_missing",
+      "do_not_advance:sentinel_hold_or_missing_readback"
+    ]
+  },
+  "schedules_work": %t,
+  "executes_work": false
+}`, schedulesWork)
+	if err := os.WriteFile(path, []byte(status), 0o644); err != nil {
+		t.Fatalf("write atlas authority ladder status fixture: %v", err)
 	}
 	return path
 }
