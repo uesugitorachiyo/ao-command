@@ -659,6 +659,210 @@ func TestComplexRefactorStatusFailsClosedForMalformedUnsafeAndAuthority(t *testi
 	}
 }
 
+func TestLiveMutationStatusReportsReadOnlySummary(t *testing.T) {
+	paths := liveMutationFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=ready",
+		"allowed_next_action=request_first_tiny_live_mutation_class",
+		"first_failing_check=",
+		"kill_switch_state=armed",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"schedules_work=false",
+		"executes_work=false",
+		"approves_work=false",
+		"calls_providers=false",
+		"release_or_publish_allowed=false",
+		"artifact=covenant_authority status=approved schema=covenant.live-mutation-authority.v1",
+		"artifact=rollback_rehearsal status=ready schema=ao.foundry.live-mutation-rollback-rehearsal.v0.1",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("live-mutation status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestLiveMutationStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
+	paths := liveMutationFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation status json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion           string `json:"schema_version"`
+		CommandSchemaVersion    string `json:"command_schema_version"`
+		Status                  string `json:"status"`
+		AllowedNextAction       string `json:"allowed_next_action"`
+		KillSwitchState         string `json:"kill_switch_state"`
+		OperatorMode            string `json:"operator_mode"`
+		MutatesRepositories     bool   `json:"mutates_repositories"`
+		SchedulesWork           bool   `json:"schedules_work"`
+		ExecutesWork            bool   `json:"executes_work"`
+		ApprovesWork            bool   `json:"approves_work"`
+		CallsProviders          bool   `json:"calls_providers"`
+		ReleaseOrPublishAllowed bool   `json:"release_or_publish_allowed"`
+		Artifacts               []struct {
+			Name          string `json:"name"`
+			SchemaVersion string `json:"schema_version"`
+			Status        string `json:"status"`
+			SHA256        string `json:"sha256"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid live-mutation status JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.live-mutation-status.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "ready" ||
+		got.AllowedNextAction != "request_first_tiny_live_mutation_class" ||
+		got.KillSwitchState != "armed" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		got.SchedulesWork ||
+		got.ExecutesWork ||
+		got.ApprovesWork ||
+		got.CallsProviders ||
+		got.ReleaseOrPublishAllowed ||
+		len(got.Artifacts) != 7 {
+		t.Fatalf("unexpected live-mutation status summary: %+v", got)
+	}
+	for _, artifact := range got.Artifacts {
+		if len(artifact.SHA256) != 64 {
+			t.Fatalf("artifact missing digest: %+v", artifact)
+		}
+	}
+}
+
+func TestLiveMutationStatusReportsBlockedEvidenceReadOnly(t *testing.T) {
+	paths := liveMutationFixturePaths()
+	paths.rollback = filepath.Join("..", "..", "examples", "live-mutation", "rollback-rehearsal.blocked.json")
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("live-mutation blocked status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		Status            string `json:"status"`
+		AllowedNextAction string `json:"allowed_next_action"`
+		FirstFailingCheck string `json:"first_failing_check"`
+		OperatorMode      string `json:"operator_mode"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid live-mutation blocked JSON: %v\n%s", err, stdout)
+	}
+	if got.Status != "blocked" ||
+		got.AllowedNextAction != "repair_live_mutation_evidence" ||
+		got.FirstFailingCheck != "rollback_patch_present" ||
+		got.OperatorMode != "read_only" {
+		t.Fatalf("unexpected blocked live-mutation status: %+v", got)
+	}
+}
+
+func TestLiveMutationStatusFailsClosedForMalformedUnsafeAndAuthority(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(paths *liveMutationPaths)
+		want   string
+	}{
+		{
+			name: "wrong_schema",
+			mutate: func(paths *liveMutationPaths) {
+				writeFile(t, paths.rollback, `{"schema_version":"wrong","status":"ready"}`)
+			},
+			want: "invalid schema_version",
+		},
+		{
+			name: "forbidden_authority",
+			mutate: func(paths *liveMutationPaths) {
+				body, err := os.ReadFile(liveMutationFixturePaths().request)
+				if err != nil {
+					t.Fatalf("read request fixture: %v", err)
+				}
+				updated := strings.Replace(string(body), `"mutates_repositories": false`, `"mutates_repositories": true`, 1)
+				writeFile(t, paths.request, updated)
+			},
+			want: "expands forbidden authority",
+		},
+		{
+			name: "disarmed_kill_switch",
+			mutate: func(paths *liveMutationPaths) {
+				paths.killSwitch = filepath.Join("..", "..", "examples", "live-mutation", "kill-switch.disarmed.json")
+			},
+			want: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			paths := copyLiveMutationFixtures(t)
+			tc.mutate(&paths)
+			code, stdout, stderr := runWithFake([]string{
+				"live-mutation", "status",
+				"--authority", paths.authority,
+				"--request", paths.request,
+				"--forge-plan", paths.forgePlan,
+				"--ao2-packet", paths.ao2Packet,
+				"--isolation", paths.isolation,
+				"--rollback", paths.rollback,
+				"--kill-switch", paths.killSwitch,
+				"--json",
+			}, &fakeRunner{})
+			if tc.name == "disarmed_kill_switch" {
+				if code != 0 {
+					t.Fatalf("disarmed kill switch should be readable as blocked: stderr=%s", stderr)
+				}
+				var got struct {
+					Status            string `json:"status"`
+					FirstFailingCheck string `json:"first_failing_check"`
+				}
+				if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+					t.Fatalf("invalid disarmed kill switch JSON: %v\n%s", err, stdout)
+				}
+				if got.Status != "blocked" || got.FirstFailingCheck != "operator_kill_switch" {
+					t.Fatalf("unexpected disarmed kill switch status: %+v", got)
+				}
+				return
+			}
+			if code != 1 {
+				t.Fatalf("live-mutation malformed exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Fatalf("stderr missing %q:\n%s", tc.want, stderr)
+			}
+		})
+	}
+}
+
 func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	code, stdout, stderr := runWithFake([]string{
@@ -2795,6 +2999,58 @@ func writeComplexRefactorSummaryFixture(t *testing.T, mode string) string {
 	path := filepath.Join(t.TempDir(), "complex-refactor-summary.json")
 	writeFile(t, path, complexRefactorSummaryJSON(mode))
 	return path
+}
+
+type liveMutationPaths struct {
+	authority  string
+	request    string
+	forgePlan  string
+	ao2Packet  string
+	isolation  string
+	rollback   string
+	killSwitch string
+}
+
+func liveMutationFixturePaths() liveMutationPaths {
+	fixture := func(name string) string {
+		return filepath.Join("..", "..", "examples", "live-mutation", name)
+	}
+	return liveMutationPaths{
+		authority:  fixture("covenant-authority.ready.json"),
+		request:    fixture("foundry-request.ready.json"),
+		forgePlan:  fixture("forge-plan.ready.json"),
+		ao2Packet:  fixture("ao2-packet.ready.json"),
+		isolation:  fixture("worktree-isolation.ready.json"),
+		rollback:   fixture("rollback-rehearsal.ready.json"),
+		killSwitch: fixture("kill-switch.armed.json"),
+	}
+}
+
+func copyLiveMutationFixtures(t *testing.T) liveMutationPaths {
+	t.Helper()
+	src := liveMutationFixturePaths()
+	dir := t.TempDir()
+	copyOne := func(label, path string) string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s fixture: %v", label, err)
+		}
+		out := filepath.Join(dir, label+".json")
+		if err := os.WriteFile(out, data, 0o644); err != nil {
+			t.Fatalf("write %s fixture: %v", label, err)
+		}
+		return out
+	}
+	return liveMutationPaths{
+		authority:  copyOne("authority", src.authority),
+		request:    copyOne("request", src.request),
+		forgePlan:  copyOne("forge-plan", src.forgePlan),
+		ao2Packet:  copyOne("ao2-packet", src.ao2Packet),
+		isolation:  copyOne("isolation", src.isolation),
+		rollback:   copyOne("rollback", src.rollback),
+		killSwitch: copyOne("kill-switch", src.killSwitch),
+	}
 }
 
 func complexRefactorSummaryJSON(mode string) string {

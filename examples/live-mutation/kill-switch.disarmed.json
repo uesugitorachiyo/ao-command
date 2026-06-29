@@ -1,0 +1,10 @@
+{
+  "schema_version": "ao.command.live-mutation-kill-switch.v0.1",
+  "status": "blocked",
+  "state": "disarmed",
+  "operator_mode": "read_only",
+  "mutates_repositories": false,
+  "blocking_next_actions": [
+    "Arm the operator kill switch before requesting live mutation authority."
+  ]
+}

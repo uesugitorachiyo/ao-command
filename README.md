@@ -47,6 +47,7 @@ go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-s
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json
 go run ./cmd/ao-command complex-refactor status --summary examples/complex-refactor/ready-summary.json
+go run ./cmd/ao-command live-mutation status --authority examples/live-mutation/covenant-authority.ready.json --request examples/live-mutation/foundry-request.ready.json --forge-plan examples/live-mutation/forge-plan.ready.json --ao2-packet examples/live-mutation/ao2-packet.ready.json --isolation examples/live-mutation/worktree-isolation.ready.json --rollback examples/live-mutation/rollback-rehearsal.ready.json --kill-switch examples/live-mutation/kill-switch.armed.json
 go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json --foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json --forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json --forge-retained-candidate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-candidate-retention-proof.json --forge-retained-next-task ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-next-improvement-task-retention-proof.json --forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json --bundle-out tmp/rsi-health-bundle.json
 go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json
 go run ./cmd/ao-command next --forge ../ao-forge
@@ -86,6 +87,14 @@ blocked-node repair status, needs-context repack status, first failing check,
 and blocking next actions in AO Command's read-only format. It fail-closes
 unless the summary is fixture-only, digest-bound, public-safe, and explicitly
 denies scheduling, execution, approval, provider calls, and repository mutation.
+
+`live-mutation status` reads governed live-mutation readiness evidence from
+Covenant, Foundry, Forge, AO2, Foundry worktree isolation, Foundry rollback
+rehearsal, and an operator kill-switch state artifact. It reports whether the
+first tiny live mutation class is ready to request, blocked, or failed while
+preserving `operator_mode=read_only`, `mutates_repositories=false`, and no
+scheduling, execution, approval, provider, release, or publish authority. This
+is readback only; it does not grant or perform live mutation.
 
 `rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
 Sentinel, AO Promoter, AO Foundry's RSI improvement gate, AO Foundry's RSI
