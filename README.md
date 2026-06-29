@@ -82,10 +82,10 @@ upload artifacts, call providers, or replace AO Foundry Pulse gates.
 
 `complex-refactor status` reads AO Foundry/Atlas complex-refactor rehearsal
 summary evidence and reports task counts, the next recommended factory task,
-first failing check, and blocking next actions in AO Command's read-only format.
-It fail-closes unless the summary is fixture-only, digest-bound, public-safe,
-and explicitly denies scheduling, execution, approval, provider calls, and
-repository mutation.
+blocked-node repair status, needs-context repack status, first failing check,
+and blocking next actions in AO Command's read-only format. It fail-closes
+unless the summary is fixture-only, digest-bound, public-safe, and explicitly
+denies scheduling, execution, approval, provider calls, and repository mutation.
 
 `rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
 Sentinel, AO Promoter, AO Foundry's RSI improvement gate, AO Foundry's RSI

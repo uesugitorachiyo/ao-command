@@ -370,6 +370,10 @@ func (a App) complexRefactorStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "blocked_tasks=%d\n", summary.TaskCounts.Blocked)
 	fmt.Fprintf(a.Stdout, "completed_tasks=%d\n", summary.TaskCounts.Completed)
 	fmt.Fprintf(a.Stdout, "failed_tasks=%d\n", summary.TaskCounts.Failed)
+	fmt.Fprintf(a.Stdout, "repair_plan_status=%s\n", summary.RepairPlan.Status)
+	fmt.Fprintf(a.Stdout, "repair_task=%s\n", summary.RepairPlan.RepairTaskID)
+	fmt.Fprintf(a.Stdout, "context_repack_status=%s\n", summary.ContextRepack.Status)
+	fmt.Fprintf(a.Stdout, "context_repack_reason=%s\n", summary.ContextRepack.MissingContextReason)
 	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
@@ -894,22 +898,24 @@ type pulseGateStatusSummary struct {
 }
 
 type foundryComplexRefactorSummary struct {
-	SchemaVersion              string                      `json:"schema_version"`
-	Status                     string                      `json:"status"`
-	Mode                       string                      `json:"mode"`
-	MutatesRepositories        bool                        `json:"mutates_repositories"`
-	SchedulesWork              bool                        `json:"schedules_work"`
-	ExecutesWork               bool                        `json:"executes_work"`
-	ApprovesWork               bool                        `json:"approves_work"`
-	CallsProviders             bool                        `json:"calls_providers"`
-	NoDuplicatedStackFolders   bool                        `json:"no_duplicated_stack_folders"`
-	TaskCounts                 complexRefactorTaskCounts   `json:"task_counts"`
-	NextRecommendedFactoryTask complexRefactorFactoryTask  `json:"next_recommended_factory_task"`
-	LoopDecision               complexRefactorLoopDecision `json:"loop_decision"`
-	SourceDigests              []complexRefactorSource     `json:"source_digests"`
-	Artifacts                  map[string]string           `json:"artifacts"`
-	BlockingNextActions        []string                    `json:"blocking_next_actions"`
-	MaintenanceSuggestions     []string                    `json:"maintenance_suggestions"`
+	SchemaVersion              string                       `json:"schema_version"`
+	Status                     string                       `json:"status"`
+	Mode                       string                       `json:"mode"`
+	MutatesRepositories        bool                         `json:"mutates_repositories"`
+	SchedulesWork              bool                         `json:"schedules_work"`
+	ExecutesWork               bool                         `json:"executes_work"`
+	ApprovesWork               bool                         `json:"approves_work"`
+	CallsProviders             bool                         `json:"calls_providers"`
+	NoDuplicatedStackFolders   bool                         `json:"no_duplicated_stack_folders"`
+	TaskCounts                 complexRefactorTaskCounts    `json:"task_counts"`
+	NextRecommendedFactoryTask complexRefactorFactoryTask   `json:"next_recommended_factory_task"`
+	LoopDecision               complexRefactorLoopDecision  `json:"loop_decision"`
+	RepairPlan                 complexRefactorRepairPlan    `json:"repair_plan"`
+	ContextRepack              complexRefactorContextRepack `json:"context_repack"`
+	SourceDigests              []complexRefactorSource      `json:"source_digests"`
+	Artifacts                  map[string]string            `json:"artifacts"`
+	BlockingNextActions        []string                     `json:"blocking_next_actions"`
+	MaintenanceSuggestions     []string                     `json:"maintenance_suggestions"`
 }
 
 type complexRefactorTaskCounts struct {
@@ -936,6 +942,24 @@ type complexRefactorLoopDecision struct {
 	Why                      string `json:"why"`
 }
 
+type complexRefactorRepairPlan struct {
+	Status        string `json:"status"`
+	Path          string `json:"path"`
+	RepairTaskID  string `json:"repair_task_id"`
+	SchedulesWork bool   `json:"schedules_work"`
+	ExecutesWork  bool   `json:"executes_work"`
+	ApprovesWork  bool   `json:"approves_work"`
+}
+
+type complexRefactorContextRepack struct {
+	Status               string `json:"status"`
+	Path                 string `json:"path"`
+	MissingContextReason string `json:"missing_context_reason"`
+	SchedulesWork        bool   `json:"schedules_work"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+}
+
 type complexRefactorSource struct {
 	Name   string `json:"name"`
 	Path   string `json:"path"`
@@ -943,27 +967,29 @@ type complexRefactorSource struct {
 }
 
 type complexRefactorStatusSummary struct {
-	SchemaVersion              string                    `json:"schema_version"`
-	CommandSchemaVersion       string                    `json:"command_schema_version"`
-	Status                     string                    `json:"status"`
-	Summary                    string                    `json:"summary"`
-	Mode                       string                    `json:"mode"`
-	NextAction                 string                    `json:"next_action"`
-	NextRecommendedFactoryTask string                    `json:"next_recommended_factory_task"`
-	NextRecommendedNode        string                    `json:"next_recommended_node"`
-	TargetFactoryRepo          string                    `json:"target_factory_repo"`
-	TaskCounts                 complexRefactorTaskCounts `json:"task_counts"`
-	FirstFailingCheck          string                    `json:"first_failing_check"`
-	BlockingNextActions        []string                  `json:"blocking_next_actions"`
-	MaintenanceSuggestions     []string                  `json:"maintenance_suggestions"`
-	SourceDigests              []complexRefactorSource   `json:"source_digests"`
-	Artifacts                  map[string]string         `json:"artifacts"`
-	OperatorMode               string                    `json:"operator_mode"`
-	MutatesRepositories        bool                      `json:"mutates_repositories"`
-	SchedulesWork              bool                      `json:"schedules_work"`
-	ExecutesWork               bool                      `json:"executes_work"`
-	ApprovesWork               bool                      `json:"approves_work"`
-	CallsProviders             bool                      `json:"calls_providers"`
+	SchemaVersion              string                       `json:"schema_version"`
+	CommandSchemaVersion       string                       `json:"command_schema_version"`
+	Status                     string                       `json:"status"`
+	Summary                    string                       `json:"summary"`
+	Mode                       string                       `json:"mode"`
+	NextAction                 string                       `json:"next_action"`
+	NextRecommendedFactoryTask string                       `json:"next_recommended_factory_task"`
+	NextRecommendedNode        string                       `json:"next_recommended_node"`
+	TargetFactoryRepo          string                       `json:"target_factory_repo"`
+	TaskCounts                 complexRefactorTaskCounts    `json:"task_counts"`
+	RepairPlan                 complexRefactorRepairPlan    `json:"repair_plan"`
+	ContextRepack              complexRefactorContextRepack `json:"context_repack"`
+	FirstFailingCheck          string                       `json:"first_failing_check"`
+	BlockingNextActions        []string                     `json:"blocking_next_actions"`
+	MaintenanceSuggestions     []string                     `json:"maintenance_suggestions"`
+	SourceDigests              []complexRefactorSource      `json:"source_digests"`
+	Artifacts                  map[string]string            `json:"artifacts"`
+	OperatorMode               string                       `json:"operator_mode"`
+	MutatesRepositories        bool                         `json:"mutates_repositories"`
+	SchedulesWork              bool                         `json:"schedules_work"`
+	ExecutesWork               bool                         `json:"executes_work"`
+	ApprovesWork               bool                         `json:"approves_work"`
+	CallsProviders             bool                         `json:"calls_providers"`
 }
 
 type rsiFamilyStatus struct {
@@ -1346,6 +1372,8 @@ func readComplexRefactorStatus(summaryPath string) (complexRefactorStatusSummary
 		NextRecommendedNode:        summary.NextRecommendedFactoryTask.NodeID,
 		TargetFactoryRepo:          summary.NextRecommendedFactoryTask.TargetFactoryRepo,
 		TaskCounts:                 summary.TaskCounts,
+		RepairPlan:                 summary.RepairPlan,
+		ContextRepack:              summary.ContextRepack,
 		FirstFailingCheck:          firstFailingCheck,
 		BlockingNextActions:        uniqueStrings(summary.BlockingNextActions),
 		MaintenanceSuggestions:     uniqueStrings(summary.MaintenanceSuggestions),
@@ -1416,6 +1444,12 @@ func validateComplexRefactorSummary(summary foundryComplexRefactorSummary) error
 	if summary.Status == "ready" && summary.TaskCounts.Ready > 0 && !summary.LoopDecision.MayStartNextReadyTask {
 		return errors.New("ready complex-refactor rehearsal must allow the next ready task")
 	}
+	if err := validateComplexRefactorRepairPlan(summary.RepairPlan); err != nil {
+		return err
+	}
+	if err := validateComplexRefactorContextRepack(summary.ContextRepack); err != nil {
+		return err
+	}
 	if len(summary.SourceDigests) == 0 {
 		return errors.New("complex-refactor rehearsal requires source_digests")
 	}
@@ -1440,6 +1474,47 @@ func validateComplexRefactorSummary(summary foundryComplexRefactorSummary) error
 		if err := validatePublicSafeText(value); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateComplexRefactorRepairPlan(repair complexRefactorRepairPlan) error {
+	if strings.TrimSpace(repair.Status) == "" && strings.TrimSpace(repair.Path) == "" && strings.TrimSpace(repair.RepairTaskID) == "" {
+		return nil
+	}
+	if repair.Status != "repair_required" {
+		return errors.New("complex-refactor repair_plan status must be repair_required")
+	}
+	if strings.TrimSpace(repair.Path) == "" || strings.TrimSpace(repair.RepairTaskID) == "" {
+		return errors.New("complex-refactor repair_plan requires path and repair_task_id")
+	}
+	if repair.SchedulesWork || repair.ExecutesWork || repair.ApprovesWork {
+		return errors.New("complex-refactor repair_plan must remain read-only")
+	}
+	if err := validatePublicSafeText(repair.Path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateComplexRefactorContextRepack(repack complexRefactorContextRepack) error {
+	if strings.TrimSpace(repack.Status) == "" && strings.TrimSpace(repack.Path) == "" && strings.TrimSpace(repack.MissingContextReason) == "" {
+		return nil
+	}
+	if repack.Status != "ready" {
+		return errors.New("complex-refactor context_repack status must be ready")
+	}
+	if strings.TrimSpace(repack.Path) == "" || strings.TrimSpace(repack.MissingContextReason) == "" {
+		return errors.New("complex-refactor context_repack requires path and missing_context_reason")
+	}
+	if repack.SchedulesWork || repack.ExecutesWork || repack.ApprovesWork {
+		return errors.New("complex-refactor context_repack must remain read-only")
+	}
+	if err := validatePublicSafeText(repack.Path); err != nil {
+		return err
+	}
+	if err := validatePublicSafeText(repack.MissingContextReason); err != nil {
+		return err
 	}
 	return nil
 }
