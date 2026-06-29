@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -112,6 +113,7 @@ Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
   ao-command atlas status --status PATH [--json]
+  ao-command atlas authority-ladder --mission-status PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
   ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
@@ -217,16 +219,71 @@ func (a App) stack(args []string) int {
 
 func (a App) atlas(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas status --status PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas <status|authority-ladder> ...")
 		return 2
 	}
 	switch args[0] {
+	case "authority-ladder":
+		return a.atlasAuthorityLadder(args[1:])
 	case "status":
 		return a.atlasStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas status --status PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command atlas: usage: ao-command atlas <status|authority-ladder> ...")
 		return 2
 	}
+}
+
+func (a App) atlasAuthorityLadder(args []string) int {
+	var missionStatusPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("atlas authority-ladder", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&missionStatusPath, "mission-status", "", "path to AO Atlas mission status JSON with authority_ladder readback")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(missionStatusPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command atlas authority-ladder: --mission-status is required")
+		return 2
+	}
+	summary, err := readAtlasAuthorityLadderStatus(missionStatusPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command atlas authority-ladder: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_atlas_authority_ladder=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mission_status=%s\n", summary.MissionStatus)
+	fmt.Fprintf(a.Stdout, "workgraph_id=%s\n", summary.WorkgraphID)
+	fmt.Fprintf(a.Stdout, "target_instance=%s\n", summary.TargetInstance)
+	fmt.Fprintf(a.Stdout, "current_class=%s\n", summary.CurrentClass)
+	fmt.Fprintf(a.Stdout, "next_class=%s\n", summary.NextClass)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "schedules_work=%t\n", summary.SchedulesWork)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	for _, class := range summary.ProvenLiveClasses {
+		fmt.Fprintf(a.Stdout, "proven_live_class=%s\n", class)
+	}
+	for _, class := range summary.DryRunReadyClasses {
+		fmt.Fprintf(a.Stdout, "dry_run_ready_class=%s\n", class)
+	}
+	for _, blocker := range summary.Blockers {
+		fmt.Fprintf(a.Stdout, "blocker=%s\n", blocker)
+	}
+	for _, evidence := range summary.RequiredEvidence {
+		fmt.Fprintf(a.Stdout, "required_evidence=%s\n", evidence)
+	}
+	for _, class := range sortedStringKeys(summary.DeniedHigherClasses) {
+		fmt.Fprintf(a.Stdout, "denied_higher_class=%s reason=%s\n", class, summary.DeniedHigherClasses[class])
+	}
+	for _, gate := range summary.DoNotAdvanceGates {
+		fmt.Fprintf(a.Stdout, "do_not_advance_gate=%s\n", gate)
+	}
+	return 0
 }
 
 func (a App) atlasStatus(args []string) int {
@@ -954,6 +1011,49 @@ type foundryAtlasStatus struct {
 	NextActions    []string          `json:"next_actions"`
 }
 
+type atlasMissionStatus struct {
+	ContractVersion  string                      `json:"contract_version"`
+	IntakeID         string                      `json:"intake_id"`
+	WorkgraphID      string                      `json:"workgraph_id"`
+	TargetInstance   string                      `json:"target_instance"`
+	CompletionStatus string                      `json:"completion_status"`
+	AuthorityLadder  *atlasAuthorityLadderStatus `json:"authority_ladder"`
+	SchedulesWork    bool                        `json:"schedules_work"`
+	ExecutesWork     bool                        `json:"executes_work"`
+}
+
+type atlasAuthorityLadderStatus struct {
+	CurrentClass        string            `json:"current_class"`
+	NextClass           string            `json:"next_class"`
+	ProvenLiveClasses   []string          `json:"proven_live_classes"`
+	DryRunReadyClasses  []string          `json:"dry_run_ready_classes"`
+	Blockers            []string          `json:"blockers"`
+	RequiredEvidence    []string          `json:"required_evidence"`
+	DeniedHigherClasses map[string]string `json:"denied_higher_classes"`
+	DoNotAdvanceGates   []string          `json:"do_not_advance_gates"`
+}
+
+type atlasAuthorityLadderSummary struct {
+	SchemaVersion        string            `json:"schema_version"`
+	CommandSchemaVersion string            `json:"command_schema_version"`
+	Status               string            `json:"status"`
+	MissionStatus        string            `json:"mission_status"`
+	WorkgraphID          string            `json:"workgraph_id"`
+	TargetInstance       string            `json:"target_instance"`
+	CurrentClass         string            `json:"current_class"`
+	NextClass            string            `json:"next_class"`
+	ProvenLiveClasses    []string          `json:"proven_live_classes"`
+	DryRunReadyClasses   []string          `json:"dry_run_ready_classes"`
+	Blockers             []string          `json:"blockers"`
+	RequiredEvidence     []string          `json:"required_evidence"`
+	DeniedHigherClasses  map[string]string `json:"denied_higher_classes"`
+	DoNotAdvanceGates    []string          `json:"do_not_advance_gates"`
+	OperatorMode         string            `json:"operator_mode"`
+	SchedulesWork        bool              `json:"schedules_work"`
+	ExecutesWork         bool              `json:"executes_work"`
+	MutatesRepositories  bool              `json:"mutates_repositories"`
+}
+
 type atlasStatusSummary struct {
 	SchemaVersion        string            `json:"schema_version"`
 	CommandSchemaVersion string            `json:"command_schema_version"`
@@ -1509,6 +1609,37 @@ func readAtlasStatus(path string) (atlasStatusSummary, error) {
 		MutatesRepositories:  false,
 		Evidence:             status.Evidence,
 		NextActions:          status.NextActions,
+	}, nil
+}
+
+func readAtlasAuthorityLadderStatus(path string) (atlasAuthorityLadderSummary, error) {
+	var status atlasMissionStatus
+	if err := readPublicJSONFile(path, &status); err != nil {
+		return atlasAuthorityLadderSummary{}, fmt.Errorf("read mission status: %w", err)
+	}
+	if err := validateAtlasAuthorityLadderStatus(status); err != nil {
+		return atlasAuthorityLadderSummary{}, err
+	}
+	ladder := status.AuthorityLadder
+	return atlasAuthorityLadderSummary{
+		SchemaVersion:        "ao.command.atlas-authority-ladder.v0.1",
+		CommandSchemaVersion: commandSchemaVersion,
+		Status:               status.CompletionStatus,
+		MissionStatus:        path,
+		WorkgraphID:          status.WorkgraphID,
+		TargetInstance:       status.TargetInstance,
+		CurrentClass:         ladder.CurrentClass,
+		NextClass:            ladder.NextClass,
+		ProvenLiveClasses:    ladder.ProvenLiveClasses,
+		DryRunReadyClasses:   ladder.DryRunReadyClasses,
+		Blockers:             ladder.Blockers,
+		RequiredEvidence:     ladder.RequiredEvidence,
+		DeniedHigherClasses:  ladder.DeniedHigherClasses,
+		DoNotAdvanceGates:    ladder.DoNotAdvanceGates,
+		OperatorMode:         operatorMode,
+		SchedulesWork:        status.SchedulesWork,
+		ExecutesWork:         status.ExecutesWork,
+		MutatesRepositories:  false,
 	}, nil
 }
 
@@ -2305,6 +2436,15 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func validateFoundryAtlasStatus(status foundryAtlasStatus) error {
 	if status.SchemaVersion != "ao.foundry.atlas-status.v0.1" {
 		return errors.New("invalid Foundry Atlas status schema_version")
@@ -2340,6 +2480,61 @@ func validateFoundryAtlasStatus(status foundryAtlasStatus) error {
 	for key, value := range status.Evidence {
 		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
 			return errors.New("Foundry Atlas status evidence keys and paths must not be empty")
+		}
+	}
+	return nil
+}
+
+func validateAtlasAuthorityLadderStatus(status atlasMissionStatus) error {
+	if status.ContractVersion != "ao.atlas.mission-status.v0.1" {
+		return errors.New("invalid Atlas mission status contract_version")
+	}
+	for field, value := range map[string]string{
+		"intake_id":         status.IntakeID,
+		"workgraph_id":      status.WorkgraphID,
+		"target_instance":   status.TargetInstance,
+		"completion_status": status.CompletionStatus,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("Atlas authority ladder missing %s", field)
+		}
+	}
+	if status.SchedulesWork || status.ExecutesWork {
+		return errors.New("Atlas authority ladder mission status must remain read-only and cannot schedule or execute work")
+	}
+	if status.AuthorityLadder == nil {
+		return errors.New("Atlas authority ladder mission status requires authority_ladder readback")
+	}
+	ladder := *status.AuthorityLadder
+	for field, value := range map[string]string{
+		"authority_ladder.current_class": ladder.CurrentClass,
+		"authority_ladder.next_class":    ladder.NextClass,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("Atlas authority ladder missing %s", field)
+		}
+	}
+	for field, values := range map[string][]string{
+		"authority_ladder.proven_live_classes":  ladder.ProvenLiveClasses,
+		"authority_ladder.blockers":             ladder.Blockers,
+		"authority_ladder.required_evidence":    ladder.RequiredEvidence,
+		"authority_ladder.do_not_advance_gates": ladder.DoNotAdvanceGates,
+	} {
+		if len(values) == 0 {
+			return fmt.Errorf("Atlas authority ladder requires %s", field)
+		}
+		for _, value := range values {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("Atlas authority ladder %s entries must not be empty", field)
+			}
+		}
+	}
+	if ladder.DeniedHigherClasses == nil || len(ladder.DeniedHigherClasses) == 0 {
+		return errors.New("Atlas authority ladder requires denied_higher_classes reasons")
+	}
+	for class, reason := range ladder.DeniedHigherClasses {
+		if strings.TrimSpace(class) == "" || strings.TrimSpace(reason) == "" {
+			return errors.New("Atlas authority ladder denied_higher_classes keys and reasons must not be empty")
 		}
 	}
 	return nil

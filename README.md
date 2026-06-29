@@ -45,6 +45,7 @@ owner.
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
+go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json
 go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json
 go run ./cmd/ao-command complex-refactor status --summary examples/complex-refactor/ready-summary.json
 go run ./cmd/ao-command live-mutation status --authority examples/live-mutation/covenant-authority.ready.json --request examples/live-mutation/foundry-request.ready.json --forge-plan examples/live-mutation/forge-plan.ready.json --ao2-packet examples/live-mutation/ao2-packet.ready.json --isolation examples/live-mutation/worktree-isolation.ready.json --rollback examples/live-mutation/rollback-rehearsal.ready.json --kill-switch examples/live-mutation/kill-switch.armed.json
@@ -75,6 +76,14 @@ read-only operator format. It requires `mode=fixture_only_readback`,
 reports `atlas_authority=compile_only`, `operator_mode=read_only`, and
 `mutates_repositories=false`. It does not schedule work, execute work, approve
 claims, call providers, mutate repositories, or replace AO Foundry scheduling.
+
+`atlas authority-ladder` reads AO Atlas mission status evidence containing the
+mutation-class authority ladder. It reports the current proven live class, the
+next denied class, blockers, required evidence, do-not-advance gates, and
+denial reasons for higher classes while preserving
+`operator_mode=read_only`, `schedules_work=false`, `executes_work=false`, and
+`mutates_repositories=false`. It does not schedule, request, approve, execute,
+or promote mutation work.
 
 `pulse status` reads AO Foundry's Pulse intake preflight, PR lifecycle state,
 and overnight start gate artifacts. It reports whether the autonomous loop may
@@ -199,6 +208,8 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
   repositories, publish claims, or approve the full RSI claim.
 - `atlas status` reads AO Foundry Atlas observer evidence and does not schedule,
   execute, approve, call providers, or mutate repositories.
+- `atlas authority-ladder` reads Atlas mission-status evidence and does not
+  schedule, request, approve, execute, promote, or mutate repository work.
 - `pulse status` reads AO Foundry Pulse gate evidence and does not start loops,
   merge PRs, create branches, call providers, publish, or mutate repositories.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
