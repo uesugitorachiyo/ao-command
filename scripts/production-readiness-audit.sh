@@ -282,7 +282,7 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "go_vet" "go vet passes" go vet ./...
   run_check "go_build" "ao-command builds" go build -o bin/ao-command ./cmd/ao-command
   run_check "workflow_lint" "GitHub workflow lint passes" go run github.com/rhysd/actionlint/cmd/actionlint@latest
-  run_check "integration_smoke" "AO Forge-backed ao-command smoke passes" scripts/ao-command-smoke.sh --forge "$forge" --out tmp/ao-command-smoke
+  run_check "integration_smoke" "AO Forge-backed ao-command smoke passes" scripts/ao-command-smoke.sh --forge "$forge" --foundry "$foundry" --out tmp/ao-command-smoke
   run_check "release_preview_dry_run" "AO Command release preview dry-run passes" scripts/release-preview-dry-run.sh --forge "$forge" --out tmp/ao-command-release-preview --tag v0.1.0-preview
   run_check "release_preview_contract_validate" "AO Command release preview audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-preview/release-preview-audit.json"
   run_check "install_verify_dry_run" "AO Command install verification dry-run passes" scripts/install-verify-dry-run.sh --forge "$forge" --out tmp/ao-command-install-verify
@@ -290,6 +290,7 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "release_governance_dry_run" "AO Command release governance dry-run passes" scripts/release-governance-dry-run.sh --out tmp/ao-command-release-governance --tag v0.1.0 --release-preview-audit tmp/ao-command-release-preview/release-preview-audit.json --install-verify-audit tmp/ao-command-install-verify/install-verify-audit.json
   run_check "release_governance_contract_validate" "AO Command release governance audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-governance/release-governance-audit.json"
   run_check "active_stack_status" "AO Command reads AO Foundry active-stack handoff status without orchestration" go run ./cmd/ao-command stack --ledger "$foundry/examples/readiness/active-stack-readiness.ledger.json"
+  run_check "atlas_status_readback" "AO Command reads AO Foundry Atlas status without scheduling or execution" go run ./cmd/ao-command atlas status --status "$foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json"
   run_check "rsi_evidence_chain_smoke" "Foundry pulse, Forge retained proofs, Command health, and Covenant RSI claim boundary pass" scripts/rsi-evidence-chain-smoke.sh --forge "$forge" --foundry "$foundry" --covenant "$covenant" --out tmp/rsi-evidence-chain-smoke
   run_check "rsi_claim_manifest" "AO Command validates AO Architecture RSI claim manifest without mutation" go run ./cmd/ao-command rsi manifest --manifest "$architecture/overview/rsi-claim-evidence-manifest.json"
   run_check "rsi_health_contract_validate" "AO Command RSI health JSON validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/rsi-health-v0.1.schema.json" --document "$root/tmp/rsi-evidence-chain-smoke/ao-command-rsi-health.json"
