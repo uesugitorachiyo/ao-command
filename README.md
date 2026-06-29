@@ -19,7 +19,8 @@ reads AO Forge production-readiness, GoalRun, release-preview, and contract
 evidence through AO Forge-owned commands. It does not publish releases, promote
 production, mutate provider state, or replace AO Forge policy decisions.
 
-AO Command's live stack boundary is AO Atlas for stack-instance/workgraph
+AO Command's live stack boundary is AO Blueprint for requirements sufficiency
+and build-authorization evidence, AO Atlas for stack-instance/workgraph
 compile evidence, AO Foundry for active-stack and Atlas observer status, AO
 Forge for readiness and GoalRun truth, AO2 for governed execution,
 ao2-control-plane for evidence readback, and AO Covenant for allow, deny, and
@@ -159,15 +160,17 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
 
 The current stack boundary is:
 
-1. AO Forge: trusted factory brain, release gates, GoalRun state, readiness, and
-   verified evidence.
+1. AO Blueprint: requirements interview, sufficiency audit, blueprint pack, and
+   build-authorization front door.
 2. AO Atlas: stack-instance/workgraph/context-pack compile evidence over one
    shared AO toolchain.
 3. AO Foundry: persistent active-stack operations ledger, Atlas status
    observer, release handoff, and cross-repo readiness loop.
-4. AO Command v0.1: human/operator command center over AO Atlas, AO Foundry,
-   and AO Forge evidence.
-5. AO Covenant, AO2, and ao2-control-plane: policy, governed execution, and
+4. AO Forge: trusted factory brain, release gates, GoalRun state, readiness, and
+   verified evidence.
+5. AO Command v0.1: human/operator command center over Blueprint, Atlas,
+   Foundry, Forge, Covenant, AO2, and readback evidence.
+6. AO Covenant, AO2, and ao2-control-plane: policy, governed execution, and
    evidence readback.
 
 Historical AO Command Foundry design notes remain in
