@@ -115,6 +115,7 @@ Usage:
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
   ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
+  ao-command live-mutation approval --request PATH --ticket PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -395,16 +396,57 @@ func (a App) complexRefactorStatus(args []string) int {
 
 func (a App) liveMutation(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval> ...")
 		return 2
 	}
 	switch args[0] {
+	case "approval":
+		return a.liveMutationApproval(args[1:])
 	case "status":
 		return a.liveMutationStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval> ...")
 		return 2
 	}
+}
+
+func (a App) liveMutationApproval(args []string) int {
+	var requestPath, ticketPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("live-mutation approval", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&requestPath, "request", "", "path to AO Foundry live docs approval request JSON")
+	fs.StringVar(&ticketPath, "ticket", "", "path to AO Covenant live docs approval ticket JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if requestPath == "" || ticketPath == "" {
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation approval: --request and --ticket are required")
+		return 2
+	}
+	summary, err := readLiveMutationApproval(requestPath, ticketPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command live-mutation approval: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_live_mutation_approval=%s\n", summary.ApprovalState)
+	fmt.Fprintf(a.Stdout, "status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "safe_to_request=%t\n", summary.SafeToRequest)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "approval_state=%s\n", summary.ApprovalState)
+	fmt.Fprintf(a.Stdout, "request_id=%s\n", summary.RequestID)
+	fmt.Fprintf(a.Stdout, "ticket_id=%s\n", summary.TicketID)
+	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	return 0
 }
 
 func (a App) liveMutationStatus(args []string) int {
@@ -1088,6 +1130,23 @@ type liveMutationStatusSummary struct {
 	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
 }
 
+type liveMutationApprovalSummary struct {
+	SchemaVersion        string `json:"schema_version"`
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Status               string `json:"status"`
+	SafeToRequest        bool   `json:"safe_to_request"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	ApprovalState        string `json:"approval_state"`
+	RequestID            string `json:"request_id"`
+	TicketID             string `json:"ticket_id"`
+	FirstFailingCheck    string `json:"first_failing_check"`
+	OperatorMode         string `json:"operator_mode"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	ApprovesWork         bool   `json:"approves_work"`
+	ExecutesWork         bool   `json:"executes_work"`
+	CallsProviders       bool   `json:"calls_providers"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -1594,6 +1653,78 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	}, nil
 }
 
+func readLiveMutationApproval(requestPath, ticketPath string) (liveMutationApprovalSummary, error) {
+	var request map[string]any
+	var ticket map[string]any
+	if err := readJSONFile(requestPath, &request); err != nil {
+		return liveMutationApprovalSummary{}, fmt.Errorf("read request: %w", err)
+	}
+	if err := readJSONFile(ticketPath, &ticket); err != nil {
+		return liveMutationApprovalSummary{}, fmt.Errorf("read ticket: %w", err)
+	}
+	if err := validatePublicSafeText(requestPath); err != nil {
+		return liveMutationApprovalSummary{}, err
+	}
+	if err := validatePublicSafeText(ticketPath); err != nil {
+		return liveMutationApprovalSummary{}, err
+	}
+	if liveMutationMapString(request, "schema_version") != "ao.foundry.live-mutation-approval-request.v0.1" {
+		return liveMutationApprovalSummary{}, errors.New("request schema_version must be ao.foundry.live-mutation-approval-request.v0.1")
+	}
+	if liveMutationMapString(ticket, "schema_version") != "covenant.live-docs-approval-ticket.v1" {
+		return liveMutationApprovalSummary{}, errors.New("ticket schema_version must be covenant.live-docs-approval-ticket.v1")
+	}
+	summary := liveMutationApprovalSummary{
+		SchemaVersion:        "ao.command.live-mutation-approval-status.v0.1",
+		CommandSchemaVersion: commandSchemaVersion,
+		Status:               "blocked",
+		SafeToRequest:        liveMutationMapBool(request, "safe_to_request"),
+		SafeToExecute:        false,
+		ApprovalState:        liveMutationMapString(ticket, "approval_state"),
+		RequestID:            liveMutationMapString(ticket, "request_id"),
+		TicketID:             liveMutationMapString(ticket, "ticket_id"),
+		FirstFailingCheck:    "",
+		OperatorMode:         operatorMode,
+		MutatesRepositories:  false,
+		ApprovesWork:         false,
+		ExecutesWork:         false,
+		CallsProviders:       false,
+	}
+	if summary.RequestID != liveMutationMapString(request, "request_id") {
+		summary.FirstFailingCheck = "request_id_mismatch"
+		return summary, nil
+	}
+	if summary.ApprovalState != "approved" {
+		summary.FirstFailingCheck = "approval_state"
+		return summary, nil
+	}
+	if liveMutationMapBool(ticket, "consumed") {
+		summary.FirstFailingCheck = "ticket_consumed"
+		return summary, nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339, liveMutationMapString(ticket, "expires_at"))
+	if err != nil {
+		return liveMutationApprovalSummary{}, fmt.Errorf("ticket expires_at must be RFC3339: %w", err)
+	}
+	if !expiresAt.After(time.Now().UTC()) {
+		summary.FirstFailingCheck = "ticket_expired"
+		return summary, nil
+	}
+	scope, ok := ticket["approved_scope"].(map[string]any)
+	if !ok {
+		return liveMutationApprovalSummary{}, errors.New("ticket approved_scope is required")
+	}
+	for _, field := range []string{"repo", "branch_policy", "docs_only_path_allowlist", "forbidden_paths", "max_changed_files"} {
+		if !jsonEquivalent(scope[field], request[field]) {
+			summary.FirstFailingCheck = "scope_mismatch"
+			return summary, nil
+		}
+	}
+	summary.Status = "approved"
+	summary.SafeToExecute = true
+	return summary, nil
+}
+
 func readLiveMutationArtifact(name, path, expectedSchema string) (liveMutationArtifactSummary, map[string]any, error) {
 	var raw map[string]any
 	if err := readPublicJSONFile(path, &raw); err != nil {
@@ -1691,6 +1822,12 @@ func liveMutationMapBool(raw map[string]any, key string) bool {
 		return value
 	}
 	return false
+}
+
+func jsonEquivalent(left any, right any) bool {
+	leftBytes, leftErr := json.Marshal(left)
+	rightBytes, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && string(leftBytes) == string(rightBytes)
 }
 
 func liveMutationStringSlice(raw map[string]any, key string) []string {

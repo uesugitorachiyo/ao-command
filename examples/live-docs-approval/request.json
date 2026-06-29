@@ -1,0 +1,32 @@
+{
+  "schema_version": "ao.foundry.live-mutation-approval-request.v0.1",
+  "request_id": "first-live-docs-only-approval-request",
+  "status": "pending_operator_approval",
+  "first_live_class": "docs_only",
+  "safe_to_request": true,
+  "safe_to_execute": false,
+  "repo": {
+    "id": "ao-foundry",
+    "remote": "uesugitorachiyo/ao-foundry",
+    "target_branch": "main"
+  },
+  "branch_policy": {
+    "branch_prefix": "codex/live-docs-",
+    "requires_isolated_branch": true,
+    "requires_clean_worktree": true,
+    "requires_pr": true,
+    "allows_direct_main": false
+  },
+  "docs_only_path_allowlist": [
+    "docs/operations/OVERNIGHT-REFRACTOR-REHEARSAL-RUNBOOK.md"
+  ],
+  "forbidden_paths": [
+    ".github/**",
+    "cmd/**",
+    "internal/**",
+    "scripts/**",
+    "docs/contracts/**",
+    "examples/contract-fixtures/**"
+  ],
+  "max_changed_files": 1
+}
