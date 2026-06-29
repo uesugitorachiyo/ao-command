@@ -82,6 +82,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.stack(args[1:])
 	case "atlas":
 		return a.atlas(args[1:])
+	case "pulse":
+		return a.pulse(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -106,6 +108,7 @@ Usage:
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
   ao-command atlas status --status PATH [--json]
+  ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -258,6 +261,61 @@ func (a App) atlasStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
 	for _, action := range summary.NextActions {
 		fmt.Fprintf(a.Stdout, "next_action=%s\n", action)
+	}
+	return 0
+}
+
+func (a App) pulse(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command pulse: usage: ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]")
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.pulseStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command pulse: usage: ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) pulseStatus(args []string) int {
+	var preflightPath, lifecyclePath, startGatePath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("pulse status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&preflightPath, "preflight", "", "path to AO Foundry pulse intake preflight JSON")
+	fs.StringVar(&lifecyclePath, "lifecycle", "", "path to AO Foundry pulse PR lifecycle JSON")
+	fs.StringVar(&startGatePath, "start-gate", "", "path to AO Foundry pulse overnight start gate JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(preflightPath) == "" || strings.TrimSpace(lifecyclePath) == "" || strings.TrimSpace(startGatePath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command pulse status: --preflight, --lifecycle, and --start-gate are required")
+		return 2
+	}
+	summary, err := readPulseGateStatus(preflightPath, lifecyclePath, startGatePath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command pulse status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_pulse_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "preflight_status=%s\n", summary.PreflightStatus)
+	fmt.Fprintf(a.Stdout, "lifecycle_status=%s\n", summary.LifecycleStatus)
+	fmt.Fprintf(a.Stdout, "start_gate_status=%s\n", summary.StartGateStatus)
+	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
+	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, action := range summary.BlockingNextActions {
+		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
+	}
+	for _, suggestion := range summary.MaintenanceSuggestions {
+		fmt.Fprintf(a.Stdout, "maintenance_suggestion=%s\n", suggestion)
 	}
 	return 0
 }
@@ -696,6 +754,79 @@ type atlasStatusSummary struct {
 	NextActions          []string          `json:"next_actions"`
 }
 
+type foundryPulseIntakePreflight struct {
+	SchemaVersion          string        `json:"schema_version"`
+	Status                 string        `json:"status"`
+	BlueprintStatus        string        `json:"blueprint_status"`
+	AtlasStatus            string        `json:"atlas_status"`
+	FirstFailingCheck      string        `json:"first_failing_check"`
+	Checks                 []pulseCheck  `json:"checks"`
+	BlockingNextActions    []string      `json:"blocking_next_actions"`
+	MaintenanceSuggestions []string      `json:"maintenance_suggestions"`
+	SourceArtifacts        []pulseSource `json:"source_artifacts"`
+}
+
+type foundryPulsePRLifecycle struct {
+	SchemaVersion     string `json:"schema_version"`
+	CurrentSlice      string `json:"current_slice"`
+	TargetRepo        string `json:"target_repo"`
+	Branch            string `json:"branch"`
+	PRNumber          int    `json:"pr_number"`
+	PRURL             string `json:"pr_url"`
+	PRState           string `json:"pr_state"`
+	CheckState        string `json:"check_state"`
+	MergeState        string `json:"merge_state"`
+	CleanupState      string `json:"cleanup_state"`
+	AllowedNextAction string `json:"allowed_next_action"`
+	BlockerReason     string `json:"blocker_reason"`
+}
+
+type foundryPulseOvernightStartGate struct {
+	SchemaVersion          string        `json:"schema_version"`
+	Status                 string        `json:"status"`
+	AllowedNextAction      string        `json:"allowed_next_action"`
+	FirstFailingCheck      string        `json:"first_failing_check"`
+	BlockingNextActions    []string      `json:"blocking_next_actions"`
+	MaintenanceSuggestions []string      `json:"maintenance_suggestions"`
+	SourceHashes           []pulseSource `json:"source_hashes"`
+}
+
+type pulseCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
+type pulseSource struct {
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	SchemaVersion string `json:"schema_version"`
+	Status        string `json:"status,omitempty"`
+	SHA256        string `json:"sha256"`
+}
+
+type pulseGateStatusSummary struct {
+	SchemaVersion          string        `json:"schema_version"`
+	CommandSchemaVersion   string        `json:"command_schema_version"`
+	Status                 string        `json:"status"`
+	Preflight              string        `json:"preflight"`
+	Lifecycle              string        `json:"lifecycle"`
+	StartGate              string        `json:"start_gate"`
+	PreflightStatus        string        `json:"preflight_status"`
+	BlueprintStatus        string        `json:"blueprint_status"`
+	AtlasStatus            string        `json:"atlas_status"`
+	LifecycleStatus        string        `json:"lifecycle_status"`
+	StartGateStatus        string        `json:"start_gate_status"`
+	AllowedNextAction      string        `json:"allowed_next_action"`
+	FirstFailingCheck      string        `json:"first_failing_check"`
+	BlockingNextActions    []string      `json:"blocking_next_actions"`
+	MaintenanceSuggestions []string      `json:"maintenance_suggestions"`
+	SourceArtifacts        []pulseSource `json:"source_artifacts"`
+	SourceHashes           []pulseSource `json:"source_hashes"`
+	OperatorMode           string        `json:"operator_mode"`
+	MutatesRepositories    bool          `json:"mutates_repositories"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -985,6 +1116,222 @@ func readAtlasStatus(path string) (atlasStatusSummary, error) {
 		Evidence:             status.Evidence,
 		NextActions:          status.NextActions,
 	}, nil
+}
+
+func readPulseGateStatus(preflightPath, lifecyclePath, startGatePath string) (pulseGateStatusSummary, error) {
+	var preflight foundryPulseIntakePreflight
+	if err := readPublicJSONFile(preflightPath, &preflight); err != nil {
+		return pulseGateStatusSummary{}, fmt.Errorf("read preflight: %w", err)
+	}
+	if err := validatePulseIntakePreflight(preflight); err != nil {
+		return pulseGateStatusSummary{}, err
+	}
+	var lifecycle foundryPulsePRLifecycle
+	if err := readPublicJSONFile(lifecyclePath, &lifecycle); err != nil {
+		return pulseGateStatusSummary{}, fmt.Errorf("read lifecycle: %w", err)
+	}
+	if err := validatePulsePRLifecycle(lifecycle); err != nil {
+		return pulseGateStatusSummary{}, err
+	}
+	var startGate foundryPulseOvernightStartGate
+	if err := readPublicJSONFile(startGatePath, &startGate); err != nil {
+		return pulseGateStatusSummary{}, fmt.Errorf("read start gate: %w", err)
+	}
+	if err := validatePulseOvernightStartGate(startGate); err != nil {
+		return pulseGateStatusSummary{}, err
+	}
+	status := "ready"
+	if preflight.Status == "failed" || startGate.Status == "failed" {
+		status = "failed"
+	} else if preflight.Status == "blocked" || startGate.Status == "blocked" || lifecycle.AllowedNextAction != "start_next_slice" {
+		status = "blocked"
+	}
+	firstFailingCheck := firstNonEmpty(startGate.FirstFailingCheck, preflight.FirstFailingCheck)
+	if status == "blocked" && firstFailingCheck == "" {
+		firstFailingCheck = "pulse_gate"
+	}
+	blockingActions := append([]string{}, startGate.BlockingNextActions...)
+	blockingActions = append(blockingActions, preflight.BlockingNextActions...)
+	if lifecycle.BlockerReason != "" {
+		blockingActions = append(blockingActions, lifecycle.BlockerReason)
+	}
+	maintenance := append([]string{}, startGate.MaintenanceSuggestions...)
+	maintenance = append(maintenance, preflight.MaintenanceSuggestions...)
+	return pulseGateStatusSummary{
+		SchemaVersion:          "ao.command.pulse-gate-status.v0.1",
+		CommandSchemaVersion:   commandSchemaVersion,
+		Status:                 status,
+		Preflight:              preflightPath,
+		Lifecycle:              lifecyclePath,
+		StartGate:              startGatePath,
+		PreflightStatus:        preflight.Status,
+		BlueprintStatus:        preflight.BlueprintStatus,
+		AtlasStatus:            preflight.AtlasStatus,
+		LifecycleStatus:        lifecycle.AllowedNextAction,
+		StartGateStatus:        startGate.Status,
+		AllowedNextAction:      startGate.AllowedNextAction,
+		FirstFailingCheck:      firstFailingCheck,
+		BlockingNextActions:    uniqueStrings(blockingActions),
+		MaintenanceSuggestions: uniqueStrings(maintenance),
+		SourceArtifacts:        preflight.SourceArtifacts,
+		SourceHashes:           startGate.SourceHashes,
+		OperatorMode:           operatorMode,
+		MutatesRepositories:    false,
+	}, nil
+}
+
+func readPublicJSONFile(path string, target any) error {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := validatePublicSafeText(string(bytes)); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(bytes, target); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+func validatePulseIntakePreflight(preflight foundryPulseIntakePreflight) error {
+	if preflight.SchemaVersion != "ao.foundry.pulse-intake-preflight.v0.1" {
+		return errors.New("invalid Pulse intake preflight schema_version")
+	}
+	if !isPulseStatus(preflight.Status) {
+		return fmt.Errorf("invalid Pulse intake preflight status %q", preflight.Status)
+	}
+	if strings.TrimSpace(preflight.BlueprintStatus) == "" || strings.TrimSpace(preflight.AtlasStatus) == "" {
+		return errors.New("Pulse intake preflight requires blueprint_status and atlas_status")
+	}
+	for _, source := range preflight.SourceArtifacts {
+		if err := validatePulseSource(source, true); err != nil {
+			return fmt.Errorf("Pulse intake preflight source_artifacts: %w", err)
+		}
+	}
+	if preflight.Status == "ready" && len(preflight.SourceArtifacts) == 0 {
+		return errors.New("ready Pulse intake preflight requires source_artifacts")
+	}
+	return nil
+}
+
+func validatePulsePRLifecycle(lifecycle foundryPulsePRLifecycle) error {
+	if lifecycle.SchemaVersion != "ao.foundry.pulse-pr-lifecycle.v0.1" {
+		return errors.New("invalid Pulse PR lifecycle schema_version")
+	}
+	for field, value := range map[string]string{
+		"current_slice":       lifecycle.CurrentSlice,
+		"target_repo":         lifecycle.TargetRepo,
+		"branch":              lifecycle.Branch,
+		"pr_state":            lifecycle.PRState,
+		"check_state":         lifecycle.CheckState,
+		"merge_state":         lifecycle.MergeState,
+		"cleanup_state":       lifecycle.CleanupState,
+		"allowed_next_action": lifecycle.AllowedNextAction,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("Pulse PR lifecycle missing %s", field)
+		}
+	}
+	return nil
+}
+
+func validatePulseOvernightStartGate(startGate foundryPulseOvernightStartGate) error {
+	if startGate.SchemaVersion != "ao.foundry.pulse-overnight-start-gate.v0.1" {
+		return errors.New("invalid Pulse overnight start gate schema_version")
+	}
+	if !isPulseStatus(startGate.Status) {
+		return fmt.Errorf("invalid Pulse overnight start gate status %q", startGate.Status)
+	}
+	if strings.TrimSpace(startGate.AllowedNextAction) == "" {
+		return errors.New("Pulse overnight start gate requires allowed_next_action")
+	}
+	if len(startGate.SourceHashes) == 0 {
+		return errors.New("Pulse overnight start gate requires source_hashes")
+	}
+	for _, source := range startGate.SourceHashes {
+		if err := validatePulseSource(source, false); err != nil {
+			return fmt.Errorf("Pulse overnight start gate source_hashes: %w", err)
+		}
+	}
+	return nil
+}
+
+func validatePulseSource(source pulseSource, requireStatus bool) error {
+	if strings.TrimSpace(source.Name) == "" || strings.TrimSpace(source.Path) == "" || strings.TrimSpace(source.SchemaVersion) == "" {
+		return errors.New("source requires name, path, and schema_version")
+	}
+	if requireStatus && strings.TrimSpace(source.Status) == "" {
+		return errors.New("source requires status")
+	}
+	if !isHexSHA256(source.SHA256) {
+		return errors.New("source requires 64-character sha256")
+	}
+	if err := validatePublicSafeText(source.Path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isPulseStatus(status string) bool {
+	return status == "ready" || status == "blocked" || status == "failed"
+}
+
+func isHexSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, ch := range value {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func validatePublicSafeText(value string) error {
+	lower := strings.ToLower(strings.ReplaceAll(value, "\\", "/"))
+	for _, marker := range []string{
+		"/" + "users/",
+		"/" + "home/",
+		"/" + "tmp/",
+		"/" + "var/folders/",
+		"down" + "loads/",
+		"file" + "://",
+		"api" + "_key",
+		"access" + "_token",
+		"authorization: bearer",
+		"begin " + "rsa",
+		"begin " + "openssh",
+	} {
+		if strings.Contains(lower, marker) {
+			return fmt.Errorf("unsafe public artifact value %q", value)
+		}
+	}
+	return nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func validateFoundryAtlasStatus(status foundryAtlasStatus) error {

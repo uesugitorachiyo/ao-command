@@ -1,0 +1,14 @@
+{
+  "schema_version": "ao.foundry.pulse-pr-lifecycle.v0.1",
+  "current_slice": "pulse-overnight-start-gate",
+  "target_repo": "ao-foundry",
+  "branch": "main",
+  "pr_number": 0,
+  "pr_url": "",
+  "pr_state": "none",
+  "check_state": "none",
+  "merge_state": "merged",
+  "cleanup_state": "clean",
+  "allowed_next_action": "start_next_slice",
+  "blocker_reason": ""
+}

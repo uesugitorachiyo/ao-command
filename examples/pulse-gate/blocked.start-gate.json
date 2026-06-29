@@ -1,0 +1,26 @@
+{
+  "schema_version": "ao.foundry.pulse-overnight-start-gate.v0.1",
+  "status": "blocked",
+  "allowed_next_action": "request_blueprint_clarification",
+  "first_failing_check": "intake_preflight",
+  "blocking_next_actions": [
+    "Answer the Blueprint clarification request before scheduling implementation."
+  ],
+  "maintenance_suggestions": [
+    "run this gate before autonomous overnight/event-loop advancement"
+  ],
+  "source_hashes": [
+    {
+      "name": "intake_preflight",
+      "path": "examples/pulse-gate/blocked.preflight.json",
+      "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    {
+      "name": "pulse_pr_lifecycle",
+      "path": "examples/pulse-gate/ready.lifecycle.json",
+      "schema_version": "ao.foundry.pulse-pr-lifecycle.v0.1",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}

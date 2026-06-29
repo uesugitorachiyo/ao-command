@@ -45,6 +45,7 @@ owner.
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
+go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json
 go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json --foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json --forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json --forge-retained-candidate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-candidate-retention-proof.json --forge-retained-next-task ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-next-improvement-task-retention-proof.json --forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json --bundle-out tmp/rsi-health-bundle.json
 go run ./cmd/ao-command rsi manifest --manifest ../ao-architecture/overview/rsi-claim-evidence-manifest.json
 go run ./cmd/ao-command next --forge ../ao-forge
@@ -70,6 +71,13 @@ read-only operator format. It requires `mode=fixture_only_readback`,
 reports `atlas_authority=compile_only`, `operator_mode=read_only`, and
 `mutates_repositories=false`. It does not schedule work, execute work, approve
 claims, call providers, mutate repositories, or replace AO Foundry scheduling.
+
+`pulse status` reads AO Foundry's Pulse intake preflight, PR lifecycle state,
+and overnight start gate artifacts. It reports whether the autonomous loop may
+start, block for Blueprint clarification, or stop on failed evidence while
+keeping `operator_mode=read_only` and `mutates_repositories=false`. It does not
+start loops, create branches, merge PRs, mutate repositories, publish releases,
+upload artifacts, call providers, or replace AO Foundry Pulse gates.
 
 `rsi health` reads local fixture evidence from AO Arena, AO Crucible, AO
 Sentinel, AO Promoter, AO Foundry's RSI improvement gate, AO Foundry's RSI
@@ -151,6 +159,8 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
   repositories, publish claims, or approve the full RSI claim.
 - `atlas status` reads AO Foundry Atlas observer evidence and does not schedule,
   execute, approve, call providers, or mutate repositories.
+- `pulse status` reads AO Foundry Pulse gate evidence and does not start loops,
+  merge PRs, create branches, call providers, publish, or mutate repositories.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
@@ -185,6 +195,7 @@ go test ./...
 go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json --json
+go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json --json
 go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json --foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json --forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json --forge-retained-candidate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-candidate-retention-proof.json --forge-retained-next-task ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-next-improvement-task-retention-proof.json --forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json --bundle-out tmp/rsi-health-bundle.json --json
 scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke
 scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/rsi-evidence-chain-smoke

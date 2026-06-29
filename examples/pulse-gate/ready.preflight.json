@@ -1,0 +1,27 @@
+{
+  "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+  "status": "ready",
+  "blueprint_status": "ready",
+  "atlas_status": "ready",
+  "first_failing_check": "",
+  "checks": [
+    {
+      "name": "blueprint_build_authorization",
+      "status": "pass",
+      "reason": "Blueprint build authorization is ready."
+    }
+  ],
+  "blocking_next_actions": [],
+  "maintenance_suggestions": [
+    "keep pulse intake preflight fixture/local"
+  ],
+  "source_artifacts": [
+    {
+      "name": "blueprint_authorization",
+      "path": "examples/pulse-gate/blueprint-authorization.ready.json",
+      "schema_version": "ao.blueprint.build-authorization.v0.1",
+      "status": "ready",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
