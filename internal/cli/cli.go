@@ -86,6 +86,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.pulse(args[1:])
 	case "complex-refactor":
 		return a.complexRefactor(args[1:])
+	case "live-mutation":
+		return a.liveMutation(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -112,6 +114,7 @@ Usage:
   ao-command atlas status --status PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
+  ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -381,6 +384,71 @@ func (a App) complexRefactorStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
 	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
 	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	for _, action := range summary.BlockingNextActions {
+		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
+	}
+	for _, suggestion := range summary.MaintenanceSuggestions {
+		fmt.Fprintf(a.Stdout, "maintenance_suggestion=%s\n", suggestion)
+	}
+	return 0
+}
+
+func (a App) liveMutation(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]")
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.liveMutationStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) liveMutationStatus(args []string) int {
+	var authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("live-mutation status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&authorityPath, "authority", "", "path to AO Covenant live-mutation authority JSON")
+	fs.StringVar(&requestPath, "request", "", "path to AO Foundry live-mutation request JSON")
+	fs.StringVar(&forgePlanPath, "forge-plan", "", "path to AO Forge live-mutation dry-run plan JSON")
+	fs.StringVar(&ao2PacketPath, "ao2-packet", "", "path to AO2 live-mutation dry-run packet JSON")
+	fs.StringVar(&isolationPath, "isolation", "", "path to AO Foundry worktree isolation proof JSON")
+	fs.StringVar(&rollbackPath, "rollback", "", "path to AO Foundry rollback rehearsal JSON")
+	fs.StringVar(&killSwitchPath, "kill-switch", "", "path to operator kill-switch state JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if authorityPath == "" || requestPath == "" || forgePlanPath == "" || ao2PacketPath == "" || isolationPath == "" || rollbackPath == "" || killSwitchPath == "" {
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation status: --authority, --request, --forge-plan, --ao2-packet, --isolation, --rollback, and --kill-switch are required")
+		return 2
+	}
+	summary, err := readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command live-mutation status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_live_mutation_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
+	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
+	fmt.Fprintf(a.Stdout, "kill_switch_state=%s\n", summary.KillSwitchState)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "schedules_work=%t\n", summary.SchedulesWork)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	fmt.Fprintf(a.Stdout, "release_or_publish_allowed=%t\n", summary.ReleaseOrPublishAllowed)
+	for _, artifact := range summary.Artifacts {
+		fmt.Fprintf(a.Stdout, "artifact=%s status=%s schema=%s path=%s\n", artifact.Name, artifact.Status, artifact.SchemaVersion, artifact.Path)
+	}
 	for _, action := range summary.BlockingNextActions {
 		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
 	}
@@ -992,6 +1060,34 @@ type complexRefactorStatusSummary struct {
 	CallsProviders             bool                         `json:"calls_providers"`
 }
 
+type liveMutationArtifactSummary struct {
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	SchemaVersion     string `json:"schema_version"`
+	Status            string `json:"status"`
+	SHA256            string `json:"sha256"`
+	FirstFailingCheck string `json:"first_failing_check,omitempty"`
+}
+
+type liveMutationStatusSummary struct {
+	SchemaVersion           string                        `json:"schema_version"`
+	CommandSchemaVersion    string                        `json:"command_schema_version"`
+	Status                  string                        `json:"status"`
+	AllowedNextAction       string                        `json:"allowed_next_action"`
+	FirstFailingCheck       string                        `json:"first_failing_check"`
+	KillSwitchState         string                        `json:"kill_switch_state"`
+	Artifacts               []liveMutationArtifactSummary `json:"artifacts"`
+	BlockingNextActions     []string                      `json:"blocking_next_actions"`
+	MaintenanceSuggestions  []string                      `json:"maintenance_suggestions"`
+	OperatorMode            string                        `json:"operator_mode"`
+	MutatesRepositories     bool                          `json:"mutates_repositories"`
+	SchedulesWork           bool                          `json:"schedules_work"`
+	ExecutesWork            bool                          `json:"executes_work"`
+	ApprovesWork            bool                          `json:"approves_work"`
+	CallsProviders          bool                          `json:"calls_providers"`
+	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
+}
+
 type rsiFamilyStatus struct {
 	Family   string `json:"family"`
 	Status   string `json:"status"`
@@ -1386,6 +1482,229 @@ func readComplexRefactorStatus(summaryPath string) (complexRefactorStatusSummary
 		ApprovesWork:               false,
 		CallsProviders:             false,
 	}, nil
+}
+
+func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath string) (liveMutationStatusSummary, error) {
+	specs := []struct {
+		name        string
+		path        string
+		schema      string
+		allowPassed bool
+	}{
+		{name: "covenant_authority", path: authorityPath, schema: "covenant.live-mutation-authority.v1"},
+		{name: "foundry_request", path: requestPath, schema: "ao.foundry.live-mutation-request.v0.1"},
+		{name: "forge_dry_run_plan", path: forgePlanPath, schema: "ao.forge.live-mutation-dry-run-plan.v0.1"},
+		{name: "ao2_dry_run_packet", path: ao2PacketPath, schema: "ao2.live-mutation-dry-run-packet.v1"},
+		{name: "worktree_isolation", path: isolationPath, schema: "ao.foundry.worktree-isolation-proof.v0.1"},
+		{name: "rollback_rehearsal", path: rollbackPath, schema: "ao.foundry.live-mutation-rollback-rehearsal.v0.1"},
+		{name: "operator_kill_switch", path: killSwitchPath, schema: "ao.command.live-mutation-kill-switch.v0.1"},
+	}
+
+	status := "ready"
+	firstFailingCheck := ""
+	killSwitchState := ""
+	artifacts := []liveMutationArtifactSummary{}
+	blockingActions := []string{}
+	maintenance := []string{
+		"Keep this readback observer-only; it does not grant live mutation authority.",
+		"Do not request the first tiny live mutation class until Sentinel and Promoter evidence also pass.",
+	}
+
+	for _, spec := range specs {
+		artifact, raw, err := readLiveMutationArtifact(spec.name, spec.path, spec.schema)
+		if err != nil {
+			return liveMutationStatusSummary{}, err
+		}
+		if spec.name == "operator_kill_switch" {
+			killSwitchState = artifact.Status
+		}
+		artifacts = append(artifacts, artifact)
+		if err := validateLiveMutationArtifactBoundaries(spec.name, raw); err != nil {
+			return liveMutationStatusSummary{}, err
+		}
+		switch artifact.Status {
+		case "ready", "approved", "armed":
+		case "passed":
+			if !spec.allowPassed {
+				status = "blocked"
+				if firstFailingCheck == "" {
+					firstFailingCheck = spec.name
+				}
+			}
+		case "blocked", "hold":
+			if status == "ready" {
+				status = "blocked"
+			}
+			if firstFailingCheck == "" {
+				firstFailingCheck = firstNonEmpty(artifact.FirstFailingCheck, spec.name)
+			}
+		case "failed", "denied":
+			status = "failed"
+			if firstFailingCheck == "" {
+				firstFailingCheck = firstNonEmpty(artifact.FirstFailingCheck, spec.name)
+			}
+		default:
+			if status == "ready" {
+				status = "blocked"
+			}
+			if firstFailingCheck == "" {
+				firstFailingCheck = spec.name
+			}
+		}
+		blockingActions = append(blockingActions, liveMutationStringSlice(raw, "blocking_next_actions")...)
+		maintenance = append(maintenance, liveMutationStringSlice(raw, "maintenance_suggestions")...)
+	}
+
+	if killSwitchState != "armed" {
+		if status == "ready" {
+			status = "blocked"
+		}
+		if firstFailingCheck == "" {
+			firstFailingCheck = "operator_kill_switch"
+		}
+		blockingActions = append(blockingActions, "Arm the operator kill switch before requesting live mutation authority.")
+	}
+	allowedNextAction := "request_first_tiny_live_mutation_class"
+	if status == "blocked" {
+		allowedNextAction = "repair_live_mutation_evidence"
+	} else if status == "failed" {
+		allowedNextAction = "stop_and_rebuild_live_mutation_evidence"
+	}
+	if status != "ready" && len(blockingActions) == 0 {
+		blockingActions = append(blockingActions, "Repair the first failing live-mutation evidence check before proceeding.")
+	}
+
+	return liveMutationStatusSummary{
+		SchemaVersion:           "ao.command.live-mutation-status.v0.1",
+		CommandSchemaVersion:    commandSchemaVersion,
+		Status:                  status,
+		AllowedNextAction:       allowedNextAction,
+		FirstFailingCheck:       firstFailingCheck,
+		KillSwitchState:         killSwitchState,
+		Artifacts:               artifacts,
+		BlockingNextActions:     uniqueStrings(blockingActions),
+		MaintenanceSuggestions:  uniqueStrings(maintenance),
+		OperatorMode:            operatorMode,
+		MutatesRepositories:     false,
+		SchedulesWork:           false,
+		ExecutesWork:            false,
+		ApprovesWork:            false,
+		CallsProviders:          false,
+		ReleaseOrPublishAllowed: false,
+	}, nil
+}
+
+func readLiveMutationArtifact(name, path, expectedSchema string) (liveMutationArtifactSummary, map[string]any, error) {
+	var raw map[string]any
+	if err := readPublicJSONFile(path, &raw); err != nil {
+		return liveMutationArtifactSummary{}, nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	schema := liveMutationMapString(raw, "schema_version")
+	if schema != expectedSchema {
+		return liveMutationArtifactSummary{}, nil, fmt.Errorf("%s has invalid schema_version %q", name, schema)
+	}
+	status := liveMutationMapString(raw, "status")
+	if name == "operator_kill_switch" {
+		status = liveMutationMapString(raw, "state")
+	}
+	if strings.TrimSpace(status) == "" {
+		return liveMutationArtifactSummary{}, nil, fmt.Errorf("%s requires status", name)
+	}
+	sha, err := sha256File(path)
+	if err != nil {
+		return liveMutationArtifactSummary{}, nil, fmt.Errorf("hash %s: %w", name, err)
+	}
+	return liveMutationArtifactSummary{
+		Name:              name,
+		Path:              path,
+		SchemaVersion:     schema,
+		Status:            status,
+		SHA256:            sha,
+		FirstFailingCheck: liveMutationMapString(raw, "first_failing_check"),
+	}, raw, nil
+}
+
+func validateLiveMutationArtifactBoundaries(name string, raw map[string]any) error {
+	if err := validateLiveMutationMode(name, raw); err != nil {
+		return err
+	}
+	for _, field := range []string{
+		"mutates_repositories",
+		"schedules_work",
+		"executes_work",
+		"approves_work",
+		"calls_providers",
+		"provider_calls_allowed",
+		"release_or_publish_allowed",
+		"uploads_artifacts",
+		"live_mutation_allowed",
+	} {
+		if liveMutationMapBool(raw, field) {
+			return fmt.Errorf("%s expands forbidden authority via %s", name, field)
+		}
+	}
+	if boundaries, ok := raw["authority_boundaries"].(map[string]any); ok {
+		if !liveMutationMapBool(boundaries, "dry_run_only") {
+			return fmt.Errorf("%s authority_boundaries must remain dry_run_only", name)
+		}
+		for _, field := range []string{
+			"live_mutation_allowed",
+			"mutates_repositories",
+			"schedules_work",
+			"executes_work",
+			"approves_work",
+			"calls_providers",
+			"provider_calls_allowed",
+			"release_or_publish_allowed",
+			"sibling_repo_mutation_allowed",
+		} {
+			if liveMutationMapBool(boundaries, field) {
+				return fmt.Errorf("%s expands forbidden authority via authority_boundaries.%s", name, field)
+			}
+		}
+	}
+	return nil
+}
+
+func validateLiveMutationMode(name string, raw map[string]any) error {
+	mode := liveMutationMapString(raw, "mode")
+	if mode == "" {
+		return nil
+	}
+	switch mode {
+	case "dry_run_only", "dry_run_packet", "fixture_only", "fixture_only_rehearsal":
+		return nil
+	default:
+		return fmt.Errorf("%s has unsafe mode %q", name, mode)
+	}
+}
+
+func liveMutationMapString(raw map[string]any, key string) string {
+	if value, ok := raw[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func liveMutationMapBool(raw map[string]any, key string) bool {
+	if value, ok := raw[key].(bool); ok {
+		return value
+	}
+	return false
+}
+
+func liveMutationStringSlice(raw map[string]any, key string) []string {
+	values, ok := raw[key].([]any)
+	if !ok {
+		return nil
+	}
+	result := []string{}
+	for _, value := range values {
+		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+			result = append(result, text)
+		}
+	}
+	return result
 }
 
 func deriveComplexRefactorNextAction(summary foundryComplexRefactorSummary) string {

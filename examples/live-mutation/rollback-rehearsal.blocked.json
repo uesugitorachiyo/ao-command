@@ -1,0 +1,21 @@
+{
+  "schema_version": "ao.foundry.live-mutation-rollback-rehearsal.v0.1",
+  "status": "blocked",
+  "mode": "dry_run_only",
+  "candidate_path": "examples/live-mutation-rollback/missing-rollback.candidate.json",
+  "candidate_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "first_failing_check": "rollback_patch_present",
+  "blocking_next_actions": [
+    "Provide a digest-bound rollback patch before requesting live-mutation authority."
+  ],
+  "authority_boundaries": {
+    "dry_run_only": true,
+    "live_mutation_allowed": false,
+    "mutates_repositories": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false
+  }
+}
