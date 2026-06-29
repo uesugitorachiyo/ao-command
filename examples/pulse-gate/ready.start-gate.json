@@ -1,0 +1,24 @@
+{
+  "schema_version": "ao.foundry.pulse-overnight-start-gate.v0.1",
+  "status": "ready",
+  "allowed_next_action": "start_next_slice",
+  "first_failing_check": "",
+  "blocking_next_actions": [],
+  "maintenance_suggestions": [
+    "run this gate before autonomous overnight/event-loop advancement"
+  ],
+  "source_hashes": [
+    {
+      "name": "intake_preflight",
+      "path": "examples/pulse-gate/ready.preflight.json",
+      "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "pulse_pr_lifecycle",
+      "path": "examples/pulse-gate/ready.lifecycle.json",
+      "schema_version": "ao.foundry.pulse-pr-lifecycle.v0.1",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+  "status": "failed",
+  "blueprint_status": "missing",
+  "atlas_status": "not_required",
+  "first_failing_check": "blueprint_build_authorization",
+  "checks": [
+    {
+      "name": "blueprint_build_authorization",
+      "status": "fail",
+      "reason": "Blueprint authorization is required for build-ready Pulse intake."
+    }
+  ],
+  "blocking_next_actions": [
+    "Run AO Blueprint and provide a ready build authorization or blocked clarification request."
+  ],
+  "maintenance_suggestions": [
+    "keep pulse intake preflight fixture/local"
+  ],
+  "source_artifacts": []
+}

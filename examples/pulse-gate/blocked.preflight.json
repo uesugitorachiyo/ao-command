@@ -1,0 +1,29 @@
+{
+  "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+  "status": "blocked",
+  "blueprint_status": "blocked",
+  "atlas_status": "not_required",
+  "first_failing_check": "blueprint_build_authorization",
+  "checks": [
+    {
+      "name": "blueprint_build_authorization",
+      "status": "fail",
+      "reason": "Blueprint request exists; work is not build-ready."
+    }
+  ],
+  "blocking_next_actions": [
+    "Answer the Blueprint clarification request before scheduling implementation."
+  ],
+  "maintenance_suggestions": [
+    "keep pulse intake preflight fixture/local"
+  ],
+  "source_artifacts": [
+    {
+      "name": "blueprint_request",
+      "path": "examples/pulse-gate/blueprint-request.blocked.json",
+      "schema_version": "ao.blueprint.request.v0.1",
+      "status": "blocked",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ]
+}

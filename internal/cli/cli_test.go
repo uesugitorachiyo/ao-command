@@ -281,6 +281,165 @@ func TestAtlasStatusRejectsAuthorityDrift(t *testing.T) {
 	}
 }
 
+func TestPulseStatusReportsReadyGateReadback(t *testing.T) {
+	paths := writePulseGateFixtures(t, "ready")
+	code, stdout, stderr := runWithFake([]string{
+		"pulse", "status",
+		"--preflight", paths.preflight,
+		"--lifecycle", paths.lifecycle,
+		"--start-gate", paths.startGate,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("pulse status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_pulse_status=ready",
+		"preflight_status=ready",
+		"lifecycle_status=start_next_slice",
+		"start_gate_status=ready",
+		"allowed_next_action=start_next_slice",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("pulse status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestPulseStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
+	paths := writePulseGateFixtures(t, "ready")
+	code, stdout, stderr := runWithFake([]string{
+		"pulse", "status",
+		"--preflight", paths.preflight,
+		"--lifecycle", paths.lifecycle,
+		"--start-gate", paths.startGate,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("pulse status json exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion        string `json:"schema_version"`
+		CommandSchemaVersion string `json:"command_schema_version"`
+		Status               string `json:"status"`
+		PreflightStatus      string `json:"preflight_status"`
+		LifecycleStatus      string `json:"lifecycle_status"`
+		StartGateStatus      string `json:"start_gate_status"`
+		AllowedNextAction    string `json:"allowed_next_action"`
+		OperatorMode         string `json:"operator_mode"`
+		MutatesRepositories  bool   `json:"mutates_repositories"`
+		SourceArtifacts      []struct {
+			Name   string `json:"name"`
+			SHA256 string `json:"sha256"`
+		} `json:"source_artifacts"`
+		SourceHashes []struct {
+			Name   string `json:"name"`
+			SHA256 string `json:"sha256"`
+		} `json:"source_hashes"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid pulse status JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.pulse-gate-status.v0.1" ||
+		got.CommandSchemaVersion != "ao.command.v0.1" ||
+		got.Status != "ready" ||
+		got.PreflightStatus != "ready" ||
+		got.LifecycleStatus != "start_next_slice" ||
+		got.StartGateStatus != "ready" ||
+		got.AllowedNextAction != "start_next_slice" ||
+		got.OperatorMode != "read_only" ||
+		got.MutatesRepositories ||
+		len(got.SourceArtifacts) != 1 ||
+		len(got.SourceHashes) != 2 {
+		t.Fatalf("unexpected pulse status summary: %+v", got)
+	}
+}
+
+func TestPulseStatusReportsBlockedAndFailedInputs(t *testing.T) {
+	for _, tc := range []struct {
+		mode string
+		want string
+	}{
+		{mode: "blocked", want: "request_blueprint_clarification"},
+		{mode: "failed", want: "stop_blocked"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			paths := writePulseGateFixtures(t, tc.mode)
+			code, stdout, stderr := runWithFake([]string{
+				"pulse", "status",
+				"--preflight", paths.preflight,
+				"--lifecycle", paths.lifecycle,
+				"--start-gate", paths.startGate,
+				"--json",
+			}, &fakeRunner{})
+			if code != 0 {
+				t.Fatalf("pulse status %s exit=%d stderr=%s", tc.mode, code, stderr)
+			}
+			var got struct {
+				Status            string `json:"status"`
+				AllowedNextAction string `json:"allowed_next_action"`
+				OperatorMode      string `json:"operator_mode"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+				t.Fatalf("invalid pulse status JSON: %v\n%s", err, stdout)
+			}
+			if got.Status != tc.mode || got.AllowedNextAction != tc.want || got.OperatorMode != "read_only" {
+				t.Fatalf("unexpected %s pulse status: %+v", tc.mode, got)
+			}
+		})
+	}
+}
+
+func TestPulseStatusFailsClosedForMalformedAndUnsafeInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(paths pulseGateFixturePaths)
+		want   string
+	}{
+		{
+			name: "wrong_schema",
+			mutate: func(paths pulseGateFixturePaths) {
+				writeFile(t, paths.startGate, `{"schema_version":"wrong","status":"ready","allowed_next_action":"start_next_slice","first_failing_check":"","blocking_next_actions":[],"maintenance_suggestions":[],"source_hashes":[]}`)
+			},
+			want: "invalid Pulse overnight start gate schema_version",
+		},
+		{
+			name: "missing_digest",
+			mutate: func(paths pulseGateFixturePaths) {
+				writeFile(t, paths.startGate, `{"schema_version":"ao.foundry.pulse-overnight-start-gate.v0.1","status":"ready","allowed_next_action":"start_next_slice","first_failing_check":"","blocking_next_actions":[],"maintenance_suggestions":[],"source_hashes":[{"name":"intake_preflight","path":"examples/pulse/preflight.json","schema_version":"ao.foundry.pulse-intake-preflight.v0.1","sha256":"bad"}]}`)
+			},
+			want: "source requires 64-character sha256",
+		},
+		{
+			name: "unsafe_path",
+			mutate: func(paths pulseGateFixturePaths) {
+				unsafePath := "/" + "Users/example/private.json"
+				writeFile(t, paths.preflight, `{"schema_version":"ao.foundry.pulse-intake-preflight.v0.1","status":"ready","blueprint_status":"ready","atlas_status":"ready","first_failing_check":"","checks":[],"blocking_next_actions":[],"maintenance_suggestions":[],"source_artifacts":[{"name":"blueprint_authorization","path":"`+unsafePath+`","schema_version":"ao.blueprint.build-authorization.v0.1","status":"ready","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`)
+			},
+			want: "unsafe public artifact value",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			paths := writePulseGateFixtures(t, "ready")
+			tc.mutate(paths)
+			code, stdout, stderr := runWithFake([]string{
+				"pulse", "status",
+				"--preflight", paths.preflight,
+				"--lifecycle", paths.lifecycle,
+				"--start-gate", paths.startGate,
+				"--json",
+			}, &fakeRunner{})
+			if code != 1 {
+				t.Fatalf("pulse status malformed exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Fatalf("stderr missing %q:\n%s", tc.want, stderr)
+			}
+		})
+	}
+}
+
 func TestRSIHealthReportsNewAssuranceFamilies(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
 	code, stdout, stderr := runWithFake([]string{
@@ -2321,6 +2480,102 @@ func writeRSIManifestFixtureMissingAO2AuthorityPacketReadbackPins(t *testing.T) 
 func writeRSIManifestFixtureMissingAO2AuthorityPacketRequiredEvidence(t *testing.T) string {
 	t.Helper()
 	return writeRSIManifestFixtureWithPins(t, true, true, true, true, true, true, true, true, false, false)
+}
+
+type pulseGateFixturePaths struct {
+	preflight string
+	lifecycle string
+	startGate string
+}
+
+func writePulseGateFixtures(t *testing.T, mode string) pulseGateFixturePaths {
+	t.Helper()
+	dir := t.TempDir()
+	paths := pulseGateFixturePaths{
+		preflight: filepath.Join(dir, "pulse-intake-preflight.json"),
+		lifecycle: filepath.Join(dir, "pulse-pr-lifecycle.json"),
+		startGate: filepath.Join(dir, "pulse-overnight-start-gate.json"),
+	}
+	preflightStatus := mode
+	blueprintStatus := "ready"
+	atlasStatus := "ready"
+	firstFailingCheck := ""
+	blockingNextActions := "[]"
+	sourceArtifacts := `[{"name":"blueprint_authorization","path":"examples/pulse/blueprint-authorization.ready.json","schema_version":"ao.blueprint.build-authorization.v0.1","status":"ready","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`
+	if mode == "blocked" {
+		blueprintStatus = "blocked"
+		atlasStatus = "not_required"
+		firstFailingCheck = "blueprint_build_authorization"
+		blockingNextActions = `["Answer the Blueprint clarification request before scheduling implementation."]`
+	} else if mode == "failed" {
+		blueprintStatus = "missing"
+		atlasStatus = "not_required"
+		firstFailingCheck = "blueprint_build_authorization"
+		blockingNextActions = `["Fix the Pulse intake preflight failure before starting the loop."]`
+		sourceArtifacts = "[]"
+	}
+	writeFile(t, paths.preflight, `{
+  "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+  "status": "`+preflightStatus+`",
+  "blueprint_status": "`+blueprintStatus+`",
+  "atlas_status": "`+atlasStatus+`",
+  "first_failing_check": "`+firstFailingCheck+`",
+  "checks": [],
+  "blocking_next_actions": `+blockingNextActions+`,
+  "maintenance_suggestions": ["keep pulse intake preflight fixture/local"],
+  "source_artifacts": `+sourceArtifacts+`
+}`)
+	writeFile(t, paths.lifecycle, `{
+  "schema_version": "ao.foundry.pulse-pr-lifecycle.v0.1",
+  "current_slice": "pulse-overnight-start-gate",
+  "target_repo": "ao-foundry",
+  "branch": "main",
+  "pr_number": 0,
+  "pr_url": "",
+  "pr_state": "none",
+  "check_state": "none",
+  "merge_state": "merged",
+  "cleanup_state": "clean",
+  "allowed_next_action": "start_next_slice",
+  "blocker_reason": ""
+}`)
+	startGateStatus := mode
+	allowedNextAction := "start_next_slice"
+	if mode == "blocked" {
+		allowedNextAction = "request_blueprint_clarification"
+	} else if mode == "failed" {
+		allowedNextAction = "stop_blocked"
+	}
+	writeFile(t, paths.startGate, `{
+  "schema_version": "ao.foundry.pulse-overnight-start-gate.v0.1",
+  "status": "`+startGateStatus+`",
+  "allowed_next_action": "`+allowedNextAction+`",
+  "first_failing_check": "`+firstFailingCheck+`",
+  "blocking_next_actions": `+blockingNextActions+`,
+  "maintenance_suggestions": ["run this gate before autonomous overnight/event-loop advancement"],
+  "source_hashes": [
+    {
+      "name": "intake_preflight",
+      "path": "examples/pulse/pulse-intake-preflight.json",
+      "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "pulse_pr_lifecycle",
+      "path": "examples/pulse/pulse-pr-lifecycle.json",
+      "schema_version": "ao.foundry.pulse-pr-lifecycle.v0.1",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}`)
+	return paths
+}
+
+func writeFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write fixture %s: %v", path, err)
+	}
 }
 
 func stackRepoPresent(repos []struct {
