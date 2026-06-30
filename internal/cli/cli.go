@@ -122,6 +122,7 @@ Usage:
   ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
   ao-command live-mutation approval --request PATH --ticket PATH [--json]
   ao-command live-mutation pr-rehearsal --gate PATH [--json]
+  ao-command live-mutation class-decision --rollup PATH --promoter-verdict PATH [--json]
   ao-command rsi health --arena-gate PATH --crucible-gate PATH --sentinel-verdict PATH --promoter-gate PATH --foundry-gate PATH --foundry-candidate PATH --foundry-next-task PATH --forge-retained-gate PATH --forge-retained-candidate PATH --forge-retained-next-task PATH --forge-retained-command-health PATH [--bundle-out PATH] [--json]
   ao-command rsi manifest --manifest PATH [--json]
   ao-command next [--forge PATH] [--forge-bin PATH] [--json]
@@ -514,20 +515,57 @@ func (a App) complexRefactorStatus(args []string) int {
 
 func (a App) liveMutation(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal> ...")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal|class-decision> ...")
 		return 2
 	}
 	switch args[0] {
 	case "approval":
 		return a.liveMutationApproval(args[1:])
+	case "class-decision":
+		return a.liveMutationClassDecision(args[1:])
 	case "pr-rehearsal":
 		return a.liveMutationPRRehearsal(args[1:])
 	case "status":
 		return a.liveMutationStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal> ...")
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation: usage: ao-command live-mutation <status|approval|pr-rehearsal|class-decision> ...")
 		return 2
 	}
+}
+
+func (a App) liveMutationClassDecision(args []string) int {
+	var rollupPath, promoterVerdictPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("live-mutation class-decision", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&rollupPath, "rollup", "", "path to AO Foundry complex_repo_mutation promotion rollup")
+	fs.StringVar(&promoterVerdictPath, "promoter-verdict", "", "path to AO Promoter complex_repo_mutation verdict")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if rollupPath == "" || promoterVerdictPath == "" {
+		fmt.Fprintln(a.Stderr, "ao-command live-mutation class-decision: --rollup and --promoter-verdict are required")
+		return 2
+	}
+	summary, err := readLiveMutationClassDecision(rollupPath, promoterVerdictPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command live-mutation class-decision: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_complex_repo_mutation_class_decision=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mutation_class=%s\n", summary.MutationClass)
+	fmt.Fprintf(a.Stdout, "complex_repo_mutation_live_proven=%t\n", summary.ComplexRepoMutationLiveProven)
+	fmt.Fprintf(a.Stdout, "highest_proven_live_class=%s\n", summary.HighestProvenLiveClass)
+	fmt.Fprintf(a.Stdout, "next_denied_class=%s\n", summary.NextDeniedClass)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	for _, action := range summary.BlockingNextActions {
+		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
+	}
+	return 0
 }
 
 func (a App) liveMutationApproval(args []string) int {
@@ -1457,6 +1495,30 @@ type liveMutationArtifactSummary struct {
 	FirstFailingCheck string `json:"first_failing_check,omitempty"`
 }
 
+type liveMutationClassDecisionSummary struct {
+	SchemaVersion                    string                        `json:"schema_version"`
+	CommandSchemaVersion             string                        `json:"command_schema_version"`
+	Status                           string                        `json:"status"`
+	MutationClass                    string                        `json:"mutation_class"`
+	ComplexRepoMutationLiveProven    bool                          `json:"complex_repo_mutation_live_proven"`
+	HighestProvenLiveClass           string                        `json:"highest_proven_live_class"`
+	NextDeniedClass                  string                        `json:"next_denied_class"`
+	FullyUnsupervisedComplexMutation string                        `json:"fully_unsupervised_complex_mutation"`
+	RSI                              string                        `json:"rsi"`
+	SafeToRequest                    bool                          `json:"safe_to_request"`
+	SafeToExecute                    bool                          `json:"safe_to_execute"`
+	FirstFailingCheck                string                        `json:"first_failing_check"`
+	BlockingNextActions              []string                      `json:"blocking_next_actions"`
+	Artifacts                        []liveMutationArtifactSummary `json:"artifacts"`
+	OperatorMode                     string                        `json:"operator_mode"`
+	MutatesRepositories              bool                          `json:"mutates_repositories"`
+	SchedulesWork                    bool                          `json:"schedules_work"`
+	ExecutesWork                     bool                          `json:"executes_work"`
+	ApprovesWork                     bool                          `json:"approves_work"`
+	CallsProviders                   bool                          `json:"calls_providers"`
+	ReleaseOrPublishAllowed          bool                          `json:"release_or_publish_allowed"`
+}
+
 type liveMutationStatusSummary struct {
 	SchemaVersion                  string                        `json:"schema_version"`
 	CommandSchemaVersion           string                        `json:"command_schema_version"`
@@ -2323,6 +2385,75 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	}, nil
 }
 
+func readLiveMutationClassDecision(rollupPath, promoterVerdictPath string) (liveMutationClassDecisionSummary, error) {
+	rollupArtifact, rollup, err := readLiveMutationArtifact("foundry_complex_promotion_rollup", rollupPath, "ao.foundry.complex-repo-mutation-promotion-rollup.v0.1")
+	if err != nil {
+		return liveMutationClassDecisionSummary{}, err
+	}
+	verdictArtifact, verdict, err := readLiveMutationArtifact("promoter_complex_promotion_verdict", promoterVerdictPath, "ao.promoter.complex-repo-mutation-promotion-verdict.v0.1")
+	if err != nil {
+		return liveMutationClassDecisionSummary{}, err
+	}
+	blocking := []string{}
+	status := "denied"
+	highest := firstNonEmpty(liveMutationMapString(verdict, "highest_proven_live_class"), liveMutationMapString(rollup, "highest_proven_live_class"), "multi_repo_low_risk")
+	nextDenied := firstNonEmpty(liveMutationMapString(verdict, "next_denied_class"), liveMutationMapString(rollup, "next_denied_class"), "complex_repo_mutation")
+	firstFailingCheck := firstNonEmpty(liveMutationMapString(rollup, "first_failing_check"), liveMutationMapString(verdict, "first_failing_check"))
+	promoted := liveMutationMapString(rollup, "status") == "ready" &&
+		liveMutationMapString(verdict, "status") == "promoted" &&
+		liveMutationMapBool(rollup, "safe_to_promote") &&
+		liveMutationMapBool(verdict, "safe_to_promote") &&
+		liveMutationMapBool(rollup, "complex_repo_mutation_live_proven") &&
+		liveMutationMapBool(verdict, "complex_repo_mutation_live_proven") &&
+		liveMutationMapString(rollup, "mutation_class") == "complex_repo_mutation" &&
+		liveMutationMapString(verdict, "mutation_class") == "complex_repo_mutation" &&
+		liveMutationMapString(rollup, "fully_unsupervised_complex_mutation") == "denied" &&
+		liveMutationMapString(verdict, "fully_unsupervised_complex_mutation") == "denied" &&
+		liveMutationMapString(rollup, "rsi") == "denied" &&
+		liveMutationMapString(verdict, "rsi") == "denied"
+	if promoted {
+		status = "promoted"
+		highest = "complex_repo_mutation"
+		nextDenied = "fully_unsupervised_complex_mutation"
+	} else {
+		blocking = append(blocking, "Do not mark complex_repo_mutation live-proven until Foundry rollup and Promoter verdict both promote the exact class.")
+		for _, blocker := range liveMutationStringSlice(rollup, "blockers") {
+			blocking = append(blocking, "Foundry rollup blocker: "+blocker)
+		}
+		for _, raw := range liveMutationAnySlice(verdict["blockers"]) {
+			if item, ok := raw.(map[string]any); ok {
+				reason := liveMutationMapString(item, "reason")
+				if reason != "" {
+					blocking = append(blocking, "Promoter verdict blocker: "+reason)
+				}
+			}
+		}
+	}
+	return liveMutationClassDecisionSummary{
+		SchemaVersion:                    "ao.command.complex-repo-mutation-class-decision.v0.1",
+		CommandSchemaVersion:             commandSchemaVersion,
+		Status:                           status,
+		MutationClass:                    "complex_repo_mutation",
+		ComplexRepoMutationLiveProven:    promoted,
+		HighestProvenLiveClass:           highest,
+		NextDeniedClass:                  nextDenied,
+		FullyUnsupervisedComplexMutation: "denied",
+		RSI:                              "denied",
+		SafeToRequest:                    promoted,
+		SafeToExecute:                    false,
+		FirstFailingCheck:                firstFailingCheck,
+		BlockingNextActions:              uniqueStrings(blocking),
+		Artifacts:                        []liveMutationArtifactSummary{rollupArtifact, verdictArtifact},
+		OperatorMode:                     operatorMode,
+		MutatesRepositories:              false,
+		SchedulesWork:                    false,
+		ExecutesWork:                     false,
+		ApprovesWork:                     false,
+		CallsProviders:                   false,
+		ReleaseOrPublishAllowed:          false,
+	}, nil
+}
+
 func newLowRiskCodeDenialAudit(safeToRequest bool) *lowRiskCodeDenialAudit {
 	return &lowRiskCodeDenialAudit{
 		SchemaVersion:          "ao.command.low-risk-code-denial-audit.v0.1",
@@ -2815,6 +2946,11 @@ func liveMutationStringSlice(raw map[string]any, key string) []string {
 		}
 	}
 	return result
+}
+
+func liveMutationAnySlice(value any) []any {
+	values, _ := value.([]any)
+	return values
 }
 
 func liveMutationRepoStates(raw map[string]any) []liveMutationRepoState {
