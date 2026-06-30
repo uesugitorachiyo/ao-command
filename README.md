@@ -106,6 +106,11 @@ first tiny live mutation class is ready to request, blocked, or failed while
 preserving `operator_mode=read_only`, `mutates_repositories=false`, and no
 scheduling, execution, approval, provider, release, or publish authority. This
 is readback only; it does not grant or perform live mutation.
+When the evidence carries class fields, the readback also reports
+`current_mutation_class`, `next_mutation_class`, `safe_to_request`,
+`safe_to_execute=false`, required evidence, and denied higher classes. The
+checked-in `test_only` fixture can be requested only as a live rehearsal
+readback; low-risk code and higher classes remain denied.
 
 `live-mutation approval` reads the first docs-only live mutation approval
 request and Covenant ticket. It reports `safe_to_request`, `safe_to_execute`,

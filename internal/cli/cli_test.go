@@ -785,6 +785,40 @@ func TestLiveMutationStatusReportsReadOnlySummary(t *testing.T) {
 	}
 }
 
+func TestLiveMutationStatusReportsTestOnlyReadback(t *testing.T) {
+	paths := testOnlyLiveMutationFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("test-only live-mutation status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=ready",
+		"allowed_next_action=request_test_only_live_rehearsal",
+		"current_mutation_class=docs_only_multi_file",
+		"next_mutation_class=test_only",
+		"safe_to_request=true",
+		"safe_to_execute=false",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"schedules_work=false",
+		"executes_work=false",
+		"artifact=ao2_dry_run_packet status=ready schema=ao2.live-mutation-dry-run-packet.v1",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("test-only live-mutation status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
 	paths := liveDocsApprovalFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
@@ -3324,6 +3358,21 @@ func liveMutationFixturePaths() liveMutationPaths {
 		ao2Packet:  fixture("ao2-packet.ready.json"),
 		isolation:  fixture("worktree-isolation.ready.json"),
 		rollback:   fixture("rollback-rehearsal.ready.json"),
+		killSwitch: fixture("kill-switch.armed.json"),
+	}
+}
+
+func testOnlyLiveMutationFixturePaths() liveMutationPaths {
+	fixture := func(name string) string {
+		return filepath.Join("..", "..", "examples", "live-mutation", name)
+	}
+	return liveMutationPaths{
+		authority:  fixture("covenant-authority.test-only-ready.json"),
+		request:    fixture("foundry-request.test-only-ready.json"),
+		forgePlan:  fixture("forge-plan.test-only-ready.json"),
+		ao2Packet:  fixture("ao2-packet.test-only-ready.json"),
+		isolation:  fixture("worktree-isolation.test-only-ready.json"),
+		rollback:   fixture("rollback-rehearsal.test-only-ready.json"),
 		killSwitch: fixture("kill-switch.armed.json"),
 	}
 }
