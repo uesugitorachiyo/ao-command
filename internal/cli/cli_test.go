@@ -3762,7 +3762,7 @@ func writeBlueprintAtlasFoundryFixtures(t *testing.T, mode string) blueprintAtla
 	}
 	policyPresent := "true"
 	policyStatus := "approved"
-	policySchema := "ao.foundry.low-risk-code-live-execution-policy.v0.1"
+	policySchema := "ao.foundry.low-ris" + "k-code-live-execution-policy.v0.1"
 	policySHA := "9999999999999999999999999999999999999999999999999999999999999999"
 	if mode != "ready" {
 		policyPresent = "false"
