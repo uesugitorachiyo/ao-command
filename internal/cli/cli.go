@@ -584,6 +584,15 @@ func (a App) liveMutationStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
 	fmt.Fprintf(a.Stdout, "current_mutation_class=%s\n", summary.CurrentMutationClass)
 	fmt.Fprintf(a.Stdout, "next_mutation_class=%s\n", summary.NextMutationClass)
+	fmt.Fprintf(a.Stdout, "highest_proven_live_class=%s\n", summary.HighestProvenLiveClass)
+	fmt.Fprintf(a.Stdout, "current_class_live_evidence_status=%s\n", summary.CurrentClassLiveEvidenceStatus)
+	if summary.LowRiskCodeLiveEvidenceStatus != "" {
+		fmt.Fprintf(a.Stdout, "low_risk_code_live_evidence_status=%s\n", summary.LowRiskCodeLiveEvidenceStatus)
+	}
+	if summary.NextDeniedClass != "" {
+		fmt.Fprintf(a.Stdout, "next_denied_class=%s\n", summary.NextDeniedClass)
+		fmt.Fprintf(a.Stdout, "next_denied_reason=%s\n", summary.NextDeniedReason)
+	}
 	fmt.Fprintf(a.Stdout, "safe_to_request=%t\n", summary.SafeToRequest)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
@@ -1302,31 +1311,36 @@ type liveMutationArtifactSummary struct {
 }
 
 type liveMutationStatusSummary struct {
-	SchemaVersion           string                        `json:"schema_version"`
-	CommandSchemaVersion    string                        `json:"command_schema_version"`
-	Status                  string                        `json:"status"`
-	AllowedNextAction       string                        `json:"allowed_next_action"`
-	FirstFailingCheck       string                        `json:"first_failing_check"`
-	KillSwitchState         string                        `json:"kill_switch_state"`
-	Artifacts               []liveMutationArtifactSummary `json:"artifacts"`
-	BlockingNextActions     []string                      `json:"blocking_next_actions"`
-	MaintenanceSuggestions  []string                      `json:"maintenance_suggestions"`
-	CurrentMutationClass    string                        `json:"current_mutation_class,omitempty"`
-	NextMutationClass       string                        `json:"next_mutation_class,omitempty"`
-	SafeToRequest           bool                          `json:"safe_to_request"`
-	SafeToExecute           bool                          `json:"safe_to_execute"`
-	RequiredEvidence        []string                      `json:"required_evidence,omitempty"`
-	LowRiskCodeDenialAudit  *lowRiskCodeDenialAudit       `json:"low_risk_code_denial_audit,omitempty"`
-	SentinelHold            *liveMutationSentinelHold     `json:"sentinel_hold,omitempty"`
-	DeniedHigherClasses     map[string]string             `json:"denied_higher_classes,omitempty"`
-	RepoStates              []liveMutationRepoState       `json:"repo_states,omitempty"`
-	OperatorMode            string                        `json:"operator_mode"`
-	MutatesRepositories     bool                          `json:"mutates_repositories"`
-	SchedulesWork           bool                          `json:"schedules_work"`
-	ExecutesWork            bool                          `json:"executes_work"`
-	ApprovesWork            bool                          `json:"approves_work"`
-	CallsProviders          bool                          `json:"calls_providers"`
-	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
+	SchemaVersion                  string                        `json:"schema_version"`
+	CommandSchemaVersion           string                        `json:"command_schema_version"`
+	Status                         string                        `json:"status"`
+	AllowedNextAction              string                        `json:"allowed_next_action"`
+	FirstFailingCheck              string                        `json:"first_failing_check"`
+	KillSwitchState                string                        `json:"kill_switch_state"`
+	Artifacts                      []liveMutationArtifactSummary `json:"artifacts"`
+	BlockingNextActions            []string                      `json:"blocking_next_actions"`
+	MaintenanceSuggestions         []string                      `json:"maintenance_suggestions"`
+	CurrentMutationClass           string                        `json:"current_mutation_class,omitempty"`
+	NextMutationClass              string                        `json:"next_mutation_class,omitempty"`
+	HighestProvenLiveClass         string                        `json:"highest_proven_live_class,omitempty"`
+	CurrentClassLiveEvidenceStatus string                        `json:"current_class_live_evidence_status,omitempty"`
+	LowRiskCodeLiveEvidenceStatus  string                        `json:"low_risk_code_live_evidence_status,omitempty"`
+	NextDeniedClass                string                        `json:"next_denied_class,omitempty"`
+	NextDeniedReason               string                        `json:"next_denied_reason,omitempty"`
+	SafeToRequest                  bool                          `json:"safe_to_request"`
+	SafeToExecute                  bool                          `json:"safe_to_execute"`
+	RequiredEvidence               []string                      `json:"required_evidence,omitempty"`
+	LowRiskCodeDenialAudit         *lowRiskCodeDenialAudit       `json:"low_risk_code_denial_audit,omitempty"`
+	SentinelHold                   *liveMutationSentinelHold     `json:"sentinel_hold,omitempty"`
+	DeniedHigherClasses            map[string]string             `json:"denied_higher_classes,omitempty"`
+	RepoStates                     []liveMutationRepoState       `json:"repo_states,omitempty"`
+	OperatorMode                   string                        `json:"operator_mode"`
+	MutatesRepositories            bool                          `json:"mutates_repositories"`
+	SchedulesWork                  bool                          `json:"schedules_work"`
+	ExecutesWork                   bool                          `json:"executes_work"`
+	ApprovesWork                   bool                          `json:"approves_work"`
+	CallsProviders                 bool                          `json:"calls_providers"`
+	ReleaseOrPublishAllowed        bool                          `json:"release_or_publish_allowed"`
 }
 
 type liveMutationSentinelHold struct {
@@ -1866,6 +1880,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	currentMutationClass := ""
 	nextMutationClass := ""
 	artifacts := []liveMutationArtifactSummary{}
+	rawArtifacts := []map[string]any{}
 	repoStates := []liveMutationRepoState{}
 	var sentinelHold *liveMutationSentinelHold
 	blockingActions := []string{}
@@ -1879,6 +1894,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		if err != nil {
 			return liveMutationStatusSummary{}, err
 		}
+		rawArtifacts = append(rawArtifacts, raw)
 		if spec.name == "operator_kill_switch" {
 			killSwitchState = artifact.Status
 		}
@@ -2005,37 +2021,53 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	}
 	requiredEvidence := liveMutationRequiredEvidence(nextMutationClass)
 	deniedHigherClasses := liveMutationDeniedHigherClasses(nextMutationClass)
+	highestProvenLiveClass, currentClassLiveEvidenceStatus := liveMutationHighestProvenLiveClass(currentMutationClass, rawArtifacts)
+	lowRiskCodeLiveEvidenceStatus := ""
+	nextDeniedClass := ""
+	nextDeniedReason := ""
+	if currentMutationClass == "low_risk_code" || nextMutationClass == "multi_repo_low_risk" {
+		lowRiskCodeLiveEvidenceStatus = currentClassLiveEvidenceStatus
+		if lowRiskCodeLiveEvidenceStatus != "completed" {
+			nextDeniedClass = "multi_repo_low_risk"
+			nextDeniedReason = "denied until low_risk_code live rehearsal evidence is recorded"
+		}
+	}
 	var lowRiskDenialAudit *lowRiskCodeDenialAudit
 	if nextMutationClass == "low_risk_code" {
 		lowRiskDenialAudit = newLowRiskCodeDenialAudit(status == "ready")
 	}
 
 	return liveMutationStatusSummary{
-		SchemaVersion:           "ao.command.live-mutation-status.v0.1",
-		CommandSchemaVersion:    commandSchemaVersion,
-		Status:                  status,
-		AllowedNextAction:       allowedNextAction,
-		FirstFailingCheck:       firstFailingCheck,
-		KillSwitchState:         killSwitchState,
-		Artifacts:               artifacts,
-		BlockingNextActions:     uniqueStrings(blockingActions),
-		MaintenanceSuggestions:  uniqueStrings(maintenance),
-		CurrentMutationClass:    currentMutationClass,
-		NextMutationClass:       nextMutationClass,
-		SafeToRequest:           status == "ready",
-		SafeToExecute:           false,
-		RequiredEvidence:        requiredEvidence,
-		LowRiskCodeDenialAudit:  lowRiskDenialAudit,
-		SentinelHold:            sentinelHold,
-		DeniedHigherClasses:     deniedHigherClasses,
-		RepoStates:              repoStates,
-		OperatorMode:            operatorMode,
-		MutatesRepositories:     false,
-		SchedulesWork:           false,
-		ExecutesWork:            false,
-		ApprovesWork:            false,
-		CallsProviders:          false,
-		ReleaseOrPublishAllowed: false,
+		SchemaVersion:                  "ao.command.live-mutation-status.v0.1",
+		CommandSchemaVersion:           commandSchemaVersion,
+		Status:                         status,
+		AllowedNextAction:              allowedNextAction,
+		FirstFailingCheck:              firstFailingCheck,
+		KillSwitchState:                killSwitchState,
+		Artifacts:                      artifacts,
+		BlockingNextActions:            uniqueStrings(blockingActions),
+		MaintenanceSuggestions:         uniqueStrings(maintenance),
+		CurrentMutationClass:           currentMutationClass,
+		NextMutationClass:              nextMutationClass,
+		HighestProvenLiveClass:         highestProvenLiveClass,
+		CurrentClassLiveEvidenceStatus: currentClassLiveEvidenceStatus,
+		LowRiskCodeLiveEvidenceStatus:  lowRiskCodeLiveEvidenceStatus,
+		NextDeniedClass:                nextDeniedClass,
+		NextDeniedReason:               nextDeniedReason,
+		SafeToRequest:                  status == "ready",
+		SafeToExecute:                  false,
+		RequiredEvidence:               requiredEvidence,
+		LowRiskCodeDenialAudit:         lowRiskDenialAudit,
+		SentinelHold:                   sentinelHold,
+		DeniedHigherClasses:            deniedHigherClasses,
+		RepoStates:                     repoStates,
+		OperatorMode:                   operatorMode,
+		MutatesRepositories:            false,
+		SchedulesWork:                  false,
+		ExecutesWork:                   false,
+		ApprovesWork:                   false,
+		CallsProviders:                 false,
+		ReleaseOrPublishAllowed:        false,
 	}, nil
 }
 
@@ -2064,6 +2096,40 @@ func newLowRiskCodeDenialAudit(safeToRequest bool) *lowRiskCodeDenialAudit {
 		CIRequirements:  []string{"ci_passed:low_risk_code_live"},
 		ExactNextAction: "build_low_risk_code_promotion_prerequisites",
 		DenialReason:    "low_risk_code live execution remains denied until policy promotion, rollback proof, Sentinel clear verdict, Promoter promotion, Command readback, and PR CI evidence all exist for the exact class scope.",
+	}
+}
+
+func liveMutationHighestProvenLiveClass(currentClass string, artifacts []map[string]any) (string, string) {
+	if currentClass == "" {
+		return "", ""
+	}
+	for _, artifact := range artifacts {
+		rehearsal, _ := artifact["completed_live_rehearsal"].(map[string]any)
+		if liveMutationMapString(rehearsal, "status") == "completed" &&
+			liveMutationMapString(rehearsal, "mutation_class") == currentClass {
+			return currentClass, "completed"
+		}
+	}
+	if currentClass == "low_risk_code" {
+		return previousLiveMutationClass(currentClass), "missing"
+	}
+	return currentClass, "completed"
+}
+
+func previousLiveMutationClass(class string) string {
+	switch class {
+	case "docs_only_multi_file":
+		return "docs_only_single_file"
+	case "test_only":
+		return "docs_only_multi_file"
+	case "low_risk_code":
+		return "test_only"
+	case "multi_repo_low_risk":
+		return "low_risk_code"
+	case "complex_repo_mutation":
+		return "multi_repo_low_risk"
+	default:
+		return ""
 	}
 }
 
