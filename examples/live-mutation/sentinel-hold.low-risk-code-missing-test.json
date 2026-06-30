@@ -1,0 +1,50 @@
+{
+  "schema_version": "ao.sentinel.live-mutation-hold.v0.1",
+  "status": "hold",
+  "mutation_class": "low_risk_code",
+  "class_hold_verdict": {
+    "status": "hold",
+    "mutation_class": "low_risk_code",
+    "max_files": 2,
+    "max_lines_changed": 160,
+    "max_source_files": 1,
+    "max_test_files": 1,
+    "files_changed": 1,
+    "source_files_changed": 1,
+    "test_files_changed": 0,
+    "lines_changed": 10,
+    "forbidden_path_classes": [],
+    "test_coverage_status": "passed",
+    "rollback_status": "ready",
+    "diff_size_status": "passed",
+    "file_class_status": "forbidden",
+    "evidence_freshness_status": "fresh",
+    "ci_status": "passed",
+    "blockers": [
+      {
+        "blocker_id": "test_change_required",
+        "severity": "high",
+        "reason": "low_risk_code source changes require a bounded test-file change",
+        "source": "changed_files",
+        "recommended_action": "add one matching test change or record a higher-class exception through policy"
+      }
+    ]
+  },
+  "hold_required": true,
+  "promoter_hold_required": true,
+  "rollback_recommended": false,
+  "first_failing_check": "test_change_required",
+  "blockers": [],
+  "recommended_actions": [
+    "add one matching test change or record a higher-class exception through policy"
+  ],
+  "source_artifacts": [],
+  "operator_mode": "read_only",
+  "mutates_live_state": false,
+  "mutates_repositories": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "provider_calls_allowed": false,
+  "release_or_publish_allowed": false
+}
