@@ -1,0 +1,36 @@
+{
+  "schema_version": "ao.foundry.live-mutation-rollback-rehearsal.v0.1",
+  "status": "ready",
+  "mode": "dry_run_only",
+  "candidate_path": "examples/live-mutation-rollback/multi-repo-low-risk-rollback.candidate.json",
+  "candidate_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "mutation_class": "multi_repo_low_risk",
+  "current_mutation_class": "low_risk_code",
+  "next_mutation_class": "multi_repo_low_risk",
+  "first_failing_check": "",
+  "per_repo_rollback": [
+    {
+      "repo": "ao-atlas",
+      "status": "ready"
+    },
+    {
+      "repo": "ao-foundry",
+      "status": "ready"
+    },
+    {
+      "repo": "ao-command",
+      "status": "ready"
+    }
+  ],
+  "authority_boundaries": {
+    "dry_run_only": true,
+    "live_mutation_allowed": false,
+    "mutates_repositories": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false,
+    "sibling_repo_mutation_allowed": false
+  }
+}

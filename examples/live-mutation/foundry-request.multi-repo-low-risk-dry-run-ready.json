@@ -1,0 +1,55 @@
+{
+  "schema_version": "ao.foundry.live-mutation-request.v0.1",
+  "status": "ready",
+  "mode": "dry_run_only",
+  "target_repo": {
+    "id": "multi-repo",
+    "remote": "multi-repo-dry-run-only",
+    "target_branch": "main"
+  },
+  "change_class": "multi_repo_low_risk",
+  "mutation_class": "multi_repo_low_risk",
+  "current_mutation_class": "low_risk_code",
+  "next_mutation_class": "multi_repo_low_risk",
+  "first_failing_check": "",
+  "repo_states": [
+    {
+      "repo": "ao-atlas",
+      "status": "ready",
+      "execution_status": "sequenced_dry_run_only",
+      "rollback_status": "ready",
+      "depends_on": []
+    },
+    {
+      "repo": "ao-foundry",
+      "status": "ready",
+      "execution_status": "sequenced_dry_run_only",
+      "rollback_status": "ready",
+      "depends_on": ["ao-atlas"]
+    },
+    {
+      "repo": "ao-command",
+      "status": "ready",
+      "execution_status": "sequenced_dry_run_only",
+      "rollback_status": "ready",
+      "depends_on": ["ao-foundry"]
+    }
+  ],
+  "concurrency_policy": {
+    "policy": "prevent_concurrent_unsafe_execution",
+    "max_active_repos": 1,
+    "concurrent_execution_allowed": false,
+    "required_serialized_dependency_order": true
+  },
+  "authority_boundaries": {
+    "dry_run_only": true,
+    "live_mutation_allowed": false,
+    "mutates_repositories": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false,
+    "sibling_repo_mutation_allowed": false
+  }
+}

@@ -111,8 +111,9 @@ When the evidence carries class fields, the readback also reports
 `safe_to_execute=false`, required evidence, and denied higher classes. The
 checked-in `test_only` fixture can be requested only as a live rehearsal
 readback. The checked low-risk-code dry-run fixture can be requested only as a
-dry-run design with `safe_to_execute=false`; multi-repo, complex, and fully
-unsupervised mutation remain denied.
+dry-run design with `safe_to_execute=false`. The checked multi-repo low-risk
+fixture reports repo-by-repo dependency order and rollback readiness, still with
+`safe_to_execute=false`; complex and fully unsupervised mutation remain denied.
 
 `live-mutation approval` reads the first docs-only live mutation approval
 request and Covenant ticket. It reports `safe_to_request`, `safe_to_execute`,

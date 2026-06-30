@@ -603,6 +603,9 @@ func (a App) liveMutationStatus(args []string) int {
 	for _, evidence := range summary.RequiredEvidence {
 		fmt.Fprintf(a.Stdout, "required_evidence=%s\n", evidence)
 	}
+	for _, state := range summary.RepoStates {
+		fmt.Fprintf(a.Stdout, "repo_state=%s status=%s execution_status=%s rollback=%s depends_on=%s\n", state.Repo, state.Status, state.ExecutionStatus, state.RollbackStatus, strings.Join(state.DependsOn, ","))
+	}
 	for _, class := range sortedStringKeys(summary.DeniedHigherClasses) {
 		fmt.Fprintf(a.Stdout, "denied_higher_class=%s reason=%s\n", class, summary.DeniedHigherClasses[class])
 	}
@@ -1282,6 +1285,7 @@ type liveMutationStatusSummary struct {
 	SafeToExecute           bool                          `json:"safe_to_execute"`
 	RequiredEvidence        []string                      `json:"required_evidence,omitempty"`
 	DeniedHigherClasses     map[string]string             `json:"denied_higher_classes,omitempty"`
+	RepoStates              []liveMutationRepoState       `json:"repo_states,omitempty"`
 	OperatorMode            string                        `json:"operator_mode"`
 	MutatesRepositories     bool                          `json:"mutates_repositories"`
 	SchedulesWork           bool                          `json:"schedules_work"`
@@ -1289,6 +1293,14 @@ type liveMutationStatusSummary struct {
 	ApprovesWork            bool                          `json:"approves_work"`
 	CallsProviders          bool                          `json:"calls_providers"`
 	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
+}
+
+type liveMutationRepoState struct {
+	Repo            string   `json:"repo"`
+	Status          string   `json:"status"`
+	ExecutionStatus string   `json:"execution_status"`
+	RollbackStatus  string   `json:"rollback_status"`
+	DependsOn       []string `json:"depends_on"`
 }
 
 type liveMutationApprovalSummary struct {
@@ -1786,6 +1798,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	currentMutationClass := ""
 	nextMutationClass := ""
 	artifacts := []liveMutationArtifactSummary{}
+	repoStates := []liveMutationRepoState{}
 	blockingActions := []string{}
 	maintenance := []string{
 		"Keep this readback observer-only; it does not grant live mutation authority.",
@@ -1824,6 +1837,18 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 				blockingActions = append(blockingActions, "Repair inconsistent next mutation class evidence before proceeding.")
 			} else {
 				nextMutationClass = artifactNextClass
+			}
+		}
+		if spec.name == "foundry_request" {
+			repoStates = liveMutationRepoStates(raw)
+			if blocker := validateLiveMutationRepoStates(raw, repoStates); blocker != "" {
+				if status == "ready" {
+					status = "blocked"
+				}
+				if firstFailingCheck == "" {
+					firstFailingCheck = "foundry_request"
+				}
+				blockingActions = append(blockingActions, blocker)
 			}
 		}
 		switch artifact.Status {
@@ -1877,6 +1902,8 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		allowedNextAction = "request_test_only_live_rehearsal"
 	} else if nextMutationClass == "low_risk_code" {
 		allowedNextAction = "request_low_risk_code_dry_run"
+	} else if nextMutationClass == "multi_repo_low_risk" {
+		allowedNextAction = "request_multi_repo_low_risk_dry_run"
 	}
 	if status != "ready" && len(blockingActions) == 0 {
 		blockingActions = append(blockingActions, "Repair the first failing live-mutation evidence check before proceeding.")
@@ -1900,6 +1927,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		SafeToExecute:           false,
 		RequiredEvidence:        requiredEvidence,
 		DeniedHigherClasses:     deniedHigherClasses,
+		RepoStates:              repoStates,
 		OperatorMode:            operatorMode,
 		MutatesRepositories:     false,
 		SchedulesWork:           false,
@@ -1933,6 +1961,20 @@ func liveMutationRequiredEvidence(nextClass string) []string {
 			"rollback_proof:low_risk_code",
 			"ci_passed:low_risk_code",
 		}
+	case "multi_repo_low_risk":
+		return []string{
+			"low_risk_code_live_success",
+			"covenant_class_ticket:multi_repo_low_risk",
+			"foundry_class_gate:multi_repo_low_risk",
+			"multi_repo_sequencing_plan",
+			"per_repo_rollback:ao-atlas",
+			"per_repo_rollback:ao-foundry",
+			"per_repo_rollback:ao-command",
+			"prevent_concurrent_unsafe_execution",
+			"sentinel_no_hold:multi_repo_low_risk",
+			"promoter_ready:multi_repo_low_risk",
+			"ci_passed:multi_repo_low_risk",
+		}
 	default:
 		return nil
 	}
@@ -1952,6 +1994,12 @@ func liveMutationDeniedHigherClasses(nextClass string) map[string]string {
 		reason := "denied until low_risk_code dry-run is promoted, live rehearsal evidence exists, rollback proof and CI pass, and no holds remain"
 		return map[string]string{
 			"multi_repo_low_risk":    reason,
+			"complex_repo_mutation":  reason,
+			"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
+		}
+	case "multi_repo_low_risk":
+		reason := "denied until multi_repo_low_risk live rehearsal evidence exists, per-repo rollback proof and CI pass, and no holds remain"
+		return map[string]string{
 			"complex_repo_mutation":  reason,
 			"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
 		}
@@ -2252,6 +2300,83 @@ func liveMutationStringSlice(raw map[string]any, key string) []string {
 		}
 	}
 	return result
+}
+
+func liveMutationRepoStates(raw map[string]any) []liveMutationRepoState {
+	values, ok := raw["repo_states"].([]any)
+	if !ok {
+		return nil
+	}
+	states := []liveMutationRepoState{}
+	for _, value := range values {
+		object, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		states = append(states, liveMutationRepoState{
+			Repo:            liveMutationMapString(object, "repo"),
+			Status:          liveMutationMapString(object, "status"),
+			ExecutionStatus: liveMutationMapString(object, "execution_status"),
+			RollbackStatus:  liveMutationMapString(object, "rollback_status"),
+			DependsOn:       liveMutationStringSlice(object, "depends_on"),
+		})
+	}
+	return states
+}
+
+func validateLiveMutationRepoStates(raw map[string]any, states []liveMutationRepoState) string {
+	if len(states) == 0 {
+		return ""
+	}
+	policy, _ := raw["concurrency_policy"].(map[string]any)
+	if liveMutationMapBool(policy, "concurrent_execution_allowed") || liveMutationMapInt(policy, "max_active_repos") != 1 {
+		return "Repair multi_repo_low_risk dry-run evidence: unsafe concurrent execution is not allowed."
+	}
+	seen := map[string]bool{}
+	readyToExecute := 0
+	for _, state := range states {
+		switch {
+		case state.Repo == "":
+			return "Repair multi_repo_low_risk dry-run evidence: repo_state missing repo."
+		case seen[state.Repo]:
+			return "Repair multi_repo_low_risk dry-run evidence: duplicate repo_state."
+		case state.Status != "ready":
+			return "Repair multi_repo_low_risk dry-run evidence: repo_state is not ready."
+		case state.ExecutionStatus == "executing" || state.ExecutionStatus == "active":
+			return "Repair multi_repo_low_risk dry-run evidence: unsafe concurrent execution is not allowed."
+		case state.ExecutionStatus == "ready_to_execute":
+			readyToExecute++
+		case state.ExecutionStatus != "sequenced_dry_run_only":
+			return "Repair multi_repo_low_risk dry-run evidence: repo_state is not sequenced dry-run only."
+		case state.RollbackStatus != "ready":
+			return "Repair multi_repo_low_risk dry-run evidence: per-repo rollback is not ready."
+		}
+		seen[state.Repo] = true
+	}
+	if len(states) < 2 {
+		return "Repair multi_repo_low_risk dry-run evidence: at least two repos are required."
+	}
+	if readyToExecute > 1 {
+		return "Repair multi_repo_low_risk dry-run evidence: unsafe concurrent execution is not allowed."
+	}
+	return ""
+}
+
+func liveMutationMapInt(raw map[string]any, key string) int {
+	switch value := raw[key].(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	case json.Number:
+		parsed, err := value.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(parsed)
+	default:
+		return 0
+	}
 }
 
 func deriveComplexRefactorNextAction(summary foundryComplexRefactorSummary) string {
