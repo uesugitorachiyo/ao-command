@@ -848,10 +848,76 @@ func TestLiveMutationStatusReportsLowRiskCodeDryRunReadback(t *testing.T) {
 		"required_evidence=test_only_success",
 		"required_evidence=rollback_proof:low_risk_code",
 		"required_evidence=ci_passed:low_risk_code",
+		"denial_audit_next_denied_class=low_risk_code",
+		"denial_audit_missing_policy_evidence=policy:low_risk_code_live_promotion",
+		"denial_audit_missing_rollback_evidence=rollback_proof:low_risk_code_live",
+		"denial_audit_missing_sentinel_promoter_evidence=sentinel_clear:low_risk_code_live",
+		"denial_audit_missing_sentinel_promoter_evidence=promoter_promotion:low_risk_code_live",
+		"denial_audit_ci_requirement=ci_passed:low_risk_code_live",
+		"denial_audit_exact_next_action=build_low_risk_code_promotion_prerequisites",
 		"denied_higher_class=complex_repo_mutation",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("low-risk dry-run status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestLiveMutationStatusJSONReportsLowRiskCodeDenialAudit(t *testing.T) {
+	paths := lowRiskCodeDryRunFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("low-risk live-mutation json status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		NextMutationClass string `json:"next_mutation_class"`
+		SafeToExecute     bool   `json:"safe_to_execute"`
+		DenialAudit       struct {
+			NextDeniedClass                 string   `json:"next_denied_class"`
+			SafeToExecute                   bool     `json:"safe_to_execute"`
+			MissingPolicyEvidence           []string `json:"missing_policy_evidence"`
+			MissingRollbackEvidence         []string `json:"missing_rollback_evidence"`
+			MissingSentinelPromoterEvidence []string `json:"missing_sentinel_promoter_evidence"`
+			SentinelState                   string   `json:"sentinel_state"`
+			PromoterState                   string   `json:"promoter_state"`
+			CIRequirements                  []string `json:"ci_requirements"`
+			ExactNextAction                 string   `json:"exact_next_action"`
+		} `json:"low_risk_code_denial_audit"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid low-risk live-mutation status JSON: %v\n%s", err, stdout)
+	}
+	if got.NextMutationClass != "low_risk_code" ||
+		got.SafeToExecute ||
+		got.DenialAudit.NextDeniedClass != "low_risk_code" ||
+		got.DenialAudit.SafeToExecute ||
+		got.DenialAudit.SentinelState != "missing_live_no_hold" ||
+		got.DenialAudit.PromoterState != "missing_live_promotion" ||
+		got.DenialAudit.ExactNextAction != "build_low_risk_code_promotion_prerequisites" {
+		t.Fatalf("unexpected low-risk denial audit JSON: %+v", got)
+	}
+	for _, want := range []string{
+		"policy:low_risk_code_live_promotion",
+		"rollback_proof:low_risk_code_live",
+		"sentinel_clear:low_risk_code_live",
+		"promoter_promotion:low_risk_code_live",
+		"ci_passed:low_risk_code_live",
+	} {
+		if !contains(got.DenialAudit.MissingPolicyEvidence, want) &&
+			!contains(got.DenialAudit.MissingRollbackEvidence, want) &&
+			!contains(got.DenialAudit.MissingSentinelPromoterEvidence, want) &&
+			!contains(got.DenialAudit.CIRequirements, want) {
+			t.Fatalf("low-risk denial audit JSON missing %s: %+v", want, got.DenialAudit)
 		}
 	}
 }

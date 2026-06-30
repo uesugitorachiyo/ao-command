@@ -111,8 +111,11 @@ When the evidence carries class fields, the readback also reports
 `safe_to_execute=false`, required evidence, and denied higher classes. The
 checked-in `test_only` fixture can be requested only as a live rehearsal
 readback. The checked low-risk-code dry-run fixture can be requested only as a
-dry-run design with `safe_to_execute=false`. The checked multi-repo low-risk
-fixture reports repo-by-repo dependency order and rollback readiness, still with
+dry-run design with `safe_to_execute=false`; Command also emits a
+`low_risk_code_denial_audit` explaining the missing live policy promotion,
+rollback proof, Sentinel clear verdict, Promoter promotion, Command readback,
+PR CI evidence, and exact next action. The checked multi-repo low-risk fixture
+reports repo-by-repo dependency order and rollback readiness, still with
 `safe_to_execute=false`; complex and fully unsupervised mutation remain denied.
 
 `live-mutation approval` reads the first docs-only live mutation approval

@@ -603,6 +603,25 @@ func (a App) liveMutationStatus(args []string) int {
 	for _, evidence := range summary.RequiredEvidence {
 		fmt.Fprintf(a.Stdout, "required_evidence=%s\n", evidence)
 	}
+	if summary.LowRiskCodeDenialAudit != nil {
+		audit := summary.LowRiskCodeDenialAudit
+		fmt.Fprintf(a.Stdout, "denial_audit_next_denied_class=%s\n", audit.NextDeniedClass)
+		fmt.Fprintf(a.Stdout, "denial_audit_sentinel_state=%s\n", audit.SentinelState)
+		fmt.Fprintf(a.Stdout, "denial_audit_promoter_state=%s\n", audit.PromoterState)
+		fmt.Fprintf(a.Stdout, "denial_audit_exact_next_action=%s\n", audit.ExactNextAction)
+		for _, evidence := range audit.MissingPolicyEvidence {
+			fmt.Fprintf(a.Stdout, "denial_audit_missing_policy_evidence=%s\n", evidence)
+		}
+		for _, evidence := range audit.MissingRollbackEvidence {
+			fmt.Fprintf(a.Stdout, "denial_audit_missing_rollback_evidence=%s\n", evidence)
+		}
+		for _, evidence := range audit.MissingSentinelPromoterEvidence {
+			fmt.Fprintf(a.Stdout, "denial_audit_missing_sentinel_promoter_evidence=%s\n", evidence)
+		}
+		for _, requirement := range audit.CIRequirements {
+			fmt.Fprintf(a.Stdout, "denial_audit_ci_requirement=%s\n", requirement)
+		}
+	}
 	for _, state := range summary.RepoStates {
 		fmt.Fprintf(a.Stdout, "repo_state=%s status=%s execution_status=%s rollback=%s depends_on=%s\n", state.Repo, state.Status, state.ExecutionStatus, state.RollbackStatus, strings.Join(state.DependsOn, ","))
 	}
@@ -1284,6 +1303,7 @@ type liveMutationStatusSummary struct {
 	SafeToRequest           bool                          `json:"safe_to_request"`
 	SafeToExecute           bool                          `json:"safe_to_execute"`
 	RequiredEvidence        []string                      `json:"required_evidence,omitempty"`
+	LowRiskCodeDenialAudit  *lowRiskCodeDenialAudit       `json:"low_risk_code_denial_audit,omitempty"`
 	DeniedHigherClasses     map[string]string             `json:"denied_higher_classes,omitempty"`
 	RepoStates              []liveMutationRepoState       `json:"repo_states,omitempty"`
 	OperatorMode            string                        `json:"operator_mode"`
@@ -1293,6 +1313,24 @@ type liveMutationStatusSummary struct {
 	ApprovesWork            bool                          `json:"approves_work"`
 	CallsProviders          bool                          `json:"calls_providers"`
 	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
+}
+
+type lowRiskCodeDenialAudit struct {
+	SchemaVersion                   string   `json:"schema_version"`
+	Status                          string   `json:"status"`
+	MutationClass                   string   `json:"mutation_class"`
+	CurrentProvenLiveClass          string   `json:"current_proven_live_class"`
+	NextDeniedClass                 string   `json:"next_denied_class"`
+	SafeToRequest                   bool     `json:"safe_to_request"`
+	SafeToExecute                   bool     `json:"safe_to_execute"`
+	MissingPolicyEvidence           []string `json:"missing_policy_evidence"`
+	MissingRollbackEvidence         []string `json:"missing_rollback_evidence"`
+	MissingSentinelPromoterEvidence []string `json:"missing_sentinel_promoter_evidence"`
+	SentinelState                   string   `json:"sentinel_state"`
+	PromoterState                   string   `json:"promoter_state"`
+	CIRequirements                  []string `json:"ci_requirements"`
+	ExactNextAction                 string   `json:"exact_next_action"`
+	DenialReason                    string   `json:"denial_reason"`
 }
 
 type liveMutationRepoState struct {
@@ -1910,6 +1948,10 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	}
 	requiredEvidence := liveMutationRequiredEvidence(nextMutationClass)
 	deniedHigherClasses := liveMutationDeniedHigherClasses(nextMutationClass)
+	var lowRiskDenialAudit *lowRiskCodeDenialAudit
+	if nextMutationClass == "low_risk_code" {
+		lowRiskDenialAudit = newLowRiskCodeDenialAudit(status == "ready")
+	}
 
 	return liveMutationStatusSummary{
 		SchemaVersion:           "ao.command.live-mutation-status.v0.1",
@@ -1926,6 +1968,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		SafeToRequest:           status == "ready",
 		SafeToExecute:           false,
 		RequiredEvidence:        requiredEvidence,
+		LowRiskCodeDenialAudit:  lowRiskDenialAudit,
 		DeniedHigherClasses:     deniedHigherClasses,
 		RepoStates:              repoStates,
 		OperatorMode:            operatorMode,
@@ -1936,6 +1979,34 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		CallsProviders:          false,
 		ReleaseOrPublishAllowed: false,
 	}, nil
+}
+
+func newLowRiskCodeDenialAudit(safeToRequest bool) *lowRiskCodeDenialAudit {
+	return &lowRiskCodeDenialAudit{
+		SchemaVersion:          "ao.command.low-risk-code-denial-audit.v0.1",
+		Status:                 "blocked",
+		MutationClass:          "low_risk_code",
+		CurrentProvenLiveClass: "test_only",
+		NextDeniedClass:        "low_risk_code",
+		SafeToRequest:          safeToRequest,
+		SafeToExecute:          false,
+		MissingPolicyEvidence: []string{
+			"policy:low_risk_code_live_promotion",
+			"command_readback:low_risk_code_live",
+		},
+		MissingRollbackEvidence: []string{
+			"rollback_proof:low_risk_code_live",
+		},
+		MissingSentinelPromoterEvidence: []string{
+			"sentinel_clear:low_risk_code_live",
+			"promoter_promotion:low_risk_code_live",
+		},
+		SentinelState:   "missing_live_no_hold",
+		PromoterState:   "missing_live_promotion",
+		CIRequirements:  []string{"ci_passed:low_risk_code_live"},
+		ExactNextAction: "build_low_risk_code_promotion_prerequisites",
+		DenialReason:    "low_risk_code live execution remains denied until policy promotion, rollback proof, Sentinel clear verdict, Promoter promotion, Command readback, and PR CI evidence all exist for the exact class scope.",
+	}
 }
 
 func liveMutationRequiredEvidence(nextClass string) []string {
