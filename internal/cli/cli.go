@@ -552,7 +552,7 @@ func (a App) liveMutationPRRehearsal(args []string) int {
 }
 
 func (a App) liveMutationStatus(args []string) int {
-	var authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath string
+	var authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath, sentinelHoldPath string
 	var jsonOut bool
 	fs := flag.NewFlagSet("live-mutation status", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -563,6 +563,7 @@ func (a App) liveMutationStatus(args []string) int {
 	fs.StringVar(&isolationPath, "isolation", "", "path to AO Foundry worktree isolation proof JSON")
 	fs.StringVar(&rollbackPath, "rollback", "", "path to AO Foundry rollback rehearsal JSON")
 	fs.StringVar(&killSwitchPath, "kill-switch", "", "path to operator kill-switch state JSON")
+	fs.StringVar(&sentinelHoldPath, "sentinel-hold", "", "optional path to AO Sentinel live-mutation hold JSON")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -571,7 +572,7 @@ func (a App) liveMutationStatus(args []string) int {
 		fmt.Fprintln(a.Stderr, "ao-command live-mutation status: --authority, --request, --forge-plan, --ao2-packet, --isolation, --rollback, and --kill-switch are required")
 		return 2
 	}
-	summary, err := readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath)
+	summary, err := readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath, sentinelHoldPath)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command live-mutation status: %v\n", err)
 		return 1
@@ -621,6 +622,18 @@ func (a App) liveMutationStatus(args []string) int {
 		for _, requirement := range audit.CIRequirements {
 			fmt.Fprintf(a.Stdout, "denial_audit_ci_requirement=%s\n", requirement)
 		}
+	}
+	if summary.SentinelHold != nil {
+		hold := summary.SentinelHold
+		fmt.Fprintf(a.Stdout, "sentinel_hold_status=%s\n", hold.Status)
+		fmt.Fprintf(a.Stdout, "sentinel_hold_required=%t\n", hold.HoldRequired)
+		fmt.Fprintf(a.Stdout, "sentinel_class_verdict=%s\n", hold.ClassVerdictStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_test_coverage=%s\n", hold.TestCoverageStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_rollback=%s\n", hold.RollbackStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_diff_size=%s\n", hold.DiffSizeStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_file_class=%s\n", hold.FileClassStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_evidence_freshness=%s\n", hold.EvidenceFreshnessStatus)
+		fmt.Fprintf(a.Stdout, "sentinel_class_ci=%s\n", hold.CIStatus)
 	}
 	for _, state := range summary.RepoStates {
 		fmt.Fprintf(a.Stdout, "repo_state=%s status=%s execution_status=%s rollback=%s depends_on=%s\n", state.Repo, state.Status, state.ExecutionStatus, state.RollbackStatus, strings.Join(state.DependsOn, ","))
@@ -1304,6 +1317,7 @@ type liveMutationStatusSummary struct {
 	SafeToExecute           bool                          `json:"safe_to_execute"`
 	RequiredEvidence        []string                      `json:"required_evidence,omitempty"`
 	LowRiskCodeDenialAudit  *lowRiskCodeDenialAudit       `json:"low_risk_code_denial_audit,omitempty"`
+	SentinelHold            *liveMutationSentinelHold     `json:"sentinel_hold,omitempty"`
 	DeniedHigherClasses     map[string]string             `json:"denied_higher_classes,omitempty"`
 	RepoStates              []liveMutationRepoState       `json:"repo_states,omitempty"`
 	OperatorMode            string                        `json:"operator_mode"`
@@ -1313,6 +1327,22 @@ type liveMutationStatusSummary struct {
 	ApprovesWork            bool                          `json:"approves_work"`
 	CallsProviders          bool                          `json:"calls_providers"`
 	ReleaseOrPublishAllowed bool                          `json:"release_or_publish_allowed"`
+}
+
+type liveMutationSentinelHold struct {
+	Path                    string `json:"path"`
+	SchemaVersion           string `json:"schema_version"`
+	Status                  string `json:"status"`
+	MutationClass           string `json:"mutation_class"`
+	HoldRequired            bool   `json:"hold_required"`
+	FirstFailingCheck       string `json:"first_failing_check"`
+	ClassVerdictStatus      string `json:"class_verdict_status"`
+	TestCoverageStatus      string `json:"test_coverage_status"`
+	RollbackStatus          string `json:"rollback_status"`
+	DiffSizeStatus          string `json:"diff_size_status"`
+	FileClassStatus         string `json:"file_class_status"`
+	EvidenceFreshnessStatus string `json:"evidence_freshness_status"`
+	CIStatus                string `json:"ci_status"`
 }
 
 type lowRiskCodeDenialAudit struct {
@@ -1814,7 +1844,7 @@ func readComplexRefactorStatus(summaryPath string) (complexRefactorStatusSummary
 	}, nil
 }
 
-func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath string) (liveMutationStatusSummary, error) {
+func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2PacketPath, isolationPath, rollbackPath, killSwitchPath, sentinelHoldPath string) (liveMutationStatusSummary, error) {
 	specs := []struct {
 		name        string
 		path        string
@@ -1837,6 +1867,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	nextMutationClass := ""
 	artifacts := []liveMutationArtifactSummary{}
 	repoStates := []liveMutationRepoState{}
+	var sentinelHold *liveMutationSentinelHold
 	blockingActions := []string{}
 	maintenance := []string{
 		"Keep this readback observer-only; it does not grant live mutation authority.",
@@ -1931,6 +1962,32 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		}
 		blockingActions = append(blockingActions, "Arm the operator kill switch before requesting live mutation authority.")
 	}
+	if sentinelHoldPath != "" {
+		hold, artifact, err := readLiveMutationSentinelHold(sentinelHoldPath)
+		if err != nil {
+			return liveMutationStatusSummary{}, err
+		}
+		sentinelHold = hold
+		artifacts = append(artifacts, artifact)
+		if hold.MutationClass != "" && nextMutationClass != "" && hold.MutationClass != nextMutationClass {
+			if status == "ready" {
+				status = "blocked"
+			}
+			if firstFailingCheck == "" {
+				firstFailingCheck = "sentinel_hold"
+			}
+			blockingActions = append(blockingActions, "Repair Sentinel hold mutation_class mismatch before proceeding.")
+		}
+		if hold.Status != "clear" || hold.HoldRequired {
+			if status == "ready" {
+				status = "blocked"
+			}
+			if firstFailingCheck == "" {
+				firstFailingCheck = firstNonEmpty(hold.FirstFailingCheck, "sentinel_hold")
+			}
+			blockingActions = append(blockingActions, "Resolve AO Sentinel live-mutation hold before requesting the next class.")
+		}
+	}
 	allowedNextAction := "request_first_tiny_live_mutation_class"
 	if status == "blocked" {
 		allowedNextAction = "repair_live_mutation_evidence"
@@ -1969,6 +2026,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		SafeToExecute:           false,
 		RequiredEvidence:        requiredEvidence,
 		LowRiskCodeDenialAudit:  lowRiskDenialAudit,
+		SentinelHold:            sentinelHold,
 		DeniedHigherClasses:     deniedHigherClasses,
 		RepoStates:              repoStates,
 		OperatorMode:            operatorMode,
@@ -2007,6 +2065,40 @@ func newLowRiskCodeDenialAudit(safeToRequest bool) *lowRiskCodeDenialAudit {
 		ExactNextAction: "build_low_risk_code_promotion_prerequisites",
 		DenialReason:    "low_risk_code live execution remains denied until policy promotion, rollback proof, Sentinel clear verdict, Promoter promotion, Command readback, and PR CI evidence all exist for the exact class scope.",
 	}
+}
+
+func readLiveMutationSentinelHold(path string) (*liveMutationSentinelHold, liveMutationArtifactSummary, error) {
+	artifact, raw, err := readLiveMutationArtifact("sentinel_hold", path, "ao.sentinel.live-mutation-hold.v0.1")
+	if err != nil {
+		return nil, liveMutationArtifactSummary{}, err
+	}
+	if err := validateLiveMutationArtifactBoundaries("sentinel_hold", raw); err != nil {
+		return nil, liveMutationArtifactSummary{}, err
+	}
+	status := liveMutationMapString(raw, "status")
+	if status != "clear" && status != "hold" {
+		return nil, liveMutationArtifactSummary{}, fmt.Errorf("sentinel_hold status must be clear or hold, got %q", status)
+	}
+	classVerdict, _ := raw["class_hold_verdict"].(map[string]any)
+	hold := &liveMutationSentinelHold{
+		Path:                    path,
+		SchemaVersion:           artifact.SchemaVersion,
+		Status:                  status,
+		MutationClass:           liveMutationMapString(raw, "mutation_class"),
+		HoldRequired:            liveMutationMapBool(raw, "hold_required"),
+		FirstFailingCheck:       liveMutationMapString(raw, "first_failing_check"),
+		ClassVerdictStatus:      liveMutationMapString(classVerdict, "status"),
+		TestCoverageStatus:      liveMutationMapString(classVerdict, "test_coverage_status"),
+		RollbackStatus:          liveMutationMapString(classVerdict, "rollback_status"),
+		DiffSizeStatus:          liveMutationMapString(classVerdict, "diff_size_status"),
+		FileClassStatus:         liveMutationMapString(classVerdict, "file_class_status"),
+		EvidenceFreshnessStatus: liveMutationMapString(classVerdict, "evidence_freshness_status"),
+		CIStatus:                liveMutationMapString(classVerdict, "ci_status"),
+	}
+	if hold.MutationClass == "" || hold.ClassVerdictStatus == "" {
+		return nil, liveMutationArtifactSummary{}, errors.New("sentinel_hold requires mutation_class and class_hold_verdict.status")
+	}
+	return hold, artifact, nil
 }
 
 func liveMutationRequiredEvidence(nextClass string) []string {
@@ -2289,6 +2381,7 @@ func validateLiveMutationArtifactBoundaries(name string, raw map[string]any) err
 		return err
 	}
 	for _, field := range []string{
+		"mutates_live_state",
 		"mutates_repositories",
 		"schedules_work",
 		"executes_work",

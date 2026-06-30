@@ -922,6 +922,69 @@ func TestLiveMutationStatusJSONReportsLowRiskCodeDenialAudit(t *testing.T) {
 	}
 }
 
+func TestLiveMutationStatusReadsSentinelLowRiskHold(t *testing.T) {
+	paths := lowRiskCodeDryRunFixturePaths()
+	clearHold := filepath.Join("..", "..", "examples", "live-mutation", "sentinel-hold.low-risk-code-clear.json")
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--sentinel-hold", clearHold,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("low-risk sentinel clear status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=ready",
+		"artifact=sentinel_hold status=clear schema=ao.sentinel.live-mutation-hold.v0.1",
+		"sentinel_hold_status=clear",
+		"sentinel_hold_required=false",
+		"sentinel_class_verdict=clear",
+		"sentinel_class_test_coverage=passed",
+		"sentinel_class_file_class=passed",
+		"safe_to_execute=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("low-risk sentinel clear stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	holdPath := filepath.Join("..", "..", "examples", "live-mutation", "sentinel-hold.low-risk-code-missing-test.json")
+	code, stdout, stderr = runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--sentinel-hold", holdPath,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("low-risk sentinel hold status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=blocked",
+		"allowed_next_action=repair_live_mutation_evidence",
+		"first_failing_check=test_change_required",
+		"sentinel_hold_status=hold",
+		"sentinel_hold_required=true",
+		"sentinel_class_verdict=hold",
+		"sentinel_class_file_class=forbidden",
+		"blocking_next_action=Resolve AO Sentinel live-mutation hold before requesting the next class.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("low-risk sentinel hold stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
 	paths := multiRepoLowRiskDryRunFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
