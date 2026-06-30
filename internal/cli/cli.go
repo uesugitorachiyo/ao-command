@@ -85,6 +85,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.atlas(args[1:])
 	case "pulse":
 		return a.pulse(args[1:])
+	case "blueprint-atlas-foundry":
+		return a.blueprintAtlasFoundry(args[1:])
 	case "complex-refactor":
 		return a.complexRefactor(args[1:])
 	case "live-mutation":
@@ -115,6 +117,7 @@ Usage:
   ao-command atlas status --status PATH [--json]
   ao-command atlas authority-ladder --mission-status PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
+  ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
   ao-command live-mutation status --authority PATH --request PATH --forge-plan PATH --ao2-packet PATH --isolation PATH --rollback PATH --kill-switch PATH [--json]
   ao-command live-mutation approval --request PATH --ticket PATH [--json]
@@ -381,6 +384,61 @@ func (a App) pulseStatus(args []string) int {
 	}
 	for _, suggestion := range summary.MaintenanceSuggestions {
 		fmt.Fprintf(a.Stdout, "maintenance_suggestion=%s\n", suggestion)
+	}
+	return 0
+}
+
+func (a App) blueprintAtlasFoundry(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, "ao-command blueprint-atlas-foundry: usage: ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]")
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.blueprintAtlasFoundryStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, "ao-command blueprint-atlas-foundry: usage: ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]")
+		return 2
+	}
+}
+
+func (a App) blueprintAtlasFoundryStatus(args []string) int {
+	var atlasImportPath, preflightPath, foundryGatePath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("blueprint-atlas-foundry status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&atlasImportPath, "atlas-blueprint-import", "", "path to AO Atlas Blueprint import JSON")
+	fs.StringVar(&preflightPath, "preflight", "", "path to AO Foundry pulse intake preflight JSON")
+	fs.StringVar(&foundryGatePath, "foundry-gate", "", "path to AO Foundry gate JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(atlasImportPath) == "" || strings.TrimSpace(preflightPath) == "" || strings.TrimSpace(foundryGatePath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command blueprint-atlas-foundry status: --atlas-blueprint-import, --preflight, and --foundry-gate are required")
+		return 2
+	}
+	summary, err := readBlueprintAtlasFoundryStatus(atlasImportPath, preflightPath, foundryGatePath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command blueprint-atlas-foundry status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_blueprint_atlas_foundry=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "blueprint_pack_status=%s\n", summary.BlueprintPackStatus)
+	fmt.Fprintf(a.Stdout, "atlas_import_status=%s\n", summary.AtlasImportStatus)
+	fmt.Fprintf(a.Stdout, "preflight_status=%s\n", summary.PreflightStatus)
+	fmt.Fprintf(a.Stdout, "foundry_gate_status=%s\n", summary.FoundryGateStatus)
+	fmt.Fprintf(a.Stdout, "ready_reason=%s\n", summary.ReadyReason)
+	fmt.Fprintf(a.Stdout, "blocked_reason=%s\n", summary.BlockedReason)
+	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	for _, action := range summary.BlockingNextActions {
+		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
 	}
 	return 0
 }
@@ -1078,6 +1136,37 @@ type foundryAtlasStatus struct {
 	NextActions    []string          `json:"next_actions"`
 }
 
+type atlasBlueprintImport struct {
+	ContractVersion         string            `json:"contract_version"`
+	ID                      string            `json:"id"`
+	ProjectID               string            `json:"project_id"`
+	Status                  string            `json:"status"`
+	Reason                  string            `json:"reason"`
+	BlueprintPack           atlasSourceRef    `json:"blueprint_pack"`
+	BuildAuthorization      atlasSourceRef    `json:"build_authorization"`
+	TargetInstance          string            `json:"target_instance"`
+	WorkgraphID             string            `json:"workgraph_id"`
+	MutationClass           string            `json:"mutation_class"`
+	DownstreamFoundryImport atlasSourceRef    `json:"downstream_foundry_import"`
+	Digests                 map[string]string `json:"digests"`
+	SafetyLimits            []string          `json:"safety_limits"`
+	BlockingNextActions     []string          `json:"blocking_next_actions"`
+	ReadyForFoundry         bool              `json:"ready_for_foundry"`
+	SafeToExecute           bool              `json:"safe_to_execute"`
+	LiveExecutionProven     bool              `json:"live_execution_proven"`
+	SchedulesWork           bool              `json:"schedules_work"`
+	ExecutesWork            bool              `json:"executes_work"`
+	ApprovesWork            bool              `json:"approves_work"`
+	MutatesRepositories     bool              `json:"mutates_repositories"`
+	CallsProviders          bool              `json:"calls_providers"`
+	ReleaseOrPublishAllowed bool              `json:"release_or_publish_allowed"`
+}
+
+type atlasSourceRef struct {
+	Ref    string `json:"ref"`
+	Digest string `json:"digest"`
+}
+
 type atlasMissionStatus struct {
 	ContractVersion  string                      `json:"contract_version"`
 	IntakeID         string                      `json:"intake_id"`
@@ -1150,6 +1239,7 @@ type foundryPulseIntakePreflight struct {
 	SchemaVersion          string        `json:"schema_version"`
 	Status                 string        `json:"status"`
 	BlueprintStatus        string        `json:"blueprint_status"`
+	AtlasBlueprintStatus   string        `json:"atlas_blueprint_status,omitempty"`
 	AtlasStatus            string        `json:"atlas_status"`
 	FirstFailingCheck      string        `json:"first_failing_check"`
 	Checks                 []pulseCheck  `json:"checks"`
@@ -1217,6 +1307,36 @@ type pulseGateStatusSummary struct {
 	SourceHashes           []pulseSource `json:"source_hashes"`
 	OperatorMode           string        `json:"operator_mode"`
 	MutatesRepositories    bool          `json:"mutates_repositories"`
+}
+
+type blueprintAtlasFoundryStatusSummary struct {
+	SchemaVersion         string   `json:"schema_version"`
+	CommandSchemaVersion  string   `json:"command_schema_version"`
+	Status                string   `json:"status"`
+	AtlasBlueprintImport  string   `json:"atlas_blueprint_import"`
+	Preflight             string   `json:"preflight"`
+	FoundryGate           string   `json:"foundry_gate"`
+	BlueprintPackStatus   string   `json:"blueprint_pack_status"`
+	BlueprintPackRef      string   `json:"blueprint_pack_ref"`
+	BlueprintPackDigest   string   `json:"blueprint_pack_digest"`
+	BuildAuthorizationRef string   `json:"build_authorization_ref,omitempty"`
+	AtlasImportStatus     string   `json:"atlas_import_status"`
+	AtlasPreflightStatus  string   `json:"atlas_preflight_status"`
+	PreflightStatus       string   `json:"preflight_status"`
+	BlueprintStatus       string   `json:"blueprint_status"`
+	FoundryGateStatus     string   `json:"foundry_gate_status"`
+	AllowedNextAction     string   `json:"allowed_next_action"`
+	ReadyReason           string   `json:"ready_reason"`
+	BlockedReason         string   `json:"blocked_reason"`
+	BlockingNextActions   []string `json:"blocking_next_actions"`
+	OperatorMode          string   `json:"operator_mode"`
+	SafeToExecute         bool     `json:"safe_to_execute"`
+	LiveExecutionProven   bool     `json:"live_execution_proven"`
+	MutatesRepositories   bool     `json:"mutates_repositories"`
+	SchedulesWork         bool     `json:"schedules_work"`
+	ExecutesWork          bool     `json:"executes_work"`
+	ApprovesWork          bool     `json:"approves_work"`
+	CallsProviders        bool     `json:"calls_providers"`
 }
 
 type foundryComplexRefactorSummary struct {
@@ -1845,6 +1965,79 @@ func readPulseGateStatus(preflightPath, lifecyclePath, startGatePath string) (pu
 		SourceHashes:           startGate.SourceHashes,
 		OperatorMode:           operatorMode,
 		MutatesRepositories:    false,
+	}, nil
+}
+
+func readBlueprintAtlasFoundryStatus(atlasImportPath, preflightPath, foundryGatePath string) (blueprintAtlasFoundryStatusSummary, error) {
+	var atlasImport atlasBlueprintImport
+	if err := readPublicJSONFile(atlasImportPath, &atlasImport); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, fmt.Errorf("read Atlas Blueprint import: %w", err)
+	}
+	if err := validateAtlasBlueprintImportReadback(atlasImport); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, err
+	}
+	var preflight foundryPulseIntakePreflight
+	if err := readPublicJSONFile(preflightPath, &preflight); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, fmt.Errorf("read preflight: %w", err)
+	}
+	if err := validatePulseIntakePreflight(preflight); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, err
+	}
+	var foundryGate foundryPulseOvernightStartGate
+	if err := readPublicJSONFile(foundryGatePath, &foundryGate); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, fmt.Errorf("read Foundry gate: %w", err)
+	}
+	if err := validatePulseOvernightStartGate(foundryGate); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, err
+	}
+	if err := validateBlueprintAtlasFoundryBindings(atlasImportPath, preflightPath, atlasImport, preflight, foundryGate); err != nil {
+		return blueprintAtlasFoundryStatusSummary{}, err
+	}
+	status := "ready"
+	if atlasImport.Status == "blocked" || preflight.Status == "blocked" || foundryGate.Status == "blocked" {
+		status = "blocked"
+	}
+	if preflight.Status == "failed" || foundryGate.Status == "failed" {
+		status = "failed"
+	}
+	readyReason := ""
+	blockedReason := ""
+	if status == "ready" {
+		readyReason = "Blueprint pack compiled by Atlas and Foundry gate is ready."
+	} else {
+		blockedReason = firstNonEmpty(foundryGate.FirstFailingCheck, preflight.FirstFailingCheck, atlasImport.Reason, "blueprint_atlas_foundry_path")
+	}
+	blocking := append([]string{}, foundryGate.BlockingNextActions...)
+	blocking = append(blocking, preflight.BlockingNextActions...)
+	blocking = append(blocking, atlasImport.BlockingNextActions...)
+	return blueprintAtlasFoundryStatusSummary{
+		SchemaVersion:         "ao.command.blueprint-atlas-foundry-status.v0.1",
+		CommandSchemaVersion:  commandSchemaVersion,
+		Status:                status,
+		AtlasBlueprintImport:  atlasImportPath,
+		Preflight:             preflightPath,
+		FoundryGate:           foundryGatePath,
+		BlueprintPackStatus:   atlasImport.Status,
+		BlueprintPackRef:      atlasImport.BlueprintPack.Ref,
+		BlueprintPackDigest:   atlasImport.BlueprintPack.Digest,
+		BuildAuthorizationRef: atlasImport.BuildAuthorization.Ref,
+		AtlasImportStatus:     atlasImport.Status,
+		AtlasPreflightStatus:  firstNonEmpty(preflight.AtlasBlueprintStatus, preflight.AtlasStatus),
+		PreflightStatus:       preflight.Status,
+		BlueprintStatus:       preflight.BlueprintStatus,
+		FoundryGateStatus:     foundryGate.Status,
+		AllowedNextAction:     foundryGate.AllowedNextAction,
+		ReadyReason:           readyReason,
+		BlockedReason:         blockedReason,
+		BlockingNextActions:   uniqueStrings(blocking),
+		OperatorMode:          operatorMode,
+		SafeToExecute:         false,
+		LiveExecutionProven:   false,
+		MutatesRepositories:   false,
+		SchedulesWork:         false,
+		ExecutesWork:          false,
+		ApprovesWork:          false,
+		CallsProviders:        false,
 	}, nil
 }
 
@@ -2903,6 +3096,130 @@ func validatePulseOvernightStartGate(startGate foundryPulseOvernightStartGate) e
 		}
 	}
 	return nil
+}
+
+func validateAtlasBlueprintImportReadback(importRecord atlasBlueprintImport) error {
+	if importRecord.ContractVersion != "ao.atlas.blueprint-import.v0.1" {
+		return errors.New("invalid Atlas Blueprint import contract_version")
+	}
+	if strings.TrimSpace(importRecord.ID) == "" || strings.TrimSpace(importRecord.ProjectID) == "" || strings.TrimSpace(importRecord.Reason) == "" {
+		return errors.New("Atlas Blueprint import requires id, project_id, and reason")
+	}
+	if importRecord.Status != "ready" && importRecord.Status != "blocked" {
+		return fmt.Errorf("invalid Atlas Blueprint import status %q", importRecord.Status)
+	}
+	if err := validateAtlasSourceRef("blueprint_pack", importRecord.BlueprintPack, true); err != nil {
+		return err
+	}
+	if len(importRecord.Digests) == 0 {
+		return errors.New("Atlas Blueprint import requires digest bindings")
+	}
+	for key, digest := range importRecord.Digests {
+		if strings.TrimSpace(key) == "" || !isSHA256Digest(digest) {
+			return fmt.Errorf("Atlas Blueprint import digest %q must be sha256:<64 hex>", key)
+		}
+	}
+	if importRecord.Status == "ready" {
+		if !importRecord.ReadyForFoundry {
+			return errors.New("ready Atlas Blueprint import requires ready_for_foundry=true")
+		}
+		for field, value := range map[string]string{
+			"target_instance": importRecord.TargetInstance,
+			"workgraph_id":    importRecord.WorkgraphID,
+			"mutation_class":  importRecord.MutationClass,
+		} {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("ready Atlas Blueprint import missing %s", field)
+			}
+		}
+		if err := validateAtlasSourceRef("build_authorization", importRecord.BuildAuthorization, true); err != nil {
+			return err
+		}
+		if err := validateAtlasSourceRef("downstream_foundry_import", importRecord.DownstreamFoundryImport, true); err != nil {
+			return err
+		}
+		if importRecord.DownstreamFoundryImport.Digest != importRecord.Digests["downstream_foundry_import"] {
+			return errors.New("Atlas Blueprint import downstream Foundry import digest is not bound")
+		}
+	} else {
+		if importRecord.ReadyForFoundry {
+			return errors.New("blocked Atlas Blueprint import requires ready_for_foundry=false")
+		}
+		if len(importRecord.BlockingNextActions) == 0 {
+			return errors.New("blocked Atlas Blueprint import requires blocking_next_actions")
+		}
+	}
+	if importRecord.SafeToExecute || importRecord.LiveExecutionProven ||
+		importRecord.SchedulesWork || importRecord.ExecutesWork || importRecord.ApprovesWork ||
+		importRecord.MutatesRepositories || importRecord.CallsProviders || importRecord.ReleaseOrPublishAllowed {
+		return errors.New("Atlas Blueprint import must remain read-only and cannot claim execution, scheduling, approval, provider, release, or repository mutation authority")
+	}
+	for _, value := range append(append([]string{}, importRecord.SafetyLimits...), importRecord.BlockingNextActions...) {
+		if strings.TrimSpace(value) == "" {
+			return errors.New("Atlas Blueprint import safety and blocker lists must not contain empty values")
+		}
+		if err := validatePublicSafeText(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateAtlasSourceRef(name string, source atlasSourceRef, required bool) error {
+	if strings.TrimSpace(source.Ref) == "" && strings.TrimSpace(source.Digest) == "" && !required {
+		return nil
+	}
+	if strings.TrimSpace(source.Ref) == "" || strings.TrimSpace(source.Digest) == "" {
+		return fmt.Errorf("Atlas Blueprint import %s requires ref and digest", name)
+	}
+	if err := validatePublicSafeText(source.Ref); err != nil {
+		return err
+	}
+	if !isSHA256Digest(source.Digest) {
+		return fmt.Errorf("Atlas Blueprint import %s digest must be sha256:<64 hex>", name)
+	}
+	return nil
+}
+
+func validateBlueprintAtlasFoundryBindings(atlasImportPath, preflightPath string, atlasImport atlasBlueprintImport, preflight foundryPulseIntakePreflight, foundryGate foundryPulseOvernightStartGate) error {
+	if preflight.AtlasBlueprintStatus != "" && preflight.AtlasBlueprintStatus != atlasImport.Status {
+		return errors.New("Foundry preflight atlas_blueprint_status does not match Atlas Blueprint import status")
+	}
+	if atlasSource, ok := pulseSourceByName(preflight.SourceArtifacts, "atlas_blueprint_import"); ok {
+		atlasSHA, err := sha256File(atlasImportPath)
+		if err != nil {
+			return fmt.Errorf("hash Atlas Blueprint import: %w", err)
+		}
+		if atlasSource.SHA256 != atlasSHA {
+			return errors.New("Foundry preflight atlas_blueprint_import source digest does not match provided Atlas Blueprint import")
+		}
+		if atlasSource.Status != "" && atlasSource.Status != atlasImport.Status {
+			return errors.New("Foundry preflight atlas_blueprint_import source status does not match Atlas Blueprint import")
+		}
+	} else if preflight.Status == "ready" {
+		return errors.New("ready Foundry preflight must include atlas_blueprint_import source artifact")
+	}
+	preflightSource, ok := pulseSourceByName(foundryGate.SourceHashes, "intake_preflight")
+	if !ok {
+		return errors.New("Foundry gate must include intake_preflight source hash")
+	}
+	preflightSHA, err := sha256File(preflightPath)
+	if err != nil {
+		return fmt.Errorf("hash Foundry preflight: %w", err)
+	}
+	if preflightSource.SHA256 != preflightSHA {
+		return errors.New("Foundry gate intake_preflight source digest does not match provided preflight")
+	}
+	return nil
+}
+
+func pulseSourceByName(sources []pulseSource, name string) (pulseSource, bool) {
+	for _, source := range sources {
+		if source.Name == name {
+			return source, true
+		}
+	}
+	return pulseSource{}, false
 }
 
 func validatePulseSource(source pulseSource, requireStatus bool) error {

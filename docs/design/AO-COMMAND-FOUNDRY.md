@@ -30,6 +30,12 @@ The `ao-command` v0.1 CLI is the read-only operator surface that makes this
 evidence usable. AO Forge remains the source of factory truth; AO Foundry owns
 the active-stack operations ledger.
 
+For oversized and live-mutation work, `ao-command blueprint-atlas-foundry status`
+is the operator readback over the enforced Blueprint -> Atlas -> Foundry path.
+It reports Blueprint pack status, Atlas import/preflight status, Foundry gate
+status, and ready or blocked reason from existing artifacts only. It does not
+compile, schedule, approve, execute, or mutate work.
+
 ## Core Differentiator
 
 Persistent operational memory plus verified execution belongs in AO Foundry.
