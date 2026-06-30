@@ -68,6 +68,9 @@ func TestStatusReadsAOForgeProductionReadiness(t *testing.T) {
 	if call.Dir != "/repo/ao-forge" || call.Name != "go" {
 		t.Fatalf("unexpected command: %+v", call)
 	}
+	if len(call.Env) != 0 {
+		t.Fatalf("status command should not add environment overrides: %#v", call.Env)
+	}
 	wantArgs := []string{"run", "./cmd/forge", "production-readiness", "audit", "--json"}
 	if !reflect.DeepEqual(call.Args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", call.Args, wantArgs)
