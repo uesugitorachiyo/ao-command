@@ -117,7 +117,11 @@ dry-run design with `safe_to_execute=false`; Command also emits a
 rollback proof, Sentinel clear verdict, Promoter promotion, Command readback,
 PR CI evidence, and exact next action. The checked multi-repo low-risk fixture
 reports repo-by-repo dependency order and rollback readiness, still with
-`safe_to_execute=false`; complex and fully unsupervised mutation remain denied.
+`safe_to_execute=false`. It also reports `highest_proven_live_class`,
+`low_risk_code_live_evidence_status`, `next_denied_class`, and
+`next_denied_reason`; until completed `low_risk_code` live evidence exists,
+the highest proven live class remains `test_only` and `multi_repo_low_risk`
+live promotion is denied. Complex and fully unsupervised mutation remain denied.
 When `--sentinel-hold` is supplied, Command reads the AO Sentinel
 `ao.sentinel.live-mutation-hold.v0.1` packet, reports the class hold verdict,
 and blocks the status if Sentinel still holds. This is readback only and does
