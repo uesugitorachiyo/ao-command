@@ -429,6 +429,8 @@ func (a App) blueprintAtlasFoundryStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "ao_command_blueprint_atlas_foundry=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "blueprint_pack_status=%s\n", summary.BlueprintPackStatus)
 	fmt.Fprintf(a.Stdout, "atlas_import_status=%s\n", summary.AtlasImportStatus)
+	fmt.Fprintf(a.Stdout, "atlas_blueprint_import_status=%s\n", summary.AtlasBlueprintImportStatus)
+	fmt.Fprintf(a.Stdout, "policy_evidence_status=%s\n", summary.PolicyEvidenceStatus)
 	fmt.Fprintf(a.Stdout, "preflight_status=%s\n", summary.PreflightStatus)
 	fmt.Fprintf(a.Stdout, "foundry_gate_status=%s\n", summary.FoundryGateStatus)
 	fmt.Fprintf(a.Stdout, "ready_reason=%s\n", summary.ReadyReason)
@@ -1264,13 +1266,23 @@ type foundryPulsePRLifecycle struct {
 }
 
 type foundryPulseOvernightStartGate struct {
-	SchemaVersion          string        `json:"schema_version"`
-	Status                 string        `json:"status"`
-	AllowedNextAction      string        `json:"allowed_next_action"`
-	FirstFailingCheck      string        `json:"first_failing_check"`
-	BlockingNextActions    []string      `json:"blocking_next_actions"`
-	MaintenanceSuggestions []string      `json:"maintenance_suggestions"`
-	SourceHashes           []pulseSource `json:"source_hashes"`
+	SchemaVersion          string             `json:"schema_version"`
+	Status                 string             `json:"status"`
+	AllowedNextAction      string             `json:"allowed_next_action"`
+	FirstFailingCheck      string             `json:"first_failing_check"`
+	BlockingNextActions    []string           `json:"blocking_next_actions"`
+	MaintenanceSuggestions []string           `json:"maintenance_suggestions"`
+	AtlasBlueprintStatus   gateEvidenceStatus `json:"atlas_blueprint_import_status"`
+	PolicyEvidenceStatus   gateEvidenceStatus `json:"policy_evidence_status"`
+	SourceHashes           []pulseSource      `json:"source_hashes"`
+}
+
+type gateEvidenceStatus struct {
+	Present       bool   `json:"present"`
+	Status        string `json:"status"`
+	SchemaVersion string `json:"schema_version"`
+	SHA256        string `json:"sha256"`
+	WorkgraphID   string `json:"workgraph_id,omitempty"`
 }
 
 type pulseCheck struct {
@@ -1310,33 +1322,35 @@ type pulseGateStatusSummary struct {
 }
 
 type blueprintAtlasFoundryStatusSummary struct {
-	SchemaVersion         string   `json:"schema_version"`
-	CommandSchemaVersion  string   `json:"command_schema_version"`
-	Status                string   `json:"status"`
-	AtlasBlueprintImport  string   `json:"atlas_blueprint_import"`
-	Preflight             string   `json:"preflight"`
-	FoundryGate           string   `json:"foundry_gate"`
-	BlueprintPackStatus   string   `json:"blueprint_pack_status"`
-	BlueprintPackRef      string   `json:"blueprint_pack_ref"`
-	BlueprintPackDigest   string   `json:"blueprint_pack_digest"`
-	BuildAuthorizationRef string   `json:"build_authorization_ref,omitempty"`
-	AtlasImportStatus     string   `json:"atlas_import_status"`
-	AtlasPreflightStatus  string   `json:"atlas_preflight_status"`
-	PreflightStatus       string   `json:"preflight_status"`
-	BlueprintStatus       string   `json:"blueprint_status"`
-	FoundryGateStatus     string   `json:"foundry_gate_status"`
-	AllowedNextAction     string   `json:"allowed_next_action"`
-	ReadyReason           string   `json:"ready_reason"`
-	BlockedReason         string   `json:"blocked_reason"`
-	BlockingNextActions   []string `json:"blocking_next_actions"`
-	OperatorMode          string   `json:"operator_mode"`
-	SafeToExecute         bool     `json:"safe_to_execute"`
-	LiveExecutionProven   bool     `json:"live_execution_proven"`
-	MutatesRepositories   bool     `json:"mutates_repositories"`
-	SchedulesWork         bool     `json:"schedules_work"`
-	ExecutesWork          bool     `json:"executes_work"`
-	ApprovesWork          bool     `json:"approves_work"`
-	CallsProviders        bool     `json:"calls_providers"`
+	SchemaVersion              string   `json:"schema_version"`
+	CommandSchemaVersion       string   `json:"command_schema_version"`
+	Status                     string   `json:"status"`
+	AtlasBlueprintImport       string   `json:"atlas_blueprint_import"`
+	Preflight                  string   `json:"preflight"`
+	FoundryGate                string   `json:"foundry_gate"`
+	BlueprintPackStatus        string   `json:"blueprint_pack_status"`
+	BlueprintPackRef           string   `json:"blueprint_pack_ref"`
+	BlueprintPackDigest        string   `json:"blueprint_pack_digest"`
+	BuildAuthorizationRef      string   `json:"build_authorization_ref,omitempty"`
+	AtlasImportStatus          string   `json:"atlas_import_status"`
+	AtlasBlueprintImportStatus string   `json:"atlas_blueprint_import_status"`
+	PolicyEvidenceStatus       string   `json:"policy_evidence_status"`
+	AtlasPreflightStatus       string   `json:"atlas_preflight_status"`
+	PreflightStatus            string   `json:"preflight_status"`
+	BlueprintStatus            string   `json:"blueprint_status"`
+	FoundryGateStatus          string   `json:"foundry_gate_status"`
+	AllowedNextAction          string   `json:"allowed_next_action"`
+	ReadyReason                string   `json:"ready_reason"`
+	BlockedReason              string   `json:"blocked_reason"`
+	BlockingNextActions        []string `json:"blocking_next_actions"`
+	OperatorMode               string   `json:"operator_mode"`
+	SafeToExecute              bool     `json:"safe_to_execute"`
+	LiveExecutionProven        bool     `json:"live_execution_proven"`
+	MutatesRepositories        bool     `json:"mutates_repositories"`
+	SchedulesWork              bool     `json:"schedules_work"`
+	ExecutesWork               bool     `json:"executes_work"`
+	ApprovesWork               bool     `json:"approves_work"`
+	CallsProviders             bool     `json:"calls_providers"`
 }
 
 type foundryComplexRefactorSummary struct {
@@ -2010,34 +2024,41 @@ func readBlueprintAtlasFoundryStatus(atlasImportPath, preflightPath, foundryGate
 	blocking := append([]string{}, foundryGate.BlockingNextActions...)
 	blocking = append(blocking, preflight.BlockingNextActions...)
 	blocking = append(blocking, atlasImport.BlockingNextActions...)
+	atlasBlueprintImportStatus := firstNonEmpty(foundryGate.AtlasBlueprintStatus.Status, atlasImport.Status)
+	policyEvidenceStatus := "missing"
+	if foundryGate.PolicyEvidenceStatus.Present {
+		policyEvidenceStatus = firstNonEmpty(foundryGate.PolicyEvidenceStatus.Status, "present")
+	}
 	return blueprintAtlasFoundryStatusSummary{
-		SchemaVersion:         "ao.command.blueprint-atlas-foundry-status.v0.1",
-		CommandSchemaVersion:  commandSchemaVersion,
-		Status:                status,
-		AtlasBlueprintImport:  atlasImportPath,
-		Preflight:             preflightPath,
-		FoundryGate:           foundryGatePath,
-		BlueprintPackStatus:   atlasImport.Status,
-		BlueprintPackRef:      atlasImport.BlueprintPack.Ref,
-		BlueprintPackDigest:   atlasImport.BlueprintPack.Digest,
-		BuildAuthorizationRef: atlasImport.BuildAuthorization.Ref,
-		AtlasImportStatus:     atlasImport.Status,
-		AtlasPreflightStatus:  firstNonEmpty(preflight.AtlasBlueprintStatus, preflight.AtlasStatus),
-		PreflightStatus:       preflight.Status,
-		BlueprintStatus:       preflight.BlueprintStatus,
-		FoundryGateStatus:     foundryGate.Status,
-		AllowedNextAction:     foundryGate.AllowedNextAction,
-		ReadyReason:           readyReason,
-		BlockedReason:         blockedReason,
-		BlockingNextActions:   uniqueStrings(blocking),
-		OperatorMode:          operatorMode,
-		SafeToExecute:         false,
-		LiveExecutionProven:   false,
-		MutatesRepositories:   false,
-		SchedulesWork:         false,
-		ExecutesWork:          false,
-		ApprovesWork:          false,
-		CallsProviders:        false,
+		SchemaVersion:              "ao.command.blueprint-atlas-foundry-status.v0.1",
+		CommandSchemaVersion:       commandSchemaVersion,
+		Status:                     status,
+		AtlasBlueprintImport:       atlasImportPath,
+		Preflight:                  preflightPath,
+		FoundryGate:                foundryGatePath,
+		BlueprintPackStatus:        atlasImport.Status,
+		BlueprintPackRef:           atlasImport.BlueprintPack.Ref,
+		BlueprintPackDigest:        atlasImport.BlueprintPack.Digest,
+		BuildAuthorizationRef:      atlasImport.BuildAuthorization.Ref,
+		AtlasImportStatus:          atlasImport.Status,
+		AtlasBlueprintImportStatus: atlasBlueprintImportStatus,
+		PolicyEvidenceStatus:       policyEvidenceStatus,
+		AtlasPreflightStatus:       firstNonEmpty(preflight.AtlasBlueprintStatus, preflight.AtlasStatus),
+		PreflightStatus:            preflight.Status,
+		BlueprintStatus:            preflight.BlueprintStatus,
+		FoundryGateStatus:          foundryGate.Status,
+		AllowedNextAction:          foundryGate.AllowedNextAction,
+		ReadyReason:                readyReason,
+		BlockedReason:              blockedReason,
+		BlockingNextActions:        uniqueStrings(blocking),
+		OperatorMode:               operatorMode,
+		SafeToExecute:              false,
+		LiveExecutionProven:        false,
+		MutatesRepositories:        false,
+		SchedulesWork:              false,
+		ExecutesWork:               false,
+		ApprovesWork:               false,
+		CallsProviders:             false,
 	}, nil
 }
 

@@ -545,6 +545,8 @@ func TestBlueprintAtlasFoundryStatusReportsReadyPath(t *testing.T) {
 		"ao_command_blueprint_atlas_foundry=ready",
 		"blueprint_pack_status=ready",
 		"atlas_import_status=ready",
+		"atlas_blueprint_import_status=ready",
+		"policy_evidence_status=approved",
 		"preflight_status=ready",
 		"foundry_gate_status=ready",
 		"ready_reason=Blueprint pack compiled by Atlas and Foundry gate is ready.",
@@ -571,15 +573,16 @@ func TestBlueprintAtlasFoundryStatusReportsBlockedPath(t *testing.T) {
 		t.Fatalf("blueprint-atlas-foundry blocked status exit=%d stderr=%s", code, stderr)
 	}
 	var got struct {
-		SchemaVersion       string   `json:"schema_version"`
-		Status              string   `json:"status"`
-		BlueprintPackStatus string   `json:"blueprint_pack_status"`
-		AtlasImportStatus   string   `json:"atlas_import_status"`
-		FoundryGateStatus   string   `json:"foundry_gate_status"`
-		BlockedReason       string   `json:"blocked_reason"`
-		BlockingNextActions []string `json:"blocking_next_actions"`
-		OperatorMode        string   `json:"operator_mode"`
-		SafeToExecute       bool     `json:"safe_to_execute"`
+		SchemaVersion        string   `json:"schema_version"`
+		Status               string   `json:"status"`
+		BlueprintPackStatus  string   `json:"blueprint_pack_status"`
+		AtlasImportStatus    string   `json:"atlas_import_status"`
+		PolicyEvidenceStatus string   `json:"policy_evidence_status"`
+		FoundryGateStatus    string   `json:"foundry_gate_status"`
+		BlockedReason        string   `json:"blocked_reason"`
+		BlockingNextActions  []string `json:"blocking_next_actions"`
+		OperatorMode         string   `json:"operator_mode"`
+		SafeToExecute        bool     `json:"safe_to_execute"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("invalid blueprint-atlas-foundry JSON: %v\n%s", err, stdout)
@@ -588,6 +591,7 @@ func TestBlueprintAtlasFoundryStatusReportsBlockedPath(t *testing.T) {
 		got.Status != "blocked" ||
 		got.BlueprintPackStatus != "blocked" ||
 		got.AtlasImportStatus != "blocked" ||
+		got.PolicyEvidenceStatus != "missing" ||
 		got.FoundryGateStatus != "blocked" ||
 		got.BlockedReason != "atlas_blueprint_import" ||
 		!contains(got.BlockingNextActions, "return to AO Blueprint for scoped build authorization") ||
@@ -3756,6 +3760,16 @@ func writeBlueprintAtlasFoundryFixtures(t *testing.T, mode string) blueprintAtla
 	if mode == "blocked" {
 		allowedNextAction = "collect_atlas_blueprint_import_readback"
 	}
+	policyPresent := "true"
+	policyStatus := "approved"
+	policySchema := "ao.foundry.low-risk-code-live-execution-policy.v0.1"
+	policySHA := "9999999999999999999999999999999999999999999999999999999999999999"
+	if mode != "ready" {
+		policyPresent = "false"
+		policyStatus = ""
+		policySchema = ""
+		policySHA = ""
+	}
 	writeFile(t, paths.foundryGate, `{
   "schema_version": "ao.foundry.pulse-overnight-start-gate.v0.1",
   "status": "`+gateStatus+`",
@@ -3763,6 +3777,19 @@ func writeBlueprintAtlasFoundryFixtures(t *testing.T, mode string) blueprintAtla
   "first_failing_check": "`+firstFailingCheck+`",
   "blocking_next_actions": `+blockingNextActions+`,
   "maintenance_suggestions": ["run this gate before autonomous overnight/event-loop advancement"],
+  "atlas_blueprint_import_status": {
+    "present": true,
+    "status": "`+atlasStatus+`",
+    "schema_version": "ao.atlas.blueprint-import.v0.1",
+    "sha256": "`+atlasImportSHA+`",
+    "workgraph_id": "low-risk-code-workgraph"
+  },
+  "policy_evidence_status": {
+    "present": `+policyPresent+`,
+    "status": "`+policyStatus+`",
+    "schema_version": "`+policySchema+`",
+    "sha256": "`+policySHA+`"
+  },
   "source_hashes": [
     {"name":"intake_preflight","path":"examples/pulse-gate/ready.preflight.json","schema_version":"ao.foundry.pulse-intake-preflight.v0.1","sha256":"`+preflightSHA+`"}
   ]
