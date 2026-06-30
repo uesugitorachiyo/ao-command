@@ -1445,6 +1445,68 @@ func TestLiveMutationStatusJSONReportsReadOnlyBoundaries(t *testing.T) {
 	}
 }
 
+func TestLiveMutationClassDecisionReadback(t *testing.T) {
+	dir := t.TempDir()
+	rollup := filepath.Join(dir, "rollup.json")
+	verdict := filepath.Join(dir, "verdict.json")
+	writeFile(t, rollup, `{
+  "schema_version": "ao.foundry.complex-repo-mutation-promotion-rollup.v0.1",
+  "status": "blocked",
+  "mutation_class": "complex_repo_mutation",
+  "safe_to_promote": false,
+  "complex_repo_mutation_live_proven": false,
+  "highest_proven_live_class": "multi_repo_low_risk",
+  "next_denied_class": "complex_repo_mutation",
+  "first_failing_check": "run-link complex-docs-intake requires rollback evidence",
+  "fully_unsupervised_complex_mutation": "denied",
+  "rsi": "denied",
+  "blockers": ["run-link complex-docs-intake requires rollback evidence"]
+}`)
+	writeFile(t, verdict, `{
+  "schema_version": "ao.promoter.complex-repo-mutation-promotion-verdict.v0.1",
+  "status": "denied",
+  "mutation_class": "complex_repo_mutation",
+  "safe_to_promote": false,
+  "complex_repo_mutation_live_proven": false,
+  "highest_proven_live_class": "multi_repo_low_risk",
+  "next_denied_class": "complex_repo_mutation",
+  "fully_unsupervised_complex_mutation": "denied",
+  "rsi": "denied",
+  "blockers": [{"blocker_id":"complex_repo_mutation_promotion_rollup","reason":"rollup check rollback_evidence is not satisfied"}]
+}`)
+	code, stdout, stderr := runWithFake([]string{"live-mutation", "class-decision", "--rollup", rollup, "--promoter-verdict", verdict, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("class decision readback exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion                    string   `json:"schema_version"`
+		Status                           string   `json:"status"`
+		MutationClass                    string   `json:"mutation_class"`
+		ComplexRepoMutationLiveProven    bool     `json:"complex_repo_mutation_live_proven"`
+		HighestProvenLiveClass           string   `json:"highest_proven_live_class"`
+		NextDeniedClass                  string   `json:"next_denied_class"`
+		FullyUnsupervisedComplexMutation string   `json:"fully_unsupervised_complex_mutation"`
+		RSI                              string   `json:"rsi"`
+		SafeToExecute                    bool     `json:"safe_to_execute"`
+		BlockingNextActions              []string `json:"blocking_next_actions"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid class decision JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.complex-repo-mutation-class-decision.v0.1" ||
+		got.Status != "denied" ||
+		got.MutationClass != "complex_repo_mutation" ||
+		got.ComplexRepoMutationLiveProven ||
+		got.HighestProvenLiveClass != "multi_repo_low_risk" ||
+		got.NextDeniedClass != "complex_repo_mutation" ||
+		got.FullyUnsupervisedComplexMutation != "denied" ||
+		got.RSI != "denied" ||
+		got.SafeToExecute ||
+		len(got.BlockingNextActions) == 0 {
+		t.Fatalf("unexpected class decision readback: %+v", got)
+	}
+}
+
 func TestLiveMutationStatusReportsBlockedEvidenceReadOnly(t *testing.T) {
 	paths := liveMutationFixturePaths()
 	paths.rollback = filepath.Join("..", "..", "examples", "live-mutation", "rollback-rehearsal.blocked.json")
