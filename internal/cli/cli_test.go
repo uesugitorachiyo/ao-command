@@ -856,6 +856,46 @@ func TestLiveMutationStatusReportsLowRiskCodeDryRunReadback(t *testing.T) {
 	}
 }
 
+func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
+	paths := multiRepoLowRiskDryRunFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("multi-repo low-risk live-mutation status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=ready",
+		"allowed_next_action=request_multi_repo_low_risk_dry_run",
+		"current_mutation_class=low_risk_code",
+		"next_mutation_class=multi_repo_low_risk",
+		"safe_to_request=true",
+		"safe_to_execute=false",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"schedules_work=false",
+		"executes_work=false",
+		"required_evidence=low_risk_code_live_success",
+		"required_evidence=per_repo_rollback:ao-atlas",
+		"required_evidence=prevent_concurrent_unsafe_execution",
+		"repo_state=ao-atlas status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=",
+		"repo_state=ao-foundry status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=ao-atlas",
+		"repo_state=ao-command status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=ao-foundry",
+		"denied_higher_class=complex_repo_mutation",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("multi-repo low-risk dry-run status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
 	paths := liveDocsApprovalFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
@@ -3425,6 +3465,21 @@ func lowRiskCodeDryRunFixturePaths() liveMutationPaths {
 		ao2Packet:  fixture("ao2-packet.low-risk-dry-run-ready.json"),
 		isolation:  fixture("worktree-isolation.low-risk-dry-run-ready.json"),
 		rollback:   fixture("rollback-rehearsal.low-risk-dry-run-ready.json"),
+		killSwitch: fixture("kill-switch.armed.json"),
+	}
+}
+
+func multiRepoLowRiskDryRunFixturePaths() liveMutationPaths {
+	fixture := func(name string) string {
+		return filepath.Join("..", "..", "examples", "live-mutation", name)
+	}
+	return liveMutationPaths{
+		authority:  fixture("covenant-authority.multi-repo-low-risk-dry-run-ready.json"),
+		request:    fixture("foundry-request.multi-repo-low-risk-dry-run-ready.json"),
+		forgePlan:  fixture("forge-plan.multi-repo-low-risk-dry-run-ready.json"),
+		ao2Packet:  fixture("ao2-packet.multi-repo-low-risk-dry-run-ready.json"),
+		isolation:  fixture("worktree-isolation.multi-repo-low-risk-dry-run-ready.json"),
+		rollback:   fixture("rollback-rehearsal.multi-repo-low-risk-dry-run-ready.json"),
 		killSwitch: fixture("kill-switch.armed.json"),
 	}
 }
