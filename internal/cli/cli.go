@@ -645,7 +645,7 @@ func (a App) liveMutationStatus(args []string) int {
 		fmt.Fprintf(a.Stdout, "sentinel_class_ci=%s\n", hold.CIStatus)
 	}
 	for _, state := range summary.RepoStates {
-		fmt.Fprintf(a.Stdout, "repo_state=%s status=%s execution_status=%s rollback=%s depends_on=%s\n", state.Repo, state.Status, state.ExecutionStatus, state.RollbackStatus, strings.Join(state.DependsOn, ","))
+		fmt.Fprintf(a.Stdout, "repo_state=%s order=%d planned_pr=%s status=%s execution_status=%s rollback=%s rollback_scope=%s depends_on=%s merge_after=%s\n", state.Repo, state.Order, state.PlannedPR, state.Status, state.ExecutionStatus, state.RollbackStatus, strings.Join(state.RollbackScope, ","), strings.Join(state.DependsOn, ","), strings.Join(state.MergeAfter, ","))
 	}
 	for _, class := range sortedStringKeys(summary.DeniedHigherClasses) {
 		fmt.Fprintf(a.Stdout, "denied_higher_class=%s reason=%s\n", class, summary.DeniedHigherClasses[class])
@@ -1379,10 +1379,14 @@ type lowRiskCodeDenialAudit struct {
 
 type liveMutationRepoState struct {
 	Repo            string   `json:"repo"`
+	Order           int      `json:"order"`
+	PlannedPR       string   `json:"planned_pr"`
 	Status          string   `json:"status"`
 	ExecutionStatus string   `json:"execution_status"`
+	RollbackScope   []string `json:"rollback_scope"`
 	RollbackStatus  string   `json:"rollback_status"`
 	DependsOn       []string `json:"depends_on"`
+	MergeAfter      []string `json:"merge_after"`
 }
 
 type liveMutationApprovalSummary struct {
@@ -2545,10 +2549,14 @@ func liveMutationRepoStates(raw map[string]any) []liveMutationRepoState {
 		}
 		states = append(states, liveMutationRepoState{
 			Repo:            liveMutationMapString(object, "repo"),
+			Order:           liveMutationMapInt(object, "order"),
+			PlannedPR:       liveMutationMapString(object, "planned_pr"),
 			Status:          liveMutationMapString(object, "status"),
 			ExecutionStatus: liveMutationMapString(object, "execution_status"),
+			RollbackScope:   liveMutationStringSlice(object, "rollback_scope"),
 			RollbackStatus:  liveMutationMapString(object, "rollback_status"),
 			DependsOn:       liveMutationStringSlice(object, "depends_on"),
+			MergeAfter:      liveMutationStringSlice(object, "merge_after"),
 		})
 	}
 	return states
@@ -2559,17 +2567,23 @@ func validateLiveMutationRepoStates(raw map[string]any, states []liveMutationRep
 		return ""
 	}
 	policy, _ := raw["concurrency_policy"].(map[string]any)
-	if liveMutationMapBool(policy, "concurrent_execution_allowed") || liveMutationMapInt(policy, "max_active_repos") != 1 {
+	if liveMutationMapBool(policy, "concurrent_execution_allowed") ||
+		liveMutationMapInt(policy, "max_active_repos") != 1 ||
+		!liveMutationMapBool(policy, "required_serialized_dependency_order") {
 		return "Repair multi_repo_low_risk dry-run evidence: unsafe concurrent execution is not allowed."
 	}
 	seen := map[string]bool{}
 	readyToExecute := 0
-	for _, state := range states {
+	for i, state := range states {
 		switch {
 		case state.Repo == "":
 			return "Repair multi_repo_low_risk dry-run evidence: repo_state missing repo."
 		case seen[state.Repo]:
 			return "Repair multi_repo_low_risk dry-run evidence: duplicate repo_state."
+		case state.Order != i+1:
+			return "Repair multi_repo_low_risk dry-run evidence: repo_state dependency order is invalid."
+		case state.PlannedPR == "":
+			return "Repair multi_repo_low_risk dry-run evidence: planned PR dependency is missing."
 		case state.Status != "ready":
 			return "Repair multi_repo_low_risk dry-run evidence: repo_state is not ready."
 		case state.ExecutionStatus == "executing" || state.ExecutionStatus == "active":
@@ -2578,8 +2592,16 @@ func validateLiveMutationRepoStates(raw map[string]any, states []liveMutationRep
 			readyToExecute++
 		case state.ExecutionStatus != "sequenced_dry_run_only":
 			return "Repair multi_repo_low_risk dry-run evidence: repo_state is not sequenced dry-run only."
-		case state.RollbackStatus != "ready":
+		case len(state.RollbackScope) == 0 || state.RollbackStatus != "ready":
 			return "Repair multi_repo_low_risk dry-run evidence: per-repo rollback is not ready."
+		}
+		if !equalStringSlices(state.DependsOn, state.MergeAfter) {
+			return "Repair multi_repo_low_risk dry-run evidence: merge_after must match depends_on."
+		}
+		for _, dependency := range state.DependsOn {
+			if !seen[dependency] {
+				return "Repair multi_repo_low_risk dry-run evidence: repo dependency must appear earlier in dependency order."
+			}
 		}
 		seen[state.Repo] = true
 	}
@@ -2891,6 +2913,18 @@ func uniqueStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func sortedStringKeys(values map[string]string) []string {
