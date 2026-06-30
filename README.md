@@ -121,7 +121,9 @@ reports repo-by-repo dependency order and rollback readiness, still with
 `low_risk_code_live_evidence_status`, `next_denied_class`, and
 `next_denied_reason`; until completed `low_risk_code` live evidence exists,
 the highest proven live class remains `test_only` and `multi_repo_low_risk`
-live promotion is denied. Complex and fully unsupervised mutation remain denied.
+live promotion is denied. Each repo readback includes its serialized order,
+planned dry-run PR placeholder, rollback scope, dependencies, and merge-after
+constraints. Complex and fully unsupervised mutation remain denied.
 When `--sentinel-hold` is supplied, Command reads the AO Sentinel
 `ao.sentinel.live-mutation-hold.v0.1` packet, reports the class hold verdict,
 and blocks the status if Sentinel still holds. This is readback only and does

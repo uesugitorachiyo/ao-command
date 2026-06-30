@@ -15,24 +15,36 @@
   "repo_states": [
     {
       "repo": "ao-atlas",
+      "order": 1,
+      "planned_pr": "dry-run-pr:ao-atlas",
       "status": "ready",
       "execution_status": "sequenced_dry_run_only",
+      "rollback_scope": ["repo:ao-atlas:internal/**"],
       "rollback_status": "ready",
-      "depends_on": []
+      "depends_on": [],
+      "merge_after": []
     },
     {
       "repo": "ao-foundry",
+      "order": 2,
+      "planned_pr": "dry-run-pr:ao-foundry",
       "status": "ready",
       "execution_status": "sequenced_dry_run_only",
+      "rollback_scope": ["repo:ao-foundry:internal/**"],
       "rollback_status": "ready",
-      "depends_on": ["ao-atlas"]
+      "depends_on": ["ao-atlas"],
+      "merge_after": ["ao-atlas"]
     },
     {
       "repo": "ao-command",
+      "order": 3,
+      "planned_pr": "dry-run-pr:ao-command",
       "status": "ready",
       "execution_status": "sequenced_dry_run_only",
+      "rollback_scope": ["repo:ao-command:internal/**"],
       "rollback_status": "ready",
-      "depends_on": ["ao-foundry"]
+      "depends_on": ["ao-foundry"],
+      "merge_after": ["ao-foundry"]
     }
   ],
   "concurrency_policy": {

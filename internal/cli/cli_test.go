@@ -1019,13 +1019,56 @@ func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
 		"required_evidence=low_risk_code_live_success",
 		"required_evidence=per_repo_rollback:ao-atlas",
 		"required_evidence=prevent_concurrent_unsafe_execution",
-		"repo_state=ao-atlas status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=",
-		"repo_state=ao-foundry status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=ao-atlas",
-		"repo_state=ao-command status=ready execution_status=sequenced_dry_run_only rollback=ready depends_on=ao-foundry",
+		"repo_state=ao-atlas order=1 planned_pr=dry-run-pr:ao-atlas status=ready execution_status=sequenced_dry_run_only rollback=ready rollback_scope=repo:ao-atlas:internal/** depends_on= merge_after=",
+		"repo_state=ao-foundry order=2 planned_pr=dry-run-pr:ao-foundry status=ready execution_status=sequenced_dry_run_only rollback=ready rollback_scope=repo:ao-foundry:internal/** depends_on=ao-atlas merge_after=ao-atlas",
+		"repo_state=ao-command order=3 planned_pr=dry-run-pr:ao-command status=ready execution_status=sequenced_dry_run_only rollback=ready rollback_scope=repo:ao-command:internal/** depends_on=ao-foundry merge_after=ao-foundry",
 		"denied_higher_class=complex_repo_mutation",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("multi-repo low-risk dry-run status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	mutated := paths
+	requestBody, err := os.ReadFile(paths.request)
+	if err != nil {
+		t.Fatalf("read multi-repo request fixture: %v", err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal(requestBody, &request); err != nil {
+		t.Fatalf("unmarshal multi-repo request fixture: %v", err)
+	}
+	repoStates := request["repo_states"].([]any)
+	firstRepo := repoStates[0].(map[string]any)
+	firstRepo["depends_on"] = []any{"ao-command"}
+	firstRepo["merge_after"] = []any{"ao-command"}
+	mutated.request = filepath.Join(t.TempDir(), "foundry-request-unordered.json")
+	mutatedBody, err := json.MarshalIndent(request, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal mutated request: %v", err)
+	}
+	writeFile(t, mutated.request, string(mutatedBody))
+	code, stdout, stderr = runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", mutated.authority,
+		"--request", mutated.request,
+		"--forge-plan", mutated.forgePlan,
+		"--ao2-packet", mutated.ao2Packet,
+		"--isolation", mutated.isolation,
+		"--rollback", mutated.rollback,
+		"--kill-switch", mutated.killSwitch,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("multi-repo unordered readback exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=blocked",
+		"allowed_next_action=repair_live_mutation_evidence",
+		"first_failing_check=foundry_request",
+		"blocking_next_action=Repair multi_repo_low_risk dry-run evidence: repo dependency must appear earlier in dependency order.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("multi-repo unordered status stdout missing %q:\n%s", want, stdout)
 		}
 	}
 }
