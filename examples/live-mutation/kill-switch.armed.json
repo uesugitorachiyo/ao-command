@@ -6,6 +6,6 @@
   "mutates_repositories": false,
   "blocking_next_actions": [],
   "maintenance_suggestions": [
-    "Keep the kill switch armed before any tiny live mutation class is requested."
+    "Keep the kill switch armed before any governed live mutation class is requested."
   ]
 }

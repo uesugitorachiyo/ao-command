@@ -581,6 +581,10 @@ func (a App) liveMutationStatus(args []string) int {
 	}
 	fmt.Fprintf(a.Stdout, "ao_command_live_mutation_status=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "allowed_next_action=%s\n", summary.AllowedNextAction)
+	fmt.Fprintf(a.Stdout, "current_mutation_class=%s\n", summary.CurrentMutationClass)
+	fmt.Fprintf(a.Stdout, "next_mutation_class=%s\n", summary.NextMutationClass)
+	fmt.Fprintf(a.Stdout, "safe_to_request=%t\n", summary.SafeToRequest)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
 	fmt.Fprintf(a.Stdout, "kill_switch_state=%s\n", summary.KillSwitchState)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
@@ -595,6 +599,12 @@ func (a App) liveMutationStatus(args []string) int {
 	}
 	for _, action := range summary.BlockingNextActions {
 		fmt.Fprintf(a.Stdout, "blocking_next_action=%s\n", action)
+	}
+	for _, evidence := range summary.RequiredEvidence {
+		fmt.Fprintf(a.Stdout, "required_evidence=%s\n", evidence)
+	}
+	for _, class := range sortedStringKeys(summary.DeniedHigherClasses) {
+		fmt.Fprintf(a.Stdout, "denied_higher_class=%s reason=%s\n", class, summary.DeniedHigherClasses[class])
 	}
 	for _, suggestion := range summary.MaintenanceSuggestions {
 		fmt.Fprintf(a.Stdout, "maintenance_suggestion=%s\n", suggestion)
@@ -1266,6 +1276,12 @@ type liveMutationStatusSummary struct {
 	Artifacts               []liveMutationArtifactSummary `json:"artifacts"`
 	BlockingNextActions     []string                      `json:"blocking_next_actions"`
 	MaintenanceSuggestions  []string                      `json:"maintenance_suggestions"`
+	CurrentMutationClass    string                        `json:"current_mutation_class,omitempty"`
+	NextMutationClass       string                        `json:"next_mutation_class,omitempty"`
+	SafeToRequest           bool                          `json:"safe_to_request"`
+	SafeToExecute           bool                          `json:"safe_to_execute"`
+	RequiredEvidence        []string                      `json:"required_evidence,omitempty"`
+	DeniedHigherClasses     map[string]string             `json:"denied_higher_classes,omitempty"`
 	OperatorMode            string                        `json:"operator_mode"`
 	MutatesRepositories     bool                          `json:"mutates_repositories"`
 	SchedulesWork           bool                          `json:"schedules_work"`
@@ -1767,11 +1783,13 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	status := "ready"
 	firstFailingCheck := ""
 	killSwitchState := ""
+	currentMutationClass := ""
+	nextMutationClass := ""
 	artifacts := []liveMutationArtifactSummary{}
 	blockingActions := []string{}
 	maintenance := []string{
 		"Keep this readback observer-only; it does not grant live mutation authority.",
-		"Do not request the first tiny live mutation class until Sentinel and Promoter evidence also pass.",
+		"Do not request a live mutation class until Sentinel and Promoter evidence also pass.",
 	}
 
 	for _, spec := range specs {
@@ -1785,6 +1803,28 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		artifacts = append(artifacts, artifact)
 		if err := validateLiveMutationArtifactBoundaries(spec.name, raw); err != nil {
 			return liveMutationStatusSummary{}, err
+		}
+		if artifactCurrentClass := liveMutationMapString(raw, "current_mutation_class"); artifactCurrentClass != "" {
+			if currentMutationClass != "" && currentMutationClass != artifactCurrentClass {
+				status = "blocked"
+				if firstFailingCheck == "" {
+					firstFailingCheck = spec.name
+				}
+				blockingActions = append(blockingActions, "Repair inconsistent current mutation class evidence before proceeding.")
+			} else {
+				currentMutationClass = artifactCurrentClass
+			}
+		}
+		if artifactNextClass := liveMutationMapString(raw, "next_mutation_class"); artifactNextClass != "" {
+			if nextMutationClass != "" && nextMutationClass != artifactNextClass {
+				status = "blocked"
+				if firstFailingCheck == "" {
+					firstFailingCheck = spec.name
+				}
+				blockingActions = append(blockingActions, "Repair inconsistent next mutation class evidence before proceeding.")
+			} else {
+				nextMutationClass = artifactNextClass
+			}
 		}
 		switch artifact.Status {
 		case "ready", "approved", "armed":
@@ -1833,10 +1873,14 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		allowedNextAction = "repair_live_mutation_evidence"
 	} else if status == "failed" {
 		allowedNextAction = "stop_and_rebuild_live_mutation_evidence"
+	} else if nextMutationClass == "test_only" {
+		allowedNextAction = "request_test_only_live_rehearsal"
 	}
 	if status != "ready" && len(blockingActions) == 0 {
 		blockingActions = append(blockingActions, "Repair the first failing live-mutation evidence check before proceeding.")
 	}
+	requiredEvidence := liveMutationRequiredEvidence(nextMutationClass)
+	deniedHigherClasses := liveMutationDeniedHigherClasses(nextMutationClass)
 
 	return liveMutationStatusSummary{
 		SchemaVersion:           "ao.command.live-mutation-status.v0.1",
@@ -1848,6 +1892,12 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		Artifacts:               artifacts,
 		BlockingNextActions:     uniqueStrings(blockingActions),
 		MaintenanceSuggestions:  uniqueStrings(maintenance),
+		CurrentMutationClass:    currentMutationClass,
+		NextMutationClass:       nextMutationClass,
+		SafeToRequest:           status == "ready",
+		SafeToExecute:           false,
+		RequiredEvidence:        requiredEvidence,
+		DeniedHigherClasses:     deniedHigherClasses,
 		OperatorMode:            operatorMode,
 		MutatesRepositories:     false,
 		SchedulesWork:           false,
@@ -1856,6 +1906,36 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		CallsProviders:          false,
 		ReleaseOrPublishAllowed: false,
 	}, nil
+}
+
+func liveMutationRequiredEvidence(nextClass string) []string {
+	switch nextClass {
+	case "test_only":
+		return []string{
+			"covenant_class_ticket:test_only",
+			"foundry_class_gate:test_only",
+			"ao2_bounded_patch_packet:test_only",
+			"sentinel_no_hold:test_only",
+			"promoter_ready:test_only",
+			"rollback_proof:test_only",
+			"ci_passed:test_only",
+		}
+	default:
+		return nil
+	}
+}
+
+func liveMutationDeniedHigherClasses(nextClass string) map[string]string {
+	if nextClass != "test_only" {
+		return nil
+	}
+	reason := "denied until test_only live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete"
+	return map[string]string{
+		"low_risk_code":          reason,
+		"multi_repo_low_risk":    reason,
+		"complex_repo_mutation":  reason,
+		"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
+	}
 }
 
 func readLiveMutationPRRehearsal(gatePath string) (liveMutationPRRehearsalSummary, error) {
