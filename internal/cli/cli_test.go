@@ -1012,6 +1012,18 @@ func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
 		"next_denied_reason=denied until low_risk_code live rehearsal evidence is recorded",
 		"safe_to_request=true",
 		"safe_to_execute=false",
+		"multi_repo_live_rehearsal_status=denied",
+		"multi_repo_live_rehearsal_class=multi_repo_low_risk",
+		"multi_repo_live_rehearsal_safe_to_request=true",
+		"multi_repo_live_rehearsal_safe_to_execute=false",
+		"multi_repo_live_rehearsal_live_execution_authority=false",
+		"multi_repo_live_rehearsal_exact_next_action=complete_low_risk_code_live_rehearsal_before_multi_repo_live",
+		"multi_repo_live_rehearsal_missing_evidence=low_risk_code_live_success",
+		"multi_repo_live_rehearsal_missing_evidence=rollback_proof:low_risk_code_live",
+		"multi_repo_live_rehearsal_missing_evidence=sentinel_no_hold:low_risk_code_live",
+		"multi_repo_live_rehearsal_missing_evidence=promoter_promotion:low_risk_code_live",
+		"multi_repo_live_rehearsal_missing_evidence=command_readback:low_risk_code_live",
+		"multi_repo_live_rehearsal_missing_evidence=clean_main_ci:low_risk_code_live",
 		"operator_mode=read_only",
 		"mutates_repositories=false",
 		"schedules_work=false",
@@ -1026,6 +1038,58 @@ func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("multi-repo low-risk dry-run status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("multi-repo low-risk live-mutation json status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SafeToExecute bool `json:"safe_to_execute"`
+		Denial        struct {
+			Status                        string   `json:"status"`
+			MutationClass                 string   `json:"mutation_class"`
+			HighestProvenLiveClass        string   `json:"highest_proven_live_class"`
+			LowRiskCodeLiveEvidenceStatus string   `json:"low_risk_code_live_evidence_status"`
+			SafeToExecute                 bool     `json:"safe_to_execute"`
+			LiveExecutionAuthority        bool     `json:"live_execution_authority"`
+			MissingEvidence               []string `json:"missing_evidence"`
+			ExactNextAction               string   `json:"exact_next_action"`
+		} `json:"multi_repo_live_rehearsal_denial"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid multi-repo live-mutation status JSON: %v\n%s", err, stdout)
+	}
+	if got.SafeToExecute ||
+		got.Denial.Status != "denied" ||
+		got.Denial.MutationClass != "multi_repo_low_risk" ||
+		got.Denial.HighestProvenLiveClass != "test_only" ||
+		got.Denial.LowRiskCodeLiveEvidenceStatus != "missing" ||
+		got.Denial.SafeToExecute ||
+		got.Denial.LiveExecutionAuthority ||
+		got.Denial.ExactNextAction != "complete_low_risk_code_live_rehearsal_before_multi_repo_live" {
+		t.Fatalf("unexpected multi-repo live rehearsal denial JSON: %+v", got)
+	}
+	for _, want := range []string{
+		"low_risk_code_live_success",
+		"rollback_proof:low_risk_code_live",
+		"sentinel_no_hold:low_risk_code_live",
+		"promoter_promotion:low_risk_code_live",
+		"command_readback:low_risk_code_live",
+		"clean_main_ci:low_risk_code_live",
+	} {
+		if !contains(got.Denial.MissingEvidence, want) {
+			t.Fatalf("multi-repo live rehearsal denial JSON missing %s: %+v", want, got.Denial)
 		}
 	}
 
