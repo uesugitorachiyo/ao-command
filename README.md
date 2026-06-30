@@ -123,7 +123,10 @@ reports repo-by-repo dependency order and rollback readiness, still with
 the highest proven live class remains `test_only` and `multi_repo_low_risk`
 live promotion is denied. Each repo readback includes its serialized order,
 planned dry-run PR placeholder, rollback scope, dependencies, and merge-after
-constraints. Complex and fully unsupervised mutation remain denied.
+constraints. It also emits `multi_repo_live_rehearsal_denial` when the dry-run
+chain is requestable but live multi-repo execution is blocked by missing
+`low_risk_code` live evidence. Complex and fully unsupervised mutation remain
+denied.
 When `--sentinel-hold` is supplied, Command reads the AO Sentinel
 `ao.sentinel.live-mutation-hold.v0.1` packet, reports the class hold verdict,
 and blocks the status if Sentinel still holds. This is readback only and does

@@ -632,6 +632,19 @@ func (a App) liveMutationStatus(args []string) int {
 			fmt.Fprintf(a.Stdout, "denial_audit_ci_requirement=%s\n", requirement)
 		}
 	}
+	if summary.MultiRepoLiveRehearsalDenial != nil {
+		denial := summary.MultiRepoLiveRehearsalDenial
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_status=%s\n", denial.Status)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_class=%s\n", denial.MutationClass)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_safe_to_request=%t\n", denial.SafeToRequest)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_safe_to_execute=%t\n", denial.SafeToExecute)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_live_execution_authority=%t\n", denial.LiveExecutionAuthority)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_exact_next_action=%s\n", denial.ExactNextAction)
+		fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_denial_reason=%s\n", denial.DenialReason)
+		for _, evidence := range denial.MissingEvidence {
+			fmt.Fprintf(a.Stdout, "multi_repo_live_rehearsal_missing_evidence=%s\n", evidence)
+		}
+	}
 	if summary.SentinelHold != nil {
 		hold := summary.SentinelHold
 		fmt.Fprintf(a.Stdout, "sentinel_hold_status=%s\n", hold.Status)
@@ -1331,6 +1344,7 @@ type liveMutationStatusSummary struct {
 	SafeToExecute                  bool                          `json:"safe_to_execute"`
 	RequiredEvidence               []string                      `json:"required_evidence,omitempty"`
 	LowRiskCodeDenialAudit         *lowRiskCodeDenialAudit       `json:"low_risk_code_denial_audit,omitempty"`
+	MultiRepoLiveRehearsalDenial   *multiRepoLiveRehearsalDenial `json:"multi_repo_live_rehearsal_denial,omitempty"`
 	SentinelHold                   *liveMutationSentinelHold     `json:"sentinel_hold,omitempty"`
 	DeniedHigherClasses            map[string]string             `json:"denied_higher_classes,omitempty"`
 	RepoStates                     []liveMutationRepoState       `json:"repo_states,omitempty"`
@@ -1375,6 +1389,21 @@ type lowRiskCodeDenialAudit struct {
 	CIRequirements                  []string `json:"ci_requirements"`
 	ExactNextAction                 string   `json:"exact_next_action"`
 	DenialReason                    string   `json:"denial_reason"`
+}
+
+type multiRepoLiveRehearsalDenial struct {
+	SchemaVersion                 string   `json:"schema_version"`
+	Status                        string   `json:"status"`
+	MutationClass                 string   `json:"mutation_class"`
+	CurrentClass                  string   `json:"current_class"`
+	HighestProvenLiveClass        string   `json:"highest_proven_live_class"`
+	LowRiskCodeLiveEvidenceStatus string   `json:"low_risk_code_live_evidence_status"`
+	SafeToRequest                 bool     `json:"safe_to_request"`
+	SafeToExecute                 bool     `json:"safe_to_execute"`
+	LiveExecutionAuthority        bool     `json:"live_execution_authority"`
+	MissingEvidence               []string `json:"missing_evidence"`
+	ExactNextAction               string   `json:"exact_next_action"`
+	DenialReason                  string   `json:"denial_reason"`
 }
 
 type liveMutationRepoState struct {
@@ -2029,11 +2058,15 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 	lowRiskCodeLiveEvidenceStatus := ""
 	nextDeniedClass := ""
 	nextDeniedReason := ""
+	var multiRepoDenial *multiRepoLiveRehearsalDenial
 	if currentMutationClass == "low_risk_code" || nextMutationClass == "multi_repo_low_risk" {
 		lowRiskCodeLiveEvidenceStatus = currentClassLiveEvidenceStatus
 		if lowRiskCodeLiveEvidenceStatus != "completed" {
 			nextDeniedClass = "multi_repo_low_risk"
 			nextDeniedReason = "denied until low_risk_code live rehearsal evidence is recorded"
+			if nextMutationClass == "multi_repo_low_risk" {
+				multiRepoDenial = newMultiRepoLiveRehearsalDenial(status == "ready", highestProvenLiveClass, lowRiskCodeLiveEvidenceStatus, nextDeniedReason)
+			}
 		}
 	}
 	var lowRiskDenialAudit *lowRiskCodeDenialAudit
@@ -2062,6 +2095,7 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		SafeToExecute:                  false,
 		RequiredEvidence:               requiredEvidence,
 		LowRiskCodeDenialAudit:         lowRiskDenialAudit,
+		MultiRepoLiveRehearsalDenial:   multiRepoDenial,
 		SentinelHold:                   sentinelHold,
 		DeniedHigherClasses:            deniedHigherClasses,
 		RepoStates:                     repoStates,
@@ -2100,6 +2134,39 @@ func newLowRiskCodeDenialAudit(safeToRequest bool) *lowRiskCodeDenialAudit {
 		CIRequirements:  []string{"ci_passed:low_risk_code_live"},
 		ExactNextAction: "build_low_risk_code_promotion_prerequisites",
 		DenialReason:    "low_risk_code live execution remains denied until policy promotion, rollback proof, Sentinel clear verdict, Promoter promotion, Command readback, and PR CI evidence all exist for the exact class scope.",
+	}
+}
+
+func newMultiRepoLiveRehearsalDenial(safeToRequest bool, highestProvenLiveClass, lowRiskCodeLiveEvidenceStatus, denialReason string) *multiRepoLiveRehearsalDenial {
+	if highestProvenLiveClass == "" {
+		highestProvenLiveClass = "test_only"
+	}
+	if lowRiskCodeLiveEvidenceStatus == "" {
+		lowRiskCodeLiveEvidenceStatus = "missing"
+	}
+	if denialReason == "" {
+		denialReason = "denied until low_risk_code live rehearsal evidence is recorded"
+	}
+	return &multiRepoLiveRehearsalDenial{
+		SchemaVersion:                 "ao.command.multi-repo-live-rehearsal-denial.v0.1",
+		Status:                        "denied",
+		MutationClass:                 "multi_repo_low_risk",
+		CurrentClass:                  "low_risk_code",
+		HighestProvenLiveClass:        highestProvenLiveClass,
+		LowRiskCodeLiveEvidenceStatus: lowRiskCodeLiveEvidenceStatus,
+		SafeToRequest:                 safeToRequest,
+		SafeToExecute:                 false,
+		LiveExecutionAuthority:        false,
+		MissingEvidence: []string{
+			"low_risk_code_live_success",
+			"rollback_proof:low_risk_code_live",
+			"sentinel_no_hold:low_risk_code_live",
+			"promoter_promotion:low_risk_code_live",
+			"command_readback:low_risk_code_live",
+			"clean_main_ci:low_risk_code_live",
+		},
+		ExactNextAction: "complete_low_risk_code_live_rehearsal_before_multi_repo_live",
+		DenialReason:    denialReason,
 	}
 }
 
