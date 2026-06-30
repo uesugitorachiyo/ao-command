@@ -530,6 +530,95 @@ func TestPulseStatusFailsClosedForMalformedAndUnsafeInputs(t *testing.T) {
 	}
 }
 
+func TestBlueprintAtlasFoundryStatusReportsReadyPath(t *testing.T) {
+	paths := writeBlueprintAtlasFoundryFixtures(t, "ready")
+	code, stdout, stderr := runWithFake([]string{
+		"blueprint-atlas-foundry", "status",
+		"--atlas-blueprint-import", paths.atlasImport,
+		"--preflight", paths.preflight,
+		"--foundry-gate", paths.foundryGate,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("blueprint-atlas-foundry status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_blueprint_atlas_foundry=ready",
+		"blueprint_pack_status=ready",
+		"atlas_import_status=ready",
+		"preflight_status=ready",
+		"foundry_gate_status=ready",
+		"ready_reason=Blueprint pack compiled by Atlas and Foundry gate is ready.",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("blueprint-atlas-foundry stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestBlueprintAtlasFoundryStatusReportsBlockedPath(t *testing.T) {
+	paths := writeBlueprintAtlasFoundryFixtures(t, "blocked")
+	code, stdout, stderr := runWithFake([]string{
+		"blueprint-atlas-foundry", "status",
+		"--atlas-blueprint-import", paths.atlasImport,
+		"--preflight", paths.preflight,
+		"--foundry-gate", paths.foundryGate,
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("blueprint-atlas-foundry blocked status exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		SchemaVersion       string   `json:"schema_version"`
+		Status              string   `json:"status"`
+		BlueprintPackStatus string   `json:"blueprint_pack_status"`
+		AtlasImportStatus   string   `json:"atlas_import_status"`
+		FoundryGateStatus   string   `json:"foundry_gate_status"`
+		BlockedReason       string   `json:"blocked_reason"`
+		BlockingNextActions []string `json:"blocking_next_actions"`
+		OperatorMode        string   `json:"operator_mode"`
+		SafeToExecute       bool     `json:"safe_to_execute"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid blueprint-atlas-foundry JSON: %v\n%s", err, stdout)
+	}
+	if got.SchemaVersion != "ao.command.blueprint-atlas-foundry-status.v0.1" ||
+		got.Status != "blocked" ||
+		got.BlueprintPackStatus != "blocked" ||
+		got.AtlasImportStatus != "blocked" ||
+		got.FoundryGateStatus != "blocked" ||
+		got.BlockedReason != "atlas_blueprint_import" ||
+		!contains(got.BlockingNextActions, "return to AO Blueprint for scoped build authorization") ||
+		got.OperatorMode != "read_only" ||
+		got.SafeToExecute {
+		t.Fatalf("unexpected blocked blueprint-atlas-foundry status: %+v", got)
+	}
+}
+
+func TestBlueprintAtlasFoundryStatusRejectsAuthorityDrift(t *testing.T) {
+	paths := writeBlueprintAtlasFoundryFixtures(t, "ready")
+	body, err := os.ReadFile(paths.atlasImport)
+	if err != nil {
+		t.Fatalf("read Atlas import: %v", err)
+	}
+	writeFile(t, paths.atlasImport, strings.Replace(string(body), `"safe_to_execute": false`, `"safe_to_execute": true`, 1))
+	code, stdout, stderr := runWithFake([]string{
+		"blueprint-atlas-foundry", "status",
+		"--atlas-blueprint-import", paths.atlasImport,
+		"--preflight", paths.preflight,
+		"--foundry-gate", paths.foundryGate,
+		"--json",
+	}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("authority drift exit=%d want 1 stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "must remain read-only") {
+		t.Fatalf("stderr missing authority reason: %s", stderr)
+	}
+}
+
 func TestComplexRefactorStatusReportsReadOnlySummary(t *testing.T) {
 	summary := writeComplexRefactorSummaryFixture(t, "ready")
 	code, stdout, stderr := runWithFake([]string{"complex-refactor", "status", "--summary", summary}, &fakeRunner{})
@@ -3563,6 +3652,122 @@ type pulseGateFixturePaths struct {
 	preflight string
 	lifecycle string
 	startGate string
+}
+
+type blueprintAtlasFoundryFixturePaths struct {
+	atlasImport string
+	preflight   string
+	foundryGate string
+}
+
+func writeBlueprintAtlasFoundryFixtures(t *testing.T, mode string) blueprintAtlasFoundryFixturePaths {
+	t.Helper()
+	dir := t.TempDir()
+	paths := blueprintAtlasFoundryFixturePaths{
+		atlasImport: filepath.Join(dir, "atlas-blueprint-import.json"),
+		preflight:   filepath.Join(dir, "pulse-intake-preflight.json"),
+		foundryGate: filepath.Join(dir, "pulse-overnight-start-gate.json"),
+	}
+	atlasStatus := mode
+	preflightStatus := mode
+	gateStatus := mode
+	readyForFoundry := "true"
+	atlasBlueprintStatus := mode
+	atlasStatusField := "ready"
+	firstFailingCheck := ""
+	blockingNextActions := "[]"
+	readyReason := "Ready Atlas Blueprint import fixture."
+	if mode == "blocked" {
+		readyForFoundry = "false"
+		atlasStatusField = "missing"
+		firstFailingCheck = "atlas_blueprint_import"
+		blockingNextActions = `["return to AO Blueprint for scoped build authorization"]`
+		readyReason = "Atlas Blueprint import is blocked until build authorization is scoped."
+	}
+	writeFile(t, paths.atlasImport, `{
+  "contract_version": "ao.atlas.blueprint-import.v0.1",
+  "id": "blueprint-atlas-foundry-command-test",
+  "project_id": "command-readback-test",
+  "status": "`+atlasStatus+`",
+  "reason": "`+readyReason+`",
+  "blueprint_pack": {
+    "ref": "examples/blueprint/low-risk-code-pack.json",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "build_authorization": {
+    "ref": "examples/blueprint/build-authorization.json",
+    "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "target_instance": "demo-stack",
+  "workgraph_id": "low-risk-code-workgraph",
+  "mutation_class": "low_risk_code",
+  "downstream_foundry_import": {
+    "ref": "examples/atlas/foundry-import.json",
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "digests": {
+    "blueprint_pack": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "build_authorization": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "implementation_spec": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "quality_profile": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "candidate_rules": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "mutation_class_model": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "candidate_selection": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "workgraph": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "downstream_foundry_import": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "safety_limits": ["fixture only", "no live execution authority"],
+  "blocking_next_actions": `+blockingNextActions+`,
+  "ready_for_foundry": `+readyForFoundry+`,
+  "safe_to_execute": false,
+  "live_execution_proven": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "calls_providers": false,
+  "release_or_publish_allowed": false
+}`)
+	atlasImportSHA, err := sha256File(paths.atlasImport)
+	if err != nil {
+		t.Fatalf("hash Atlas import fixture: %v", err)
+	}
+	sourceArtifacts := `[
+    {"name":"blueprint_authorization","path":"examples/blueprint/build-authorization.json","schema_version":"ao.blueprint.build-authorization.v0.1","status":"ready","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    {"name":"atlas_blueprint_import","path":"examples/atlas/blueprint-import.json","schema_version":"ao.atlas.blueprint-import.v0.1","status":"` + atlasStatus + `","sha256":"` + atlasImportSHA + `"}
+  ]`
+	writeFile(t, paths.preflight, `{
+  "schema_version": "ao.foundry.pulse-intake-preflight.v0.1",
+  "status": "`+preflightStatus+`",
+  "blueprint_status": "ready",
+  "atlas_blueprint_status": "`+atlasBlueprintStatus+`",
+  "atlas_status": "`+atlasStatusField+`",
+  "first_failing_check": "`+firstFailingCheck+`",
+  "checks": [],
+  "blocking_next_actions": `+blockingNextActions+`,
+  "maintenance_suggestions": ["keep pulse intake preflight fixture/local"],
+  "source_artifacts": `+sourceArtifacts+`
+}`)
+	preflightSHA, err := sha256File(paths.preflight)
+	if err != nil {
+		t.Fatalf("hash preflight fixture: %v", err)
+	}
+	allowedNextAction := "start_next_slice"
+	if mode == "blocked" {
+		allowedNextAction = "collect_atlas_blueprint_import_readback"
+	}
+	writeFile(t, paths.foundryGate, `{
+  "schema_version": "ao.foundry.pulse-overnight-start-gate.v0.1",
+  "status": "`+gateStatus+`",
+  "allowed_next_action": "`+allowedNextAction+`",
+  "first_failing_check": "`+firstFailingCheck+`",
+  "blocking_next_actions": `+blockingNextActions+`,
+  "maintenance_suggestions": ["run this gate before autonomous overnight/event-loop advancement"],
+  "source_hashes": [
+    {"name":"intake_preflight","path":"examples/pulse-gate/ready.preflight.json","schema_version":"ao.foundry.pulse-intake-preflight.v0.1","sha256":"`+preflightSHA+`"}
+  ]
+}`)
+	return paths
 }
 
 func writePulseGateFixtures(t *testing.T, mode string) pulseGateFixturePaths {

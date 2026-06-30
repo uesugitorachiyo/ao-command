@@ -237,6 +237,9 @@ go run ./cmd/ao-command rehearse --forge /tmp/ao-forge-v0.1.3 --tag v0.1.3 --out
   schedule, request, approve, execute, promote, or mutate repository work.
 - `pulse status` reads AO Foundry Pulse gate evidence and does not start loops,
   merge PRs, create branches, call providers, publish, or mutate repositories.
+- `blueprint-atlas-foundry status` reads the Blueprint pack status from Atlas,
+  the Atlas import status from Foundry preflight evidence, and the Foundry gate
+  status without starting, approving, or executing work.
 - `rehearse` only runs AO Forge release-preview dry-run evidence and then
   inspects the produced audit.
 - Dangerous writes are intentionally out of scope for v0.1.
@@ -255,7 +258,9 @@ The current stack boundary is:
 4. AO Forge: trusted factory brain, release gates, GoalRun state, readiness, and
    verified evidence.
 5. AO Command v0.1: human/operator command center over Blueprint, Atlas,
-   Foundry, Forge, Covenant, AO2, and readback evidence.
+   Foundry, Forge, Covenant, AO2, and readback evidence, including the
+   Blueprint -> Atlas -> Foundry status chain for oversized and live-mutation
+   work.
 6. AO Covenant, AO2, and ao2-control-plane: policy, governed execution, and
    evidence readback.
 
@@ -272,6 +277,8 @@ go vet ./...
 go build -o bin/ao-command ./cmd/ao-command
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json --json
 go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json --json
+# After generating Foundry's Blueprint -> Atlas -> Pulse dry-run evidence:
+go run ./cmd/ao-command blueprint-atlas-foundry status --atlas-blueprint-import ../ao-foundry/examples/atlas/blueprint-import.low-risk-code.json --preflight ../ao-foundry/docs/evidence/pulse/blueprint-atlas-pulse-e2e-local/ready/pulse-intake-preflight.json --foundry-gate ../ao-foundry/docs/evidence/pulse/blueprint-atlas-pulse-e2e-local/ready/pulse-overnight-start-gate.json --json
 go run ./cmd/ao-command rsi health --arena-gate ../ao-arena/tmp/arena-promotion-gate.json --crucible-gate ../ao-crucible/tmp/crucible-hardening-gate.json --sentinel-verdict ../ao-sentinel/tmp/sentinel-verdict.json --promoter-gate ../ao-promoter/tmp/promotion-gate.json --foundry-gate ../ao-foundry/tmp/pulse-rsi-verify/rsi-improvement-gate.json --foundry-candidate ../ao-foundry/tmp/pulse-rsi-verify/rsi-candidate.json --foundry-next-task ../ao-foundry/tmp/pulse-rsi-verify/rsi-next-improvement-task.json --forge-retained-gate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-improvement-gate-retention-proof.json --forge-retained-candidate ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-candidate-retention-proof.json --forge-retained-next-task ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-foundry-rsi-next-improvement-task-retention-proof.json --forge-retained-command-health ../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/ao-command-rsi-health-retention-proof.json --bundle-out tmp/rsi-health-bundle.json --json
 scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke
 scripts/rsi-evidence-chain-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --out tmp/rsi-evidence-chain-smoke
