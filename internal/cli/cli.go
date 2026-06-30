@@ -1875,6 +1875,8 @@ func readLiveMutationStatus(authorityPath, requestPath, forgePlanPath, ao2Packet
 		allowedNextAction = "stop_and_rebuild_live_mutation_evidence"
 	} else if nextMutationClass == "test_only" {
 		allowedNextAction = "request_test_only_live_rehearsal"
+	} else if nextMutationClass == "low_risk_code" {
+		allowedNextAction = "request_low_risk_code_dry_run"
 	}
 	if status != "ready" && len(blockingActions) == 0 {
 		blockingActions = append(blockingActions, "Repair the first failing live-mutation evidence check before proceeding.")
@@ -1920,21 +1922,41 @@ func liveMutationRequiredEvidence(nextClass string) []string {
 			"rollback_proof:test_only",
 			"ci_passed:test_only",
 		}
+	case "low_risk_code":
+		return []string{
+			"test_only_success",
+			"covenant_class_ticket:low_risk_code",
+			"foundry_class_gate:low_risk_code",
+			"ao2_dry_run_packet:low_risk_code",
+			"sentinel_no_hold:low_risk_code",
+			"promoter_ready:low_risk_code",
+			"rollback_proof:low_risk_code",
+			"ci_passed:low_risk_code",
+		}
 	default:
 		return nil
 	}
 }
 
 func liveMutationDeniedHigherClasses(nextClass string) map[string]string {
-	if nextClass != "test_only" {
+	switch nextClass {
+	case "test_only":
+		reason := "denied until test_only live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete"
+		return map[string]string{
+			"low_risk_code":          reason,
+			"multi_repo_low_risk":    reason,
+			"complex_repo_mutation":  reason,
+			"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
+		}
+	case "low_risk_code":
+		reason := "denied until low_risk_code dry-run is promoted, live rehearsal evidence exists, rollback proof and CI pass, and no holds remain"
+		return map[string]string{
+			"multi_repo_low_risk":    reason,
+			"complex_repo_mutation":  reason,
+			"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
+		}
+	default:
 		return nil
-	}
-	reason := "denied until test_only live rehearsal, rollback proof, CI, Sentinel, Promoter, and Command evidence complete"
-	return map[string]string{
-		"low_risk_code":          reason,
-		"multi_repo_low_risk":    reason,
-		"complex_repo_mutation":  reason,
-		"fully_unsupervised_rsi": "denied until every governed lower mutation class has completed live evidence and no active holds",
 	}
 }
 

@@ -1,0 +1,21 @@
+{
+  "schema_version": "ao.foundry.live-mutation-rollback-rehearsal.v0.1",
+  "status": "ready",
+  "mode": "dry_run_only",
+  "candidate_path": "examples/live-mutation-rollback/low-risk-code-rollback.candidate.json",
+  "candidate_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "mutation_class": "low_risk_code",
+  "current_mutation_class": "test_only",
+  "next_mutation_class": "low_risk_code",
+  "first_failing_check": "",
+  "authority_boundaries": {
+    "dry_run_only": true,
+    "live_mutation_allowed": false,
+    "mutates_repositories": false,
+    "schedules_work": false,
+    "executes_work": false,
+    "approves_work": false,
+    "provider_calls_allowed": false,
+    "release_or_publish_allowed": false
+  }
+}

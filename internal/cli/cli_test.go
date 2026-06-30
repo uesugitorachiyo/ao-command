@@ -819,6 +819,43 @@ func TestLiveMutationStatusReportsTestOnlyReadback(t *testing.T) {
 	}
 }
 
+func TestLiveMutationStatusReportsLowRiskCodeDryRunReadback(t *testing.T) {
+	paths := lowRiskCodeDryRunFixturePaths()
+	code, stdout, stderr := runWithFake([]string{
+		"live-mutation", "status",
+		"--authority", paths.authority,
+		"--request", paths.request,
+		"--forge-plan", paths.forgePlan,
+		"--ao2-packet", paths.ao2Packet,
+		"--isolation", paths.isolation,
+		"--rollback", paths.rollback,
+		"--kill-switch", paths.killSwitch,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("low-risk live-mutation status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_live_mutation_status=ready",
+		"allowed_next_action=request_low_risk_code_dry_run",
+		"current_mutation_class=test_only",
+		"next_mutation_class=low_risk_code",
+		"safe_to_request=true",
+		"safe_to_execute=false",
+		"operator_mode=read_only",
+		"mutates_repositories=false",
+		"schedules_work=false",
+		"executes_work=false",
+		"required_evidence=test_only_success",
+		"required_evidence=rollback_proof:low_risk_code",
+		"required_evidence=ci_passed:low_risk_code",
+		"denied_higher_class=complex_repo_mutation",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("low-risk dry-run status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
 	paths := liveDocsApprovalFixturePaths()
 	code, stdout, stderr := runWithFake([]string{
@@ -3373,6 +3410,21 @@ func testOnlyLiveMutationFixturePaths() liveMutationPaths {
 		ao2Packet:  fixture("ao2-packet.test-only-ready.json"),
 		isolation:  fixture("worktree-isolation.test-only-ready.json"),
 		rollback:   fixture("rollback-rehearsal.test-only-ready.json"),
+		killSwitch: fixture("kill-switch.armed.json"),
+	}
+}
+
+func lowRiskCodeDryRunFixturePaths() liveMutationPaths {
+	fixture := func(name string) string {
+		return filepath.Join("..", "..", "examples", "live-mutation", name)
+	}
+	return liveMutationPaths{
+		authority:  fixture("covenant-authority.low-risk-dry-run-ready.json"),
+		request:    fixture("foundry-request.low-risk-dry-run-ready.json"),
+		forgePlan:  fixture("forge-plan.low-risk-dry-run-ready.json"),
+		ao2Packet:  fixture("ao2-packet.low-risk-dry-run-ready.json"),
+		isolation:  fixture("worktree-isolation.low-risk-dry-run-ready.json"),
+		rollback:   fixture("rollback-rehearsal.low-risk-dry-run-ready.json"),
 		killSwitch: fixture("kill-switch.armed.json"),
 	}
 }
