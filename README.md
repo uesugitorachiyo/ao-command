@@ -119,14 +119,15 @@ PR CI evidence, and exact next action. The checked multi-repo low-risk fixture
 reports repo-by-repo dependency order and rollback readiness, still with
 `safe_to_execute=false`. It also reports `highest_proven_live_class`,
 `low_risk_code_live_evidence_status`, `next_denied_class`, and
-`next_denied_reason`; until completed `low_risk_code` live evidence exists,
-the highest proven live class remains `test_only` and `multi_repo_low_risk`
-live promotion is denied. Each repo readback includes its serialized order,
-planned dry-run PR placeholder, rollback scope, dependencies, and merge-after
-constraints. It also emits `multi_repo_live_rehearsal_denial` when the dry-run
-chain is requestable but live multi-repo execution is blocked by missing
-`low_risk_code` live evidence. Complex and fully unsupervised mutation remain
-denied.
+`next_denied_reason`. Earlier fixtures kept the highest proven live class at
+`test_only` until completed `low_risk_code` live evidence existed; later merged
+evidence now records `fully_unsupervised_complex_mutation` as the highest proven
+live class for the governed 26-node first non-planning rehearsal boundary. Each
+repo readback includes its serialized order, planned dry-run PR placeholder,
+rollback scope, dependencies, and merge-after constraints. It also emits
+`multi_repo_live_rehearsal_denial` when the dry-run chain is requestable but
+live multi-repo execution is blocked by missing lower-class live evidence.
+Broader RSI remains denied.
 When `--sentinel-hold` is supplied, Command reads the AO Sentinel
 `ao.sentinel.live-mutation-hold.v0.1` packet, reports the class hold verdict,
 and blocks the status if Sentinel still holds. This is readback only and does
@@ -210,6 +211,14 @@ the AO Forge aggregate proof at
 `../ao-forge/docs/evidence/goals/ao2-weekend-hardening/20260619T180000Z-verification/bounded-rsi-improvement-chain-retention-proof.json`
 and the AO Covenant claim-boundary fixtures at
 `../ao-covenant/examples/full-rsi-claim-boundary/`.
+
+The final bounded evidence readback accepts only the bounded class decision:
+`decision=promote_bounded_rsi_evidence_rehearsal_keep_broad_rsi_denied`.
+`bounded_rsi_evidence_rehearsal` may be reported as live-proven, while broad
+RSI, hidden self-modification, and unrestricted self-modification remain
+denied. This readback keeps `highest_proven_live_class` at
+`fully_unsupervised_complex_mutation` and `next_denied_class` at `RSI`; it does
+not schedule, execute, approve, publish, or mutate anything.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
