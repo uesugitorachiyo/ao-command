@@ -121,8 +121,10 @@ reports repo-by-repo dependency order and rollback readiness, still with
 `low_risk_code_live_evidence_status`, `next_denied_class`, and
 `next_denied_reason`. Earlier fixtures kept the highest proven live class at
 `test_only` until completed `low_risk_code` live evidence existed; later merged
-evidence now records `fully_unsupervised_complex_mutation` as the highest proven
-live class for the governed 26-node first non-planning rehearsal boundary. Each
+evidence records `fully_unsupervised_complex_mutation` as proven for the governed
+26-node first non-planning rehearsal boundary, and newer bounded application
+evidence records `bounded_rsi_self_improvement_application` as the highest
+proven live class for the exact private readback/eval rubric rehearsal. Each
 repo readback includes its serialized order, planned dry-run PR placeholder,
 rollback scope, dependencies, and merge-after constraints. It also emits
 `multi_repo_live_rehearsal_denial` when the dry-run chain is requestable but
@@ -216,9 +218,22 @@ The final bounded evidence readback accepts only the bounded class decision:
 `decision=promote_bounded_rsi_evidence_rehearsal_keep_broad_rsi_denied`.
 `bounded_rsi_evidence_rehearsal` may be reported as live-proven, while broad
 RSI, hidden self-modification, and unrestricted self-modification remain
-denied. This readback keeps `highest_proven_live_class` at
-`fully_unsupervised_complex_mutation` and `next_denied_class` at `RSI`; it does
-not schedule, execute, approve, publish, or mutate anything.
+denied. This prior bounded-evidence readback does not schedule, execute,
+approve, publish, or mutate anything, and it is superseded by the bounded
+self-improvement application class readback below for the current highest live
+class and next denied class.
+
+The bounded self-improvement application readback accepts only the exact bounded
+class decision:
+`class_decision=bounded_rsi_self_improvement_application_proven`.
+`bounded_rsi_self_improvement_application` may be reported as proven only for
+the exact private readback/eval rubric rehearsal. Command reads back
+`highest_proven_live_class=bounded_rsi_self_improvement_application` and
+`next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
+self-modification, hidden instruction mutation, policy/auth/secret/provider/
+deploy/release/config/dependency expansion, and policy-changing autonomy remain
+denied. This is readback only; it does not schedule, execute, approve, publish,
+or mutate anything.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
