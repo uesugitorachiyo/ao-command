@@ -126,8 +126,7 @@ evidence records `fully_unsupervised_complex_mutation` as proven for the governe
 evidence records `bounded_rsi_self_improvement_application` as the highest
 proven live class for the exact private readback/eval rubric rehearsal. Later
 exact safe public claim wording evidence records
-`exact_safe_public_claim_wording_conservative_readback_evidence` as the highest
-proven live class for conservative public-safe tracked readback evidence. Each
+`exact_safe_public_claim_wording_conservative_readback_evidence` as prior conservative public-safe tracked readback evidence. Each
 repo readback includes its serialized order, planned dry-run PR placeholder,
 rollback scope, dependencies, and merge-after constraints. It also emits
 `multi_repo_live_rehearsal_denial` when the dry-run chain is requestable but
@@ -244,10 +243,10 @@ public wording evidence:
 The approved public wording is exactly: "AO has public-safe tracked readback
 evidence for bounded improvement-claim review and retraction rehearsal; stronger
 recursive-improvement claims remain denied." Command reads back
-`highest_proven_live_class=exact_safe_public_claim_wording_conservative_readback_evidence`
+`highest_proven_live_class=public_safe_bounded_improvement_evidence_expansion_four_attempts`
 and `next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
 self-modification, hidden instruction mutation, policy-changing autonomy, and
-stronger recursive-improvement claims remain denied. This is readback only; it
+stronger recursive-improvement claims remain denied. Stronger recursive-improvement wording remains denied. This is readback only; it
 does not schedule, execute, approve, publish, or mutate anything.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
