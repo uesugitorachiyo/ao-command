@@ -243,7 +243,7 @@ public wording evidence:
 The approved public wording is exactly: "AO has public-safe tracked readback
 evidence for bounded improvement-claim review and retraction rehearsal; stronger
 recursive-improvement claims remain denied." Command reads back
-`highest_proven_live_class=public_safe_reviewed_causal_chain_boundary_generalization_evidence`
+`highest_proven_live_class=public_safe_intermediate_causal_review_claim_evidence`
 and `next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
 self-modification, hidden instruction mutation, policy-changing autonomy, and
 stronger recursive-improvement claims remain denied. Stronger recursive-improvement wording remains denied. This is readback only; it
@@ -360,6 +360,6 @@ The v0.1.0 operator closeout is tracked in
 
 AO Command is licensed under `Apache-2.0`. See `LICENSE`.
 
-`public_safe_reviewed_causal_chain_boundary_generalization_evidence` is now proven from AO Foundry PR #187, commit
-`ee55f7918b86f997922707e4c0b2ba6536fe43cf`, with tracked public evidence under
-`docs/evidence/recursive-improvement-reviewed-boundary-generalization/`. The approved public wording is exactly: "AO has public-safe reviewed causal-chain boundary generalization evidence across multiple independent claim-review roles; stronger recursive-improvement wording and broad_RSI remain denied." The highest proven live class is `public_safe_reviewed_causal_chain_boundary_generalization_evidence` and the next denied class is `broad_RSI`. Stronger recursive-improvement wording remains denied, `broad_RSI` remains denied, unrestricted self-modification remains denied, hidden instruction mutation remains denied, and policy-changing autonomy remains denied.
+`public_safe_intermediate_causal_review_claim_evidence` is now proven from AO Foundry PR #189, commit
+`860e3f353ab833c4a671b9d0ee6d8101ece2815c`, with tracked public evidence under
+`docs/evidence/recursive-improvement-safe-intermediate-claim/`. The approved public wording is exactly: "AO has public-safe intermediate causal-review evidence that bounded improvement evidence can guide and constrain later claim review across independent roles; stronger recursive-improvement wording and broad_RSI remain denied." The highest proven live class is `public_safe_intermediate_causal_review_claim_evidence` and the next denied class is `broad_RSI`. Stronger recursive-improvement wording remains denied, `broad_RSI` remains denied, unrestricted self-modification remains denied, hidden instruction mutation remains denied, and policy-changing autonomy remains denied.
