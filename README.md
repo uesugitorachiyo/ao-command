@@ -124,7 +124,10 @@ reports repo-by-repo dependency order and rollback readiness, still with
 evidence records `fully_unsupervised_complex_mutation` as proven for the governed
 26-node first non-planning rehearsal boundary, and newer bounded application
 evidence records `bounded_rsi_self_improvement_application` as the highest
-proven live class for the exact private readback/eval rubric rehearsal. Each
+proven live class for the exact private readback/eval rubric rehearsal. Later
+exact safe public claim wording evidence records
+`exact_safe_public_claim_wording_conservative_readback_evidence` as the highest
+proven live class for conservative public-safe tracked readback evidence. Each
 repo readback includes its serialized order, planned dry-run PR placeholder,
 rollback scope, dependencies, and merge-after constraints. It also emits
 `multi_repo_live_rehearsal_denial` when the dry-run chain is requestable but
@@ -234,6 +237,18 @@ self-modification, hidden instruction mutation, policy/auth/secret/provider/
 deploy/release/config/dependency expansion, and policy-changing autonomy remain
 denied. This is readback only; it does not schedule, execute, approve, publish,
 or mutate anything.
+
+The exact safe public claim wording readback accepts only the conservative
+public wording evidence:
+`class_decision=exact_safe_public_claim_wording_conservative_readback_evidence_proven`.
+The approved public wording is exactly: "AO has public-safe tracked readback
+evidence for bounded improvement-claim review and retraction rehearsal; stronger
+recursive-improvement claims remain denied." Command reads back
+`highest_proven_live_class=exact_safe_public_claim_wording_conservative_readback_evidence`
+and `next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
+self-modification, hidden instruction mutation, policy-changing autonomy, and
+stronger recursive-improvement claims remain denied. This is readback only; it
+does not schedule, execute, approve, publish, or mutate anything.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
 matches that tag:
