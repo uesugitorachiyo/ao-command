@@ -243,10 +243,24 @@ public wording evidence:
 The approved public wording is exactly: "AO has public-safe tracked readback
 evidence for bounded improvement-claim review and retraction rehearsal; stronger
 recursive-improvement claims remain denied." Command reads back
-`highest_proven_live_class=public_safe_intermediate_causal_review_claim_evidence`
+`highest_proven_live_class=public_safe_causal_review_evidence_selection_guidance`
 and `next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
 self-modification, hidden instruction mutation, policy-changing autonomy, and
 stronger recursive-improvement claims remain denied. Stronger recursive-improvement wording remains denied. This is readback only; it
+does not schedule, execute, approve, publish, or mutate anything.
+
+The causal-review evidence-selection guidance readback accepts only the narrow
+public-safe guidance evidence:
+`class_decision=public_safe_causal_review_evidence_selection_guidance_proven`.
+The approved public wording is exactly: "AO has public-safe causal-review
+evidence that prior bounded evidence can guide later evidence-selection and
+blocker prioritization under independent review gates; stronger
+recursive-improvement wording and broad_RSI remain denied." Command reads back
+`highest_proven_live_class=public_safe_causal_review_evidence_selection_guidance`
+and `next_denied_class=broad_RSI`, while `broad_RSI`, stronger
+recursive-improvement wording, unrestricted self-modification, hidden instruction
+mutation, and policy-changing autonomy remain denied. The guard is explicit:
+stronger recursive-improvement wording remains denied. This is readback only; it
 does not schedule, execute, approve, publish, or mutate anything.
 
 For an existing release tag, rehearse from an AO Forge checkout whose HEAD
@@ -360,6 +374,20 @@ The v0.1.0 operator closeout is tracked in
 
 AO Command is licensed under `Apache-2.0`. See `LICENSE`.
 
-`public_safe_intermediate_causal_review_claim_evidence` is now proven from AO Foundry PR #189, commit
+`public_safe_intermediate_causal_review_claim_evidence` remains prior evidence
+from AO Foundry PR #189, commit
 `860e3f353ab833c4a671b9d0ee6d8101ece2815c`, with tracked public evidence under
-`docs/evidence/recursive-improvement-safe-intermediate-claim/`. The approved public wording is exactly: "AO has public-safe intermediate causal-review evidence that bounded improvement evidence can guide and constrain later claim review across independent roles; stronger recursive-improvement wording and broad_RSI remain denied." The highest proven live class is `public_safe_intermediate_causal_review_claim_evidence` and the next denied class is `broad_RSI`. Stronger recursive-improvement wording remains denied, `broad_RSI` remains denied, unrestricted self-modification remains denied, hidden instruction mutation remains denied, and policy-changing autonomy remains denied.
+`docs/evidence/recursive-improvement-safe-intermediate-claim/`. The approved public wording is exactly: "AO has public-safe intermediate causal-review evidence that bounded improvement evidence can guide and constrain later claim review across independent roles; stronger recursive-improvement wording and broad_RSI remain denied." Stronger recursive-improvement wording remains denied, `broad_RSI` remains denied, unrestricted self-modification remains denied, hidden instruction mutation remains denied, and policy-changing autonomy remains denied.
+
+`public_safe_causal_review_evidence_selection_guidance` is proven from AO Foundry
+PR #191, commit `413b70f15d8f3d0203dc7be076914a2f3b539881`, with tracked public
+evidence under `docs/evidence/recursive-improvement-evidence-selection-guidance/`.
+The approved public wording is exactly: "AO has public-safe causal-review
+evidence that prior bounded evidence can guide later evidence-selection and
+blocker prioritization under independent review gates; stronger
+recursive-improvement wording and broad_RSI remain denied." The highest proven
+live class is `public_safe_causal_review_evidence_selection_guidance` and the
+next denied class is `broad_RSI`. Stronger recursive-improvement wording
+remains denied, `broad_RSI` remains denied, unrestricted self-modification
+remains denied, hidden instruction mutation remains denied, and policy-changing
+autonomy remains denied.
