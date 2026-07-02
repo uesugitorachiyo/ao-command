@@ -453,9 +453,35 @@ The approved public wording is exactly: "AO has public-safe bounded sandboxed
 self-change application evidence across four non-readback exact-scope evidence
 tasks under sandbox containment gates; unrestricted self-modification, hidden
 instruction mutation, policy-changing autonomy, and forbidden surface expansion
-remain denied." The highest proven live class is
-`public_safe_bounded_sandboxed_self_change_applications_non_readback_four_attempts`;
+remain denied." This remains prior evidence. The highest proven live class is
+`public_safe_bounded_sandboxed_self_change_cross_repo_doc_readback_four_attempts`;
 the next denied class is `unrestricted_self_modification`.
+
+## Cross-Repo Documentation/Readback Sandboxed Self-Change Readback
+
+The cross-repo documentation/readback sandboxed self-change readback accepts only
+the narrow class decision:
+`public_safe_bounded_sandboxed_self_change_cross_repo_doc_readback_four_attempts_proven_unrestricted_self_modification_denied`.
+It is proven from AO Foundry PR #221, commit
+`a993f4b6284de711cdb2b3fd6f006bb2706df9c8`, with tracked public evidence under
+`docs/evidence/unrestricted-self-modification-cross-repo-doc-readback/`.
+The approved public wording is exactly: "AO has public-safe bounded sandboxed
+self-change cross-repo documentation/readback evidence across four exact-scope
+documentation consistency attempts under sandbox containment gates; unrestricted
+self-modification, hidden instruction mutation, policy-changing autonomy, and
+forbidden surface expansion remain denied." The mission completed `180 / 180`
+nodes. The measured attempts were Architecture source-of-truth consistency
+evidence quality `0.70` -> `0.94`, Component README readback parity quality
+`0.68` -> `0.93`, CI/PR merge evidence linkage quality `0.67` -> `0.92`, and
+stale-language denial sweep quality `0.66` -> `0.91`. Command reads back
+`highest_proven_live_class=public_safe_bounded_sandboxed_self_change_cross_repo_doc_readback_four_attempts`
+and `next_denied_class=unrestricted_self_modification`.
+
+This is readback only. It does not schedule, execute, approve, publish, release,
+deploy, call providers, use credentials, update dependencies, widen
+policy/auth/config, expose secrets, mutate direct main, allow concurrent
+mutation, allow hidden instruction mutation, allow policy-changing autonomy,
+allow forbidden surface expansion, or prove unrestricted self-modification.
 
 ## Broad RSI Ten-Day Governed Campaign Segment 07 Readback
 
