@@ -466,3 +466,24 @@ mutation, prove full 10-day campaign completion, or prove `broad_RSI`.
 `broad_RSI` is proven from AO Foundry PR #211, commit `630edc70905db745380edd1072e04b546dcccfe3`, with tracked public evidence under `docs/evidence/broad-rsi-ten-day-campaign-segment-08/`. The approved public wording is exactly: "AO has proven governed broad_RSI for public claim publication across the AO stack public-safe 10-day evidence campaign; unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, and forbidden surface expansion remain denied." Campaign completion is `2800 / 2800` nodes. `Command` reads back `highest_proven_live_class=broad_RSI` and `next_denied_class=unrestricted_self_modification`.
 
 This does not prove unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, release/deploy/publish/upload/tag/provider calls, credential use, direct main mutation, concurrent mutation, or any unrestricted RSI claim.
+
+## Unrestricted Self-Modification Readiness Boundary Readback
+
+The unrestricted self-modification readiness-boundary readback accepts only the
+narrow class decision:
+`public_safe_unrestricted_self_modification_readiness_boundary_map_proven_unrestricted_self_modification_denied`.
+It is proven from AO Foundry PR #215, commit
+`e5ed75361554b1c90518c0e0df10b18adec77e5f`, with tracked public evidence under
+`docs/evidence/unrestricted-self-modification-readiness-boundary/`. The approved
+public wording is exactly: "AO has public-safe readiness-boundary evidence for
+evaluating unrestricted self-modification; unrestricted self-modification,
+hidden instruction mutation, policy-changing autonomy, and forbidden surface
+expansion remain denied." Command reads back
+`highest_proven_live_class=public_safe_unrestricted_self_modification_readiness_boundary_map`
+and `next_denied_class=unrestricted_self_modification`.
+
+This is readback only. It does not schedule, execute, approve, publish, release,
+deploy, call providers, use credentials, update dependencies, widen
+policy/auth/config, expose secrets, mutate direct main, allow concurrent
+mutation, allow hidden instruction mutation, or prove unrestricted
+self-modification.
