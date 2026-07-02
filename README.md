@@ -231,7 +231,7 @@ class decision:
 `bounded_rsi_self_improvement_application` may be reported as proven only for
 the exact private readback/eval rubric rehearsal. Command reads back
 `highest_proven_live_class=bounded_rsi_self_improvement_application` and
-`next_denied_class=broad_RSI`, while `broad_RSI`, unrestricted
+`next_denied_class=unrestricted_self_modification`, while `broad_RSI`, unrestricted
 self-modification, hidden instruction mutation, policy/auth/secret/provider/
 deploy/release/config/dependency expansion, and policy-changing autonomy remain
 denied. This is readback only; it does not schedule, execute, approve, publish,
@@ -270,7 +270,7 @@ evidence-application evidence showing causal-review guidance can select and
 prioritize later bounded evidence attempts under independent gates; stronger
 recursive-improvement wording and broad_RSI remain denied." Command reads back
 `highest_proven_live_class=public_safe_bounded_recursive_improvement_review_durability_evidence`
-and `next_denied_class=broad_RSI`, while `broad_RSI`, stronger
+and `next_denied_class=unrestricted_self_modification`, while `broad_RSI`, stronger
 recursive-improvement wording, unrestricted self-modification, hidden instruction
 mutation, and policy-changing autonomy remain denied. This is readback only; it
 does not schedule, execute, approve, publish, or mutate anything.
@@ -418,26 +418,26 @@ autonomy remains denied.
 
 ## Public-Safe Reviewer-Approved Bounded Wording Evidence
 
-`public_safe_reviewer_approved_bounded_recursive_improvement_wording_evidence` is proven from AO Foundry PR #195, commit `0f742738324c185ba7243bc53ee2f1bc81804ef6`, with tracked public evidence under `docs/evidence/recursive-improvement-reviewer-approved-wording/`. The approved public wording is exactly: "AO has public-safe reviewer-approved bounded recursive-improvement wording evidence showing guided evidence application can improve later evidence attempts under independent review gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `public_safe_broad_RSI_governed_campaign_segment_07_evidence` and the next denied class is `broad_RSI`.
+`public_safe_reviewer_approved_bounded_recursive_improvement_wording_evidence` is proven from AO Foundry PR #195, commit `0f742738324c185ba7243bc53ee2f1bc81804ef6`, with tracked public evidence under `docs/evidence/recursive-improvement-reviewer-approved-wording/`. The approved public wording is exactly: "AO has public-safe reviewer-approved bounded recursive-improvement wording evidence showing guided evidence application can improve later evidence attempts under independent review gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `broad_RSI` and the next denied class is `unrestricted_self_modification`.
 
 This does not prove `broad_RSI`, unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, or unbounded stronger recursive-improvement claims.
-`public_safe_bounded_recursive_improvement_wording_generality_evidence` is proven from AO Foundry PR #197, commit `166398641b655f0da97817659acc771026b204e7`, with tracked public evidence under `docs/evidence/recursive-improvement-bounded-wording-generality/`. The approved public wording is exactly: "AO has public-safe bounded recursive-improvement wording generality evidence showing reviewer-approved bounded wording can transfer across additional public-safe review tasks under independent gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `public_safe_broad_RSI_governed_campaign_segment_07_evidence` and the next denied class is `broad_RSI`.
+`public_safe_bounded_recursive_improvement_wording_generality_evidence` is proven from AO Foundry PR #197, commit `166398641b655f0da97817659acc771026b204e7`, with tracked public evidence under `docs/evidence/recursive-improvement-bounded-wording-generality/`. The approved public wording is exactly: "AO has public-safe bounded recursive-improvement wording generality evidence showing reviewer-approved bounded wording can transfer across additional public-safe review tasks under independent gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `broad_RSI` and the next denied class is `unrestricted_self_modification`.
 
 This does not prove `broad_RSI`, unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, or unbounded stronger recursive-improvement claims.
 ### Review Durability Evidence Readback
 
-`public_safe_bounded_recursive_improvement_review_durability_evidence` is proven from AO Foundry PR #199, commit `12d524b60c200cab643e44f9105169b045602798`, with tracked public evidence under `docs/evidence/recursive-improvement-review-durability/`. The approved public wording is exactly: "AO has public-safe bounded recursive-improvement review durability evidence showing bounded recursive-improvement wording remains stable across delayed re-review, adversarial drift checks, stale-language sweeps, and reproducibility retests under independent gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `public_safe_broad_RSI_governed_campaign_segment_07_evidence` and the next denied class is `broad_RSI`.
+`public_safe_bounded_recursive_improvement_review_durability_evidence` is proven from AO Foundry PR #199, commit `12d524b60c200cab643e44f9105169b045602798`, with tracked public evidence under `docs/evidence/recursive-improvement-review-durability/`. The approved public wording is exactly: "AO has public-safe bounded recursive-improvement review durability evidence showing bounded recursive-improvement wording remains stable across delayed re-review, adversarial drift checks, stale-language sweeps, and reproducibility retests under independent gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `broad_RSI` and the next denied class is `unrestricted_self_modification`.
 
 
 `public_safe_recursive_improvement_claim_threshold_calibration_evidence` is proven from AO Foundry PR #201, commit `3e3d1101da112fa5ff0aca26f8ab2933652f3502`, with tracked public evidence under
-`docs/evidence/recursive-improvement-claim-threshold-calibration/`. The approved public wording is exactly: "AO has public-safe recursive-improvement claim threshold calibration evidence showing stronger bounded recursive-improvement claims can be evaluated against reproducible threshold, public-reader, adversarial wording, Covenant, Sentinel, rollback, and retraction gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `public_safe_broad_RSI_governed_campaign_segment_07_evidence` and the next denied class is `broad_RSI`.
+`docs/evidence/recursive-improvement-claim-threshold-calibration/`. The approved public wording is exactly: "AO has public-safe recursive-improvement claim threshold calibration evidence showing stronger bounded recursive-improvement claims can be evaluated against reproducible threshold, public-reader, adversarial wording, Covenant, Sentinel, rollback, and retraction gates; broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `broad_RSI` and the next denied class is `unrestricted_self_modification`.
 
 This does not prove `broad_RSI`, unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, or unbounded stronger recursive-improvement claims.
 This does not prove `broad_RSI`, unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, or unbounded stronger recursive-improvement claims.
 
 ## Broad RSI Ten-Day Governed Campaign First Segment Readback
 
-`public_safe_broad_RSI_governed_campaign_first_segment_state_evidence` is proven from AO Foundry PR #203, commit `b7523031d61b11df374e2203bdf44927e2d8432a`, with tracked public evidence under `docs/evidence/broad-rsi-ten-day-governed-evidence-campaign/`. The approved public wording is exactly: "AO has public-safe broad_RSI governed campaign first-segment state evidence showing a 10-day evidence campaign can start from mission-state, no-repeat, sufficiency, Pulse reliability, context-repack, rollback, and claim-gate readbacks while broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `public_safe_broad_RSI_governed_campaign_segment_07_evidence` and the next denied class is `broad_RSI`.
+`public_safe_broad_RSI_governed_campaign_first_segment_state_evidence` is proven from AO Foundry PR #203, commit `b7523031d61b11df374e2203bdf44927e2d8432a`, with tracked public evidence under `docs/evidence/broad-rsi-ten-day-governed-evidence-campaign/`. The approved public wording is exactly: "AO has public-safe broad_RSI governed campaign first-segment state evidence showing a 10-day evidence campaign can start from mission-state, no-repeat, sufficiency, Pulse reliability, context-repack, rollback, and claim-gate readbacks while broad_RSI remains denied." This remains prior evidence; the current highest proven live class is `broad_RSI` and the next denied class is `unrestricted_self_modification`.
 
 This does not prove `broad_RSI`, full 10-day campaign completion, final repeated independent broad evidence, final cross-repo generality proof for `broad_RSI`, exact `broad_RSI` public-reader approval, exact `broad_RSI` Covenant or Architecture approval, unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, release/deploy/publish/upload/tag/provider calls, credential use, direct main mutation, concurrent mutation, or unbounded stronger recursive-improvement claims.
 
@@ -453,10 +453,16 @@ evidence extending the 10-day campaign through late-campaign cross-repo
 generality challenge, independent replay durability, claim-boundary adversarial
 stress, public-reader exact-denial clarity, context-repack, rollback, and
 claim-gate readbacks while broad_RSI remains denied." Command reads back
-`highest_proven_live_class=public_safe_broad_RSI_governed_campaign_segment_07_evidence`
-and `next_denied_class=broad_RSI`.
+`highest_proven_live_class=broad_RSI`
+and `next_denied_class=unrestricted_self_modification`.
 
 This is readback only. It does not schedule, execute, approve, publish, release,
 deploy, call providers, use credentials, update dependencies, widen
 policy/auth/config, expose secrets, mutate direct main, allow concurrent
 mutation, prove full 10-day campaign completion, or prove `broad_RSI`.
+
+## Governed Broad RSI Campaign Completion Readback
+
+`broad_RSI` is proven from AO Foundry PR #211, commit `630edc70905db745380edd1072e04b546dcccfe3`, with tracked public evidence under `docs/evidence/broad-rsi-ten-day-campaign-segment-08/`. The approved public wording is exactly: "AO has proven governed broad_RSI for public claim publication across the AO stack public-safe 10-day evidence campaign; unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, and forbidden surface expansion remain denied." Campaign completion is `2800 / 2800` nodes. `Command` reads back `highest_proven_live_class=broad_RSI` and `next_denied_class=unrestricted_self_modification`.
+
+This does not prove unrestricted self-modification, hidden instruction mutation, policy-changing autonomy, policy/auth/secret/provider/deploy/release/config/dependency expansion, release/deploy/publish/upload/tag/provider calls, credential use, direct main mutation, concurrent mutation, or any unrestricted RSI claim.
