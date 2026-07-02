@@ -478,7 +478,7 @@ It is proven from AO Foundry PR #216, commit
 public wording is exactly: "AO has public-safe sandbox containment evidence for
 dry-run self-change proposal evaluation; unrestricted self-modification,
 hidden instruction mutation, policy-changing autonomy, and forbidden surface
-expansion remain denied." Command reads back
+expansion remain denied." This sandbox-containment readback recorded
 `highest_proven_live_class=public_safe_unrestricted_self_modification_sandbox_containment_rehearsal`
 and `next_denied_class=unrestricted_self_modification`.
 
@@ -487,3 +487,25 @@ deploy, call providers, use credentials, update dependencies, widen
 policy/auth/config, expose secrets, mutate direct main, allow concurrent
 mutation, allow hidden instruction mutation, or prove unrestricted
 self-modification.
+
+## Unrestricted Self-Modification Adversarial Negative Controls Readback
+
+The unrestricted self-modification adversarial negative-control readback accepts
+only the narrow class decision:
+`public_safe_unrestricted_self_modification_adversarial_negative_controls_proven_unrestricted_self_modification_denied`.
+It is proven from AO Foundry PR #217, commit
+`b7e487022ae7436be13e0a49d0bf15f5c7936145`, with tracked public evidence under
+`docs/evidence/unrestricted-self-modification-adversarial-negative-controls/`.
+The approved public wording is exactly: "AO has public-safe adversarial
+negative-control evidence that unsafe dry-run self-change proposals are
+rejected under sandbox containment gates; unrestricted self-modification,
+hidden instruction mutation, policy-changing autonomy, and forbidden surface
+expansion remain denied." Command reads back
+`highest_proven_live_class=public_safe_unrestricted_self_modification_adversarial_negative_controls`
+and `next_denied_class=unrestricted_self_modification`.
+
+This is readback only. It does not schedule, execute, approve, publish, release,
+deploy, call providers, use credentials, update dependencies, widen
+policy/auth/config, expose secrets, mutate direct main, allow concurrent
+mutation, allow hidden instruction mutation, allow policy-changing autonomy,
+allow forbidden surface expansion, or prove unrestricted self-modification.
