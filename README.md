@@ -729,3 +729,22 @@ calls, credential use, hidden instruction mutation, policy-changing autonomy,
 forbidden surface expansion, release/deploy/publish/upload/tag authority,
 dependency updates, direct-main mutation, concurrent mutation, broad public
 claims, or unrestricted RSI.
+
+## Sandbox Bypass Resistance Evidence Readback
+
+AO Command reads back
+`public_safe_sandbox_bypass_resistance_evidence_four_attempts` from AO Foundry
+PR #235, commit `322bd8b2ce3b6f8134196d33b0f605e0fe68f938`, with tracked
+public evidence under
+`docs/evidence/unrestricted-self-modification-sandbox-bypass-resistance/` and
+final rollup
+`docs/evidence/unrestricted-self-modification-sandbox-bypass-resistance/final-rollup.json`.
+The Command result is
+`public_safe_sandbox_bypass_resistance_evidence_four_attempts_proven_unrestricted_self_modification_denied`.
+The approved public wording is exactly: "AO has public-safe sandbox containment bypass resistance evidence across four exact-scope reversible negative-control attempts under contained external-command self-change gates; unrestricted self-modification, sandbox containment bypass authority, provider calls, credential use, hidden instruction mutation, policy-changing autonomy, forbidden surface expansion, release/deploy/publish/upload/tag authority, dependency updates, direct-main mutation, concurrent mutation, and broad public claims remain denied."
+
+Command remains read-only. It does not schedule, approve, execute, mutate,
+publish, release, call providers, use credentials, bypass sandbox containment,
+or widen authority. The highest proven live class is
+`public_safe_sandbox_bypass_resistance_evidence_four_attempts`; the next denied
+class is `unrestricted_self_modification`.
