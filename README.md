@@ -43,6 +43,7 @@ owner.
 
 ```sh
 go run ./cmd/ao-command status --forge ../ao-forge
+go run ./cmd/ao-command mission status --status examples/mission/command-status.ready.json
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json
@@ -64,6 +65,11 @@ Use `--json` on any command for machine-readable output when available.
 `status` reports the AO Forge readiness percentage, gate count, required next
 action count, derived `production_ready` decision, `operator_mode=read_only`,
 and release governance state.
+
+`mission status` reads AO Mission's `ao.command.mission-status.v0.1` readback
+and reports the mission route, phase, next action, and authority boundary. It
+rejects any packet that claims execution, approval, or repository mutation
+authority.
 
 `stack` reads the AO Foundry active-stack readiness ledger and reports the
 active repository count, release handoff gates, `operator_mode=read_only`, and

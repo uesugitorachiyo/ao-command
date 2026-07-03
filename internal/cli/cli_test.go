@@ -147,6 +147,40 @@ func TestStackReadsFoundryActiveStackLedger(t *testing.T) {
 	}
 }
 
+func TestMissionStatusReadsAOMissionCommandStatus(t *testing.T) {
+	statusPath := filepath.Join("..", "..", "examples", "mission", "command-status.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_status=ready",
+		"mission_id=mission-demo",
+		"current_route=ao-atlas",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "status", "--status", statusPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission status json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission status JSON: %v\n%s", err, stdout)
+	}
+	if got["command_schema_version"] != "ao.command.v0.1" || got["operator_mode"] != "read_only" || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected mission status summary: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
