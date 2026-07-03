@@ -704,3 +704,28 @@ release/deploy/publish/upload/tag authority, dependency updates, direct-main
 mutation, concurrent mutation, broad public claims, or unrestricted RSI. The
 highest proven live class is `public_safe_bounded_sandboxed_external_execution_authority_rehearsal_four_attempts`; the next denied class is
 `unrestricted_self_modification`.
+
+## Contained External-Command Self-Change Application Readback
+
+AO Command reads back
+`public_safe_contained_external_command_self_change_application_four_attempts`
+from AO Foundry PR #234, commit
+`a9ea020f4b19a43c22dcde7194409989862ae951`, with tracked public evidence under
+`docs/evidence/unrestricted-self-modification-contained-external-command-self-change/`
+and final rollup
+`docs/evidence/unrestricted-self-modification-contained-external-command-self-change/final-rollup.json`.
+The approved public wording is exactly: "AO has public-safe contained external-command self-change application evidence across four exact-scope reversible allowlisted local-command attempts under sandbox containment gates; unrestricted self-modification, sandbox containment bypass, provider calls, credential use, hidden instruction mutation, policy-changing autonomy, forbidden surface expansion, release/deploy/publish/upload/tag authority, dependency updates, direct-main mutation, concurrent mutation, and broad public claims remain denied."
+
+The run completed `720 / 720` nodes. Attempt M measured `0.78` -> `0.97`,
+Attempt N measured `0.76` -> `0.96`, Attempt O measured `0.75` -> `0.95`,
+and Attempt P measured `0.74` -> `0.94`.
+
+Command remains read-only and does not approve or execute mutation. Command
+reads back
+`public_safe_contained_external_command_self_change_application_four_attempts_proven_unrestricted_self_modification_denied`
+and keeps `next_denied_class=unrestricted_self_modification`. This does not
+prove unrestricted self-modification, sandbox containment bypass, provider
+calls, credential use, hidden instruction mutation, policy-changing autonomy,
+forbidden surface expansion, release/deploy/publish/upload/tag authority,
+dependency updates, direct-main mutation, concurrent mutation, broad public
+claims, or unrestricted RSI.
