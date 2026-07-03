@@ -91,6 +91,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.complexRefactor(args[1:])
 	case "live-mutation":
 		return a.liveMutation(args[1:])
+	case "mission":
+		return a.mission(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -116,6 +118,7 @@ Usage:
   ao-command stack --ledger PATH [--json]
   ao-command atlas status --status PATH [--json]
   ao-command atlas authority-ladder --mission-status PATH [--json]
+  ao-command mission status --status PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
@@ -134,6 +137,49 @@ Commands are read-only by default. Rehearsal writes only dry-run evidence to the
 operator-provided output directory and relies on AO Forge release-preview proofs.
 AO Forge provides readiness truth, AO2 executes governed work, ao2-control-plane
 stores evidence, and AO Covenant owns allow, deny, and block decisions.`)
+}
+
+func (a App) mission(args []string) int {
+	if len(args) == 0 || args[0] != "status" {
+		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json]")
+		return 2
+	}
+	return a.missionStatus(args[1:])
+}
+
+func (a App) missionStatus(args []string) int {
+	var statusPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("mission status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&statusPath, "status", "", "path to AO Mission command status JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(statusPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command mission status: --status is required")
+		return 2
+	}
+	summary, err := readMissionCommandStatus(statusPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command mission status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_mission_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
+	fmt.Fprintf(a.Stdout, "current_route=%s\n", summary.CurrentRoute)
+	fmt.Fprintf(a.Stdout, "current_phase=%s\n", summary.CurrentPhase)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
 }
 
 type commonFlags struct {
@@ -4759,6 +4805,66 @@ func readJSONFile(path string, target any) error {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 	return nil
+}
+
+type missionCommandStatusSummary struct {
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Schema               string `json:"schema"`
+	MissionID            string `json:"mission_id"`
+	Status               string `json:"status"`
+	CurrentRoute         string `json:"current_route"`
+	CurrentPhase         string `json:"current_phase"`
+	OperatorMode         string `json:"operator_mode"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
+func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) {
+	var input struct {
+		Schema              string `json:"schema"`
+		MissionID           string `json:"mission_id"`
+		Status              string `json:"status"`
+		CurrentRoute        string `json:"current_route"`
+		CurrentPhase        string `json:"current_phase"`
+		OperatorMode        string `json:"operator_mode"`
+		SafeToExecute       bool   `json:"safe_to_execute"`
+		ExecutesWork        bool   `json:"executes_work"`
+		ApprovesWork        bool   `json:"approves_work"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		ExactNextAction     string `json:"exact_next_action"`
+	}
+	if err := readJSONFile(path, &input); err != nil {
+		return missionCommandStatusSummary{}, err
+	}
+	if input.Schema != "ao.command.mission-status.v0.1" {
+		return missionCommandStatusSummary{}, fmt.Errorf("schema must be ao.command.mission-status.v0.1")
+	}
+	if input.MissionID == "" || input.Status == "" || input.CurrentRoute == "" || input.OperatorMode == "" {
+		return missionCommandStatusSummary{}, fmt.Errorf("mission status requires mission_id, status, current_route, and operator_mode")
+	}
+	if input.OperatorMode != operatorMode {
+		return missionCommandStatusSummary{}, fmt.Errorf("operator_mode must be %s", operatorMode)
+	}
+	if input.SafeToExecute || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories {
+		return missionCommandStatusSummary{}, fmt.Errorf("mission status must not claim execution, approval, or repository mutation authority")
+	}
+	return missionCommandStatusSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               input.Schema,
+		MissionID:            input.MissionID,
+		Status:               input.Status,
+		CurrentRoute:         input.CurrentRoute,
+		CurrentPhase:         input.CurrentPhase,
+		OperatorMode:         input.OperatorMode,
+		SafeToExecute:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		ExactNextAction:      input.ExactNextAction,
+	}, nil
 }
 
 func statusSummaryFromAudit(forge string, audit productionReadinessAudit) statusSummary {
