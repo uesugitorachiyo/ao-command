@@ -215,6 +215,41 @@ func TestMissionNextReadsAOMissionRouteDecision(t *testing.T) {
 	}
 }
 
+func TestMissionArtifactsReadsAOMissionArtifactManifest(t *testing.T) {
+	manifestPath := filepath.Join("..", "..", "examples", "mission", "artifact-manifest.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "artifacts", "--manifest", manifestPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission artifacts exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_artifacts=ready",
+		"mission_id=mission-demo",
+		"artifact_count=3",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"artifact=route_readback:examples/mission/route-decision.ready.json",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission artifacts stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "artifacts", "--manifest", manifestPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission artifacts json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission artifacts JSON: %v\n%s", err, stdout)
+	}
+	if got["command_schema_version"] != "ao.command.v0.1" || got["operator_mode"] != "read_only" || got["artifact_count"].(float64) != 3 {
+		t.Fatalf("unexpected mission artifacts summary: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
