@@ -181,6 +181,40 @@ func TestMissionStatusReadsAOMissionCommandStatus(t *testing.T) {
 	}
 }
 
+func TestMissionNextReadsAOMissionRouteDecision(t *testing.T) {
+	decisionPath := filepath.Join("..", "..", "examples", "mission", "route-decision.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "next", "--decision", decisionPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission next exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_next=ready",
+		"mission_id=mission-demo",
+		"route=ao-atlas",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"exact_next_action=AO Atlas compiles mission context before AO Foundry import",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission next stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "next", "--decision", decisionPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission next json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission next JSON: %v\n%s", err, stdout)
+	}
+	if got["command_schema_version"] != "ao.command.v0.1" || got["operator_mode"] != "read_only" || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected mission next summary: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
