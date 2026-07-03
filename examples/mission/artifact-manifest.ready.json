@@ -1,0 +1,28 @@
+{
+  "schema": "ao.mission.artifact-manifest.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "operator_mode": "read_only",
+  "artifact_refs": [
+    {
+      "name": "route_readback",
+      "path": "examples/mission/route-decision.ready.json",
+      "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "name": "command_status",
+      "path": "examples/mission/command-status.ready.json",
+      "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "name": "governance_snapshot",
+      "path": "examples/mission/governance-snapshot.ready.json",
+      "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ],
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "exact_next_action": "review AO Mission artifacts as read-only evidence"
+}
