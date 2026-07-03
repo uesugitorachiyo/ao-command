@@ -289,6 +289,40 @@ func TestMissionHistoryReadsAOMissionRouteHistory(t *testing.T) {
 	}
 }
 
+func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
+	gatewayPath := filepath.Join("..", "..", "examples", "mission", "gateway-intent-ledger.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "gateway", "--readback", gatewayPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission gateway exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_gateway=ready",
+		"mission_id=mission-demo",
+		"gateway_count=2",
+		"intent_recorded=4",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission gateway stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "gateway", "--readback", gatewayPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission gateway json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission gateway JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-gateway.v0.1" || got["gateway_count"].(float64) != 2 || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected mission gateway summary: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
