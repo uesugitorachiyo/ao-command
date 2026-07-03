@@ -45,6 +45,7 @@ owner.
 go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command mission status --status examples/mission/command-status.ready.json
 go run ./cmd/ao-command mission next --decision examples/mission/route-decision.ready.json
+go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json
 go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
@@ -77,6 +78,11 @@ authority.
 readback and reports the next route, reason, and exact next action in
 `operator_mode=read_only`. It rejects any packet that claims execution,
 approval, or repository mutation authority.
+
+`mission history` reads AO Mission route-history exports and reports route
+count, latest route, and exact next action in `operator_mode=read_only`. It
+rejects any route-history entry that claims execution, approval, or repository
+mutation authority.
 
 `mission artifacts` reads AO Mission's `ao.mission.artifact-manifest.v0.1`
 artifact manifest and reports the artifact count and refs in

@@ -250,6 +250,45 @@ func TestMissionArtifactsReadsAOMissionArtifactManifest(t *testing.T) {
 	}
 }
 
+func TestMissionHistoryReadsAOMissionRouteHistory(t *testing.T) {
+	historyPath := filepath.Join("..", "..", "examples", "mission", "route-history.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "history", "--history", historyPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_history=ready",
+		"mission_id=mission-demo",
+		"route_count=2",
+		"latest_route=ao-atlas",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"exact_next_action=AO Atlas compiles mission context before AO Foundry import",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission history stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "history", "--history", historyPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission history JSON: %v\n%s", err, stdout)
+	}
+	if got["command_schema_version"] != "ao.command.v0.1" || got["operator_mode"] != "read_only" || got["route_count"].(float64) != 2 {
+		t.Fatalf("unexpected mission history summary: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false {
+		t.Fatalf("mission history widened authority: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})

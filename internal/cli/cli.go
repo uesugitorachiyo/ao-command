@@ -120,6 +120,7 @@ Usage:
   ao-command atlas authority-ladder --mission-status PATH [--json]
   ao-command mission status --status PATH [--json]
   ao-command mission next --decision PATH [--json]
+  ao-command mission history --history PATH [--json]
   ao-command mission artifacts --manifest PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
@@ -143,18 +144,20 @@ stores evidence, and AO Covenant owns allow, deny, and block decisions.`)
 
 func (a App) mission(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission artifacts --manifest PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json]")
 		return 2
 	}
 	switch args[0] {
 	case "artifacts":
 		return a.missionArtifacts(args[1:])
+	case "history":
+		return a.missionHistory(args[1:])
 	case "next":
 		return a.missionNext(args[1:])
 	case "status":
 		return a.missionStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission artifacts --manifest PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json]")
 		return 2
 	}
 }
@@ -262,6 +265,41 @@ func (a App) missionArtifacts(args []string) int {
 	for _, artifact := range summary.Artifacts {
 		fmt.Fprintf(a.Stdout, "artifact=%s:%s\n", artifact.Name, artifact.Path)
 	}
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) missionHistory(args []string) int {
+	var historyPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("mission history", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&historyPath, "history", "", "path to AO Mission route history JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(historyPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command mission history: --history is required")
+		return 2
+	}
+	summary, err := readMissionRouteHistory(historyPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command mission history: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_mission_history=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
+	fmt.Fprintf(a.Stdout, "route_count=%d\n", summary.RouteCount)
+	fmt.Fprintf(a.Stdout, "latest_route=%s\n", summary.LatestRoute)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
 	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
 	return 0
 }
@@ -4943,6 +4981,37 @@ type missionArtifactsSummary struct {
 	ExactNextAction      string               `json:"exact_next_action"`
 }
 
+type missionRouteHistoryItem struct {
+	Schema              string `json:"schema"`
+	MissionID           string `json:"mission_id"`
+	Status              string `json:"status"`
+	Route               string `json:"route"`
+	Reason              string `json:"reason"`
+	OperatorMode        string `json:"operator_mode"`
+	SafeToRequest       bool   `json:"safe_to_request"`
+	SafeToExecute       bool   `json:"safe_to_execute"`
+	ExecutesWork        bool   `json:"executes_work"`
+	ApprovesWork        bool   `json:"approves_work"`
+	MutatesRepositories bool   `json:"mutates_repositories"`
+	ExactNextAction     string `json:"exact_next_action"`
+}
+
+type missionHistorySummary struct {
+	CommandSchemaVersion string                    `json:"command_schema_version"`
+	Schema               string                    `json:"schema"`
+	MissionID            string                    `json:"mission_id"`
+	Status               string                    `json:"status"`
+	OperatorMode         string                    `json:"operator_mode"`
+	RouteCount           int                       `json:"route_count"`
+	LatestRoute          string                    `json:"latest_route"`
+	Routes               []missionRouteHistoryItem `json:"routes"`
+	SafeToExecute        bool                      `json:"safe_to_execute"`
+	ExecutesWork         bool                      `json:"executes_work"`
+	ApprovesWork         bool                      `json:"approves_work"`
+	MutatesRepositories  bool                      `json:"mutates_repositories"`
+	ExactNextAction      string                    `json:"exact_next_action"`
+}
+
 func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) {
 	var input struct {
 		Schema              string `json:"schema"`
@@ -5034,6 +5103,50 @@ func readMissionArtifactManifest(path string) (missionArtifactsSummary, error) {
 		ApprovesWork:         false,
 		MutatesRepositories:  false,
 		ExactNextAction:      input.ExactNextAction,
+	}, nil
+}
+
+func readMissionRouteHistory(path string) (missionHistorySummary, error) {
+	var input []missionRouteHistoryItem
+	if err := readJSONFile(path, &input); err != nil {
+		return missionHistorySummary{}, err
+	}
+	if len(input) == 0 {
+		return missionHistorySummary{}, fmt.Errorf("mission history requires at least one route decision")
+	}
+	missionID := input[0].MissionID
+	for i, item := range input {
+		if item.Schema != "ao.mission.route-decision.v0.1" {
+			return missionHistorySummary{}, fmt.Errorf("mission history item %d schema must be ao.mission.route-decision.v0.1", i)
+		}
+		if item.MissionID == "" || item.Status == "" || item.Route == "" || item.OperatorMode == "" || item.ExactNextAction == "" {
+			return missionHistorySummary{}, fmt.Errorf("mission history item %d requires mission_id, status, route, operator_mode, and exact_next_action", i)
+		}
+		if item.MissionID != missionID {
+			return missionHistorySummary{}, fmt.Errorf("mission history mission_id mismatch")
+		}
+		if item.OperatorMode != operatorMode {
+			return missionHistorySummary{}, fmt.Errorf("mission history item %d operator_mode must be %s", i, operatorMode)
+		}
+		if item.SafeToExecute || item.ExecutesWork || item.ApprovesWork || item.MutatesRepositories {
+			return missionHistorySummary{}, fmt.Errorf("mission history must not claim execution, approval, or repository mutation authority")
+		}
+	}
+	latest := input[len(input)-1]
+	return missionHistorySummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               "ao.command.mission-history.v0.1",
+		MissionID:            missionID,
+		Status:               "ready",
+		OperatorMode:         operatorMode,
+		RouteCount:           len(input),
+		LatestRoute:          latest.Route,
+		Routes:               append([]missionRouteHistoryItem(nil), input...),
+		SafeToExecute:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		ExactNextAction:      latest.ExactNextAction,
 	}, nil
 }
 
