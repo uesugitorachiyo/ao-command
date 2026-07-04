@@ -5614,6 +5614,8 @@ func readMissionEvidenceReadback(path string) (missionEvidenceSummary, error) {
 		evidenceKind = "scheduler_recovery"
 	case "ao.mission.ledger-compaction-readback.v0.1":
 		evidenceKind = "ledger_compaction"
+	case "ao.mission.timeline-compaction-readback.v0.1":
+		evidenceKind = "timeline_compaction"
 	default:
 		return missionEvidenceSummary{}, fmt.Errorf("unsupported mission evidence schema %q", input.Schema)
 	}

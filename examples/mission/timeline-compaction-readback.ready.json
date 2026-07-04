@@ -1,0 +1,21 @@
+{
+  "schema": "ao.mission.timeline-compaction-readback.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "route_history_before": 12,
+  "route_history_after": 3,
+  "steps_before": 10,
+  "steps_after": 3,
+  "timeline_digest": "sha256:4d6545f49e29858b51975fde6721907269c081884bc5f8c30ab8e4c8b8322945",
+  "safe_to_execute": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "provider_calls": false,
+  "release_or_publish": false,
+  "credential_use": false,
+  "direct_main_mutation": false,
+  "concurrent_mutation": false,
+  "exact_next_action": "review compacted mission timeline evidence and preserve read-only mission provenance"
+}
