@@ -477,6 +477,40 @@ func TestMissionAggregateWatchPollsReadOnlyIterations(t *testing.T) {
 	}
 }
 
+func TestMissionAggregateWatchJSONLStreamsReadOnlyIterations(t *testing.T) {
+	statusPath := filepath.Join("..", "..", "examples", "mission", "command-status.ready.json")
+	atlasPath := filepath.Join("..", "..", "examples", "mission", "atlas-workgraph-metadata.ready.json")
+	foundryPath := filepath.Join("..", "..", "examples", "mission", "foundry-e2e-smoke.ready.json")
+	code, stdout, stderr := runWithFake([]string{
+		"mission", "aggregate",
+		"--status", statusPath,
+		"--atlas-metadata", atlasPath,
+		"--foundry-smoke", foundryPath,
+		"--watch",
+		"--iterations", "3",
+		"--jsonl",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission aggregate watch jsonl exit=%d stderr=%s", code, stderr)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 JSONL lines, got %d:\n%s", len(lines), stdout)
+	}
+	for i, line := range lines {
+		var got map[string]any
+		if err := json.Unmarshal([]byte(line), &got); err != nil {
+			t.Fatalf("invalid JSONL line %d: %v\n%s", i, err, line)
+		}
+		if got["schema"] != "ao.command.mission-aggregate-watch.v0.1" || got["iteration"] != float64(i+1) {
+			t.Fatalf("bad JSONL watch line %d: %#v", i, got)
+		}
+		if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false {
+			t.Fatalf("JSONL watch widened authority on line %d: %#v", i, got)
+		}
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
