@@ -46,8 +46,13 @@ go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command mission status --status examples/mission/command-status.ready.json
 go run ./cmd/ao-command mission next --decision examples/mission/route-decision.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json
+go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json --route ao-atlas --query "Foundry import" --compact
 go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
+go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json
+go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json --compact
+go run ./cmd/ao-command mission readiness --bundle examples/mission/readiness-bundle.ready.json
 go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-intent-ledger.ready.json
+go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-replay-bundle.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json
@@ -92,15 +97,29 @@ approval, or repository mutation authority.
 `mission history` reads AO Mission route-history exports and reports route
 count, latest route, and exact next action in `operator_mode=read_only`. It
 rejects any route-history entry that claims execution, approval, or repository
-mutation authority.
+mutation authority. Compact timeline output can be narrowed with `--route`,
+`--status-filter`, and `--query` without changing read-only authority.
 
 `mission artifacts` reads AO Mission's `ao.mission.artifact-manifest.v0.1`
 artifact manifest and reports the artifact count and refs in
 `operator_mode=read_only`. It rejects any manifest that claims execution,
 approval, or repository mutation authority.
 
+`mission dashboard` reads AO Mission's `ao.mission.dashboard-readback.v0.1`
+compact operator readback and reports current route, recent-event count, and
+event index digest in `operator_mode=read_only`. It rejects any dashboard packet
+that claims execution, approval, or repository mutation authority. Use
+`--compact` for one-screen long-run Mission status readback with mission status,
+route, latest route, event count, exact next action, and authority flags.
+
+`mission readiness` reads AO Mission's
+`ao.mission.readiness-bundle-readback.v0.1` and reports repo readiness counts in
+`operator_mode=read_only`. It rejects any readiness packet that claims
+execution, approval, or repository mutation authority.
+
 `mission gateway` reads AO Mission Telegram/A2A gateway replay or
-`ao.mission.gateway-intent-ledger.v0.1` readbacks and reports intent counts in
+`ao.mission.gateway-intent-ledger.v0.1` readbacks, including
+`ao.mission.gateway-replay-bundle-readback.v0.1`, and reports intent counts in
 `operator_mode=read_only`. It rejects any gateway replay or intent record that
 claims execution, approval, or repository mutation authority; Telegram and A2A
 intents cannot grant mutation authority.
