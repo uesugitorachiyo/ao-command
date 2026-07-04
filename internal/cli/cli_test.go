@@ -449,6 +449,34 @@ func TestMissionAggregateBindsMissionAtlasFoundryReadbacks(t *testing.T) {
 	}
 }
 
+func TestMissionAggregateWatchPollsReadOnlyIterations(t *testing.T) {
+	statusPath := filepath.Join("..", "..", "examples", "mission", "command-status.ready.json")
+	atlasPath := filepath.Join("..", "..", "examples", "mission", "atlas-workgraph-metadata.ready.json")
+	foundryPath := filepath.Join("..", "..", "examples", "mission", "foundry-e2e-smoke.ready.json")
+	code, stdout, stderr := runWithFake([]string{
+		"mission", "aggregate",
+		"--status", statusPath,
+		"--atlas-metadata", atlasPath,
+		"--foundry-smoke", foundryPath,
+		"--watch",
+		"--iterations", "2",
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission aggregate watch exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission aggregate watch JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-aggregate-watch.v0.1" || got["iterations"] != float64(2) {
+		t.Fatalf("unexpected mission aggregate watch summary: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false {
+		t.Fatalf("mission aggregate watch widened authority: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
