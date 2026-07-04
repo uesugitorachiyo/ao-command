@@ -425,6 +425,22 @@ func TestMissionDashboardReadsCompactReadback(t *testing.T) {
 	if got["schema"] != "ao.command.mission-dashboard.v0.1" || got["safe_to_execute"] != false {
 		t.Fatalf("unexpected mission dashboard summary: %#v", got)
 	}
+	code, stdout, stderr = runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--compact"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard compact exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"compact_mission_status=mission=mission-demo status=active route=ao-atlas latest_route=ao-atlas events=2",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"exact_next_action=send authorized pack to AO Atlas",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("compact mission dashboard missing %q:\n%s", want, stdout)
+		}
+	}
 }
 
 func TestMissionReadinessReadsBundle(t *testing.T) {

@@ -123,7 +123,7 @@ Usage:
   ao-command mission next --decision PATH [--json]
   ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json]
   ao-command mission artifacts --manifest PATH [--json]
-  ao-command mission dashboard --dashboard PATH [--json]
+  ao-command mission dashboard --dashboard PATH [--compact] [--json]
   ao-command mission readiness --bundle PATH [--json]
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
@@ -178,7 +178,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -447,10 +447,11 @@ func (a App) missionHistory(args []string) int {
 
 func (a App) missionDashboard(args []string) int {
 	var dashboardPath string
-	var jsonOut bool
+	var jsonOut, compact bool
 	fs := flag.NewFlagSet("mission dashboard", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	fs.StringVar(&dashboardPath, "dashboard", "", "path to AO Mission dashboard readback JSON")
+	fs.BoolVar(&compact, "compact", false, "emit compact long-run mission status")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -466,6 +467,15 @@ func (a App) missionDashboard(args []string) int {
 	}
 	if jsonOut {
 		return a.writeJSON(summary)
+	}
+	if compact {
+		fmt.Fprintf(a.Stdout, "compact_mission_status=mission=%s status=%s route=%s latest_route=%s events=%d\n", summary.MissionID, summary.MissionStatus, summary.CurrentRoute, summary.LatestRoute, summary.EventCount)
+		fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+		fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+		fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+		fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+		fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+		return 0
 	}
 	fmt.Fprintf(a.Stdout, "ao_command_mission_dashboard=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)

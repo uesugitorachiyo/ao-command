@@ -49,6 +49,7 @@ go run ./cmd/ao-command mission history --history examples/mission/route-history
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json --route ao-atlas --query "Foundry import" --compact
 go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
 go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json
+go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json --compact
 go run ./cmd/ao-command mission readiness --bundle examples/mission/readiness-bundle.ready.json
 go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-intent-ledger.ready.json
 go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-replay-bundle.ready.json
@@ -107,7 +108,9 @@ approval, or repository mutation authority.
 `mission dashboard` reads AO Mission's `ao.mission.dashboard-readback.v0.1`
 compact operator readback and reports current route, recent-event count, and
 event index digest in `operator_mode=read_only`. It rejects any dashboard packet
-that claims execution, approval, or repository mutation authority.
+that claims execution, approval, or repository mutation authority. Use
+`--compact` for one-screen long-run Mission status readback with mission status,
+route, latest route, event count, exact next action, and authority flags.
 
 `mission readiness` reads AO Mission's
 `ao.mission.readiness-bundle-readback.v0.1` and reports repo readiness counts in
