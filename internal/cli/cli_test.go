@@ -396,6 +396,24 @@ func TestMissionEvidenceRejectsAuthorityDrift(t *testing.T) {
 	}
 }
 
+func TestMissionEvidenceRejectsInvalidFixtures(t *testing.T) {
+	for _, fixture := range []string{
+		"scheduler-recovery-readback.unsafe.json",
+		"ledger-compaction-readback.unsafe.json",
+	} {
+		t.Run(fixture, func(t *testing.T) {
+			readbackPath := filepath.Join("..", "..", "examples", "mission", "invalid", fixture)
+			code, _, stderr := runWithFake([]string{"mission", "evidence", "--readback", readbackPath}, &fakeRunner{})
+			if code == 0 {
+				t.Fatalf("mission evidence accepted unsafe fixture %s", fixture)
+			}
+			if !strings.Contains(stderr, "must not claim scheduling, execution, approval") {
+				t.Fatalf("unexpected unsafe fixture error for %s: %s", fixture, stderr)
+			}
+		})
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
