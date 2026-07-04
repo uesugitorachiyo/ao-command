@@ -177,7 +177,7 @@ func missionUsage() string {
 
 func (a App) missionAggregate(args []string) int {
 	var statusPath, atlasMetadataPath, foundrySmokePath string
-	var jsonOut, watch bool
+	var jsonOut, jsonlOut, watch bool
 	var iterations int
 	fs := flag.NewFlagSet("mission aggregate", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -185,6 +185,7 @@ func (a App) missionAggregate(args []string) int {
 	fs.StringVar(&atlasMetadataPath, "atlas-metadata", "", "path to AO Atlas Mission workgraph metadata JSON")
 	fs.StringVar(&foundrySmokePath, "foundry-smoke", "", "path to AO Foundry Mission e2e smoke JSON")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	fs.BoolVar(&jsonlOut, "jsonl", false, "emit one JSON object per watch iteration")
 	fs.BoolVar(&watch, "watch", false, "poll read-only aggregate status")
 	fs.IntVar(&iterations, "iterations", 1, "bounded watch iterations")
 	if err := fs.Parse(args); err != nil {
@@ -205,6 +206,34 @@ func (a App) missionAggregate(args []string) int {
 			return 2
 		}
 		watchSummary := buildMissionAggregateWatchSummary(summary, iterations)
+		if jsonlOut {
+			for i := 1; i <= iterations; i++ {
+				line := missionAggregateWatchLine{
+					CommandSchemaVersion:     watchSummary.CommandSchemaVersion,
+					Schema:                   watchSummary.Schema,
+					MissionID:                watchSummary.MissionID,
+					Status:                   watchSummary.Status,
+					Iteration:                i,
+					Iterations:               iterations,
+					Latest:                   summary,
+					PrimaryMissionProvenance: watchSummary.PrimaryMissionProvenance,
+					ProvenanceDiagnostics:    watchSummary.ProvenanceDiagnostics,
+					OperatorMode:             watchSummary.OperatorMode,
+					SafeToExecute:            false,
+					ExecutesWork:             false,
+					ApprovesWork:             false,
+					MutatesRepositories:      false,
+					ExactNextAction:          watchSummary.ExactNextAction,
+				}
+				body, err := json.Marshal(line)
+				if err != nil {
+					fmt.Fprintf(a.Stderr, "ao-command mission aggregate: %v\n", err)
+					return 1
+				}
+				fmt.Fprintln(a.Stdout, string(body))
+			}
+			return 0
+		}
 		if jsonOut {
 			return a.writeJSON(watchSummary)
 		}
@@ -5215,6 +5244,24 @@ type missionAggregateWatchSummary struct {
 	Schema                   string                  `json:"schema"`
 	MissionID                string                  `json:"mission_id"`
 	Status                   string                  `json:"status"`
+	Iterations               int                     `json:"iterations"`
+	Latest                   missionAggregateSummary `json:"latest"`
+	PrimaryMissionProvenance string                  `json:"primary_mission_provenance"`
+	ProvenanceDiagnostics    string                  `json:"provenance_diagnostics"`
+	OperatorMode             string                  `json:"operator_mode"`
+	SafeToExecute            bool                    `json:"safe_to_execute"`
+	ExecutesWork             bool                    `json:"executes_work"`
+	ApprovesWork             bool                    `json:"approves_work"`
+	MutatesRepositories      bool                    `json:"mutates_repositories"`
+	ExactNextAction          string                  `json:"exact_next_action"`
+}
+
+type missionAggregateWatchLine struct {
+	CommandSchemaVersion     string                  `json:"command_schema_version"`
+	Schema                   string                  `json:"schema"`
+	MissionID                string                  `json:"mission_id"`
+	Status                   string                  `json:"status"`
+	Iteration                int                     `json:"iteration"`
 	Iterations               int                     `json:"iterations"`
 	Latest                   missionAggregateSummary `json:"latest"`
 	PrimaryMissionProvenance string                  `json:"primary_mission_provenance"`

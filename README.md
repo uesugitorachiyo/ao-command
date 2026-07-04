@@ -53,6 +53,7 @@ go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-r
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json
+go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json --watch --iterations 3 --jsonl
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json
@@ -114,6 +115,9 @@ metadata, and AO Foundry Mission e2e smoke output into
 primary Mission provenance, and Foundry smoke status while preserving
 `safe_to_execute=false`, `executes_work=false`, `approves_work=false`, and
 `mutates_repositories=false`.
+With `--watch --jsonl`, it emits one bounded read-only aggregate object per
+iteration. JSONL watch mode does not schedule, approve, execute, mutate
+repositories, publish, call providers, or widen Mission authority.
 
 `stack` reads the AO Foundry active-stack readiness ledger and reports the
 active repository count, release handoff gates, `operator_mode=read_only`, and
