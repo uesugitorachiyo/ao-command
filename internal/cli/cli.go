@@ -177,7 +177,7 @@ func missionUsage() string {
 
 func (a App) missionAggregate(args []string) int {
 	var statusPath, atlasMetadataPath, foundrySmokePath string
-	var jsonOut, jsonlOut, watch bool
+	var jsonOut, jsonlOut, watch, compact bool
 	var iterations int
 	fs := flag.NewFlagSet("mission aggregate", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
@@ -187,6 +187,7 @@ func (a App) missionAggregate(args []string) int {
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	fs.BoolVar(&jsonlOut, "jsonl", false, "emit one JSON object per watch iteration")
 	fs.BoolVar(&watch, "watch", false, "poll read-only aggregate status")
+	fs.BoolVar(&compact, "compact", false, "emit compact watch summary")
 	fs.IntVar(&iterations, "iterations", 1, "bounded watch iterations")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -236,6 +237,14 @@ func (a App) missionAggregate(args []string) int {
 		}
 		if jsonOut {
 			return a.writeJSON(watchSummary)
+		}
+		if compact {
+			fmt.Fprintf(a.Stdout, "compact_summary=mission=%s status=%s route=%s provenance=%s iterations=%d\n", watchSummary.MissionID, watchSummary.Status, summary.CurrentRoute, watchSummary.PrimaryMissionProvenance, watchSummary.Iterations)
+			fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", watchSummary.SafeToExecute)
+			fmt.Fprintf(a.Stdout, "executes_work=%t\n", watchSummary.ExecutesWork)
+			fmt.Fprintf(a.Stdout, "approves_work=%t\n", watchSummary.ApprovesWork)
+			fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", watchSummary.ExactNextAction)
+			return 0
 		}
 		fmt.Fprintf(a.Stdout, "ao_command_mission_aggregate_watch=%s\n", watchSummary.Status)
 		fmt.Fprintf(a.Stdout, "mission_id=%s\n", watchSummary.MissionID)

@@ -511,6 +511,30 @@ func TestMissionAggregateWatchJSONLStreamsReadOnlyIterations(t *testing.T) {
 	}
 }
 
+func TestMissionAggregateWatchCompactSummary(t *testing.T) {
+	statusPath := filepath.Join("..", "..", "examples", "mission", "command-status.ready.json")
+	atlasPath := filepath.Join("..", "..", "examples", "mission", "atlas-workgraph-metadata.ready.json")
+	foundryPath := filepath.Join("..", "..", "examples", "mission", "foundry-e2e-smoke.ready.json")
+	code, stdout, stderr := runWithFake([]string{
+		"mission", "aggregate",
+		"--status", statusPath,
+		"--atlas-metadata", atlasPath,
+		"--foundry-smoke", foundryPath,
+		"--watch",
+		"--iterations", "2",
+		"--compact",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission aggregate compact watch exit=%d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "compact_summary=") || !strings.Contains(stdout, "mission-demo") {
+		t.Fatalf("compact watch output missing summary: %s", stdout)
+	}
+	if strings.Contains(stdout, "safe_to_execute=true") || strings.Contains(stdout, "executes_work=true") || strings.Contains(stdout, "approves_work=true") {
+		t.Fatalf("compact watch widened authority: %s", stdout)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
