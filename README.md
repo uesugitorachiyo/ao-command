@@ -49,7 +49,9 @@ go run ./cmd/ao-command mission history --history examples/mission/route-history
 go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
 go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-intent-ledger.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json
+go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json
+go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json

@@ -2867,6 +2867,8 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
+		{name: "README Mission scheduler recovery JSON evidence command", doc: readme, want: "go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json"},
+		{name: "README Mission ledger compaction JSON evidence command", doc: readme, want: "go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json"},
 		{name: "README Atlas status command", doc: readme, want: "go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json"},
 		{name: "README Atlas observer schema", doc: readme, want: "ao.foundry.atlas-status.v0.1"},
 		{name: "README Atlas compile-only boundary", doc: readme, want: "atlas_authority=compile_only"},
