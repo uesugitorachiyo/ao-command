@@ -1,0 +1,18 @@
+{
+  "schema": "ao.mission.ledger-compaction-readback.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "records_before": 8,
+  "records_after": 4,
+  "safe_to_execute": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "provider_calls": false,
+  "release_or_publish": false,
+  "credential_use": false,
+  "direct_main_mutation": false,
+  "concurrent_mutation": false,
+  "exact_next_action": "review compacted ledger evidence and preserve read-only mission provenance"
+}

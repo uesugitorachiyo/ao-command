@@ -123,6 +123,7 @@ Usage:
   ao-command mission history --history PATH [--json]
   ao-command mission artifacts --manifest PATH [--json]
   ao-command mission gateway --readback PATH [--json]
+  ao-command mission evidence --readback PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
@@ -145,12 +146,14 @@ stores evidence, and AO Covenant owns allow, deny, and block decisions.`)
 
 func (a App) mission(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]")
 		return 2
 	}
 	switch args[0] {
 	case "artifacts":
 		return a.missionArtifacts(args[1:])
+	case "evidence":
+		return a.missionEvidence(args[1:])
 	case "gateway":
 		return a.missionGateway(args[1:])
 	case "history":
@@ -160,7 +163,7 @@ func (a App) mission(args []string) int {
 	case "status":
 		return a.missionStatus(args[1:])
 	default:
-		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json]")
+		fmt.Fprintln(a.Stderr, "ao-command mission: usage: ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]")
 		return 2
 	}
 }
@@ -338,6 +341,41 @@ func (a App) missionGateway(args []string) int {
 	fmt.Fprintf(a.Stdout, "invalid=%d\n", summary.Invalid)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) missionEvidence(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("mission evidence", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO Mission scheduler recovery or ledger compaction readback JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command mission evidence: --readback is required")
+		return 2
+	}
+	summary, err := readMissionEvidenceReadback(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command mission evidence: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_mission_evidence=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
+	fmt.Fprintf(a.Stdout, "evidence_kind=%s\n", summary.EvidenceKind)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "schedules_work=%t\n", summary.SchedulesWork)
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
 	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
@@ -5072,6 +5110,21 @@ type missionGatewaySummary struct {
 	ExactNextAction      string   `json:"exact_next_action"`
 }
 
+type missionEvidenceSummary struct {
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Schema               string `json:"schema"`
+	MissionID            string `json:"mission_id"`
+	Status               string `json:"status"`
+	EvidenceKind         string `json:"evidence_kind"`
+	OperatorMode         string `json:"operator_mode"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	SchedulesWork        bool   `json:"schedules_work"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
 func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) {
 	var input struct {
 		Schema              string `json:"schema"`
@@ -5277,6 +5330,61 @@ func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 		ApprovesWork:         false,
 		MutatesRepositories:  false,
 		ExactNextAction:      "inspect gateway intent ledger; continue through AO Mission routing, not Telegram or A2A authority",
+	}, nil
+}
+
+func readMissionEvidenceReadback(path string) (missionEvidenceSummary, error) {
+	var input struct {
+		Schema              string `json:"schema"`
+		MissionID           string `json:"mission_id"`
+		Status              string `json:"status"`
+		ExactNextAction     string `json:"exact_next_action"`
+		SafeToExecute       bool   `json:"safe_to_execute"`
+		SchedulesWork       bool   `json:"schedules_work"`
+		ExecutesWork        bool   `json:"executes_work"`
+		ApprovesWork        bool   `json:"approves_work"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		ProviderCalls       bool   `json:"provider_calls"`
+		ReleaseOrPublish    bool   `json:"release_or_publish"`
+		CredentialUse       bool   `json:"credential_use"`
+		DirectMainMutation  bool   `json:"direct_main_mutation"`
+		ConcurrentMutation  bool   `json:"concurrent_mutation"`
+	}
+	if err := readJSONFile(path, &input); err != nil {
+		return missionEvidenceSummary{}, err
+	}
+	evidenceKind := ""
+	switch input.Schema {
+	case "ao.mission.scheduler-recovery-readback.v0.1":
+		evidenceKind = "scheduler_recovery"
+	case "ao.mission.ledger-compaction-readback.v0.1":
+		evidenceKind = "ledger_compaction"
+	default:
+		return missionEvidenceSummary{}, fmt.Errorf("unsupported mission evidence schema %q", input.Schema)
+	}
+	if strings.TrimSpace(input.MissionID) == "" {
+		return missionEvidenceSummary{}, fmt.Errorf("mission evidence readback requires mission_id")
+	}
+	if input.SafeToExecute || input.SchedulesWork || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories || input.ProviderCalls || input.ReleaseOrPublish || input.CredentialUse || input.DirectMainMutation || input.ConcurrentMutation {
+		return missionEvidenceSummary{}, fmt.Errorf("mission evidence readback must not claim scheduling, execution, approval, repository mutation, provider, release, credential, direct-main, or concurrent authority")
+	}
+	status := input.Status
+	if strings.TrimSpace(status) == "" {
+		status = "ready"
+	}
+	return missionEvidenceSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               "ao.command.mission-evidence.v0.1",
+		MissionID:            input.MissionID,
+		Status:               status,
+		EvidenceKind:         evidenceKind,
+		OperatorMode:         operatorMode,
+		SafeToExecute:        false,
+		SchedulesWork:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		ExactNextAction:      input.ExactNextAction,
 	}, nil
 }
 
