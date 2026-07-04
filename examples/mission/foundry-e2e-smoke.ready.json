@@ -4,7 +4,7 @@
   "mission_id": "mission-demo",
   "atlas_workgraph_id": "atlas-readiness-workgraph",
   "primary_mission_provenance": "artifact_manifest",
-  "provenance_diagnostics": "artifact_manifest=1,command_status=1,gateway_readiness_rollup=1,ledger_compaction=1,mission_record=1,route_history=1,scheduler_recovery=1",
+  "provenance_diagnostics": "artifact_manifest=1,command_status=1,gateway_readiness_rollup=1,ledger_compaction=1,mission_record=1,route_history=1,scheduler_recovery=1,timeline_compaction=1",
   "completed_nodes": 3,
   "total_nodes": 3,
   "safe_to_execute": false,
