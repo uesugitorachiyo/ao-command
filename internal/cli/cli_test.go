@@ -432,6 +432,7 @@ func TestMissionAggregateBindsMissionAtlasFoundryReadbacks(t *testing.T) {
 		"mission_id=mission-demo",
 		"atlas_workgraph_id=atlas-readiness-workgraph",
 		"primary_mission_provenance=artifact_manifest",
+		"timeline_compaction_bound=true",
 		"foundry_status=ready",
 		"safe_to_execute=false",
 		"executes_work=false",
@@ -449,7 +450,7 @@ func TestMissionAggregateBindsMissionAtlasFoundryReadbacks(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("invalid mission aggregate JSON: %v\n%s", err, stdout)
 	}
-	if got["schema"] != "ao.command.mission-aggregate.v0.1" || got["safe_to_execute"] != false || got["executes_work"] != false {
+	if got["schema"] != "ao.command.mission-aggregate.v0.1" || got["safe_to_execute"] != false || got["executes_work"] != false || got["timeline_compaction_bound"] != true {
 		t.Fatalf("unexpected mission aggregate summary: %#v", got)
 	}
 }
@@ -532,7 +533,7 @@ func TestMissionAggregateWatchCompactSummary(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mission aggregate compact watch exit=%d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, "compact_summary=") || !strings.Contains(stdout, "mission-demo") {
+	if !strings.Contains(stdout, "compact_summary=") || !strings.Contains(stdout, "mission-demo") || !strings.Contains(stdout, "timeline_compaction_bound=true") {
 		t.Fatalf("compact watch output missing summary: %s", stdout)
 	}
 	if strings.Contains(stdout, "safe_to_execute=true") || strings.Contains(stdout, "executes_work=true") || strings.Contains(stdout, "approves_work=true") {

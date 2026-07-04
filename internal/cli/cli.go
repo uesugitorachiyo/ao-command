@@ -219,6 +219,7 @@ func (a App) missionAggregate(args []string) int {
 					Latest:                   summary,
 					PrimaryMissionProvenance: watchSummary.PrimaryMissionProvenance,
 					ProvenanceDiagnostics:    watchSummary.ProvenanceDiagnostics,
+					TimelineCompactionBound:  watchSummary.TimelineCompactionBound,
 					OperatorMode:             watchSummary.OperatorMode,
 					SafeToExecute:            false,
 					ExecutesWork:             false,
@@ -239,7 +240,7 @@ func (a App) missionAggregate(args []string) int {
 			return a.writeJSON(watchSummary)
 		}
 		if compact {
-			fmt.Fprintf(a.Stdout, "compact_summary=mission=%s status=%s route=%s provenance=%s iterations=%d\n", watchSummary.MissionID, watchSummary.Status, summary.CurrentRoute, watchSummary.PrimaryMissionProvenance, watchSummary.Iterations)
+			fmt.Fprintf(a.Stdout, "compact_summary=mission=%s status=%s route=%s provenance=%s timeline_compaction_bound=%t iterations=%d\n", watchSummary.MissionID, watchSummary.Status, summary.CurrentRoute, watchSummary.PrimaryMissionProvenance, watchSummary.TimelineCompactionBound, watchSummary.Iterations)
 			fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", watchSummary.SafeToExecute)
 			fmt.Fprintf(a.Stdout, "executes_work=%t\n", watchSummary.ExecutesWork)
 			fmt.Fprintf(a.Stdout, "approves_work=%t\n", watchSummary.ApprovesWork)
@@ -263,6 +264,7 @@ func (a App) missionAggregate(args []string) int {
 	fmt.Fprintf(a.Stdout, "current_route=%s\n", summary.CurrentRoute)
 	fmt.Fprintf(a.Stdout, "atlas_workgraph_id=%s\n", summary.AtlasWorkgraphID)
 	fmt.Fprintf(a.Stdout, "primary_mission_provenance=%s\n", summary.PrimaryMissionProvenance)
+	fmt.Fprintf(a.Stdout, "timeline_compaction_bound=%t\n", summary.TimelineCompactionBound)
 	fmt.Fprintf(a.Stdout, "foundry_status=%s\n", summary.FoundryStatus)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
@@ -5240,6 +5242,7 @@ type missionAggregateSummary struct {
 	PrimaryMissionProvenance string `json:"primary_mission_provenance"`
 	ProvenanceDiagnostics    string `json:"provenance_diagnostics"`
 	FoundryStatus            string `json:"foundry_status"`
+	TimelineCompactionBound  bool   `json:"timeline_compaction_bound"`
 	OperatorMode             string `json:"operator_mode"`
 	SafeToExecute            bool   `json:"safe_to_execute"`
 	ExecutesWork             bool   `json:"executes_work"`
@@ -5257,6 +5260,7 @@ type missionAggregateWatchSummary struct {
 	Latest                   missionAggregateSummary `json:"latest"`
 	PrimaryMissionProvenance string                  `json:"primary_mission_provenance"`
 	ProvenanceDiagnostics    string                  `json:"provenance_diagnostics"`
+	TimelineCompactionBound  bool                    `json:"timeline_compaction_bound"`
 	OperatorMode             string                  `json:"operator_mode"`
 	SafeToExecute            bool                    `json:"safe_to_execute"`
 	ExecutesWork             bool                    `json:"executes_work"`
@@ -5275,6 +5279,7 @@ type missionAggregateWatchLine struct {
 	Latest                   missionAggregateSummary `json:"latest"`
 	PrimaryMissionProvenance string                  `json:"primary_mission_provenance"`
 	ProvenanceDiagnostics    string                  `json:"provenance_diagnostics"`
+	TimelineCompactionBound  bool                    `json:"timeline_compaction_bound"`
 	OperatorMode             string                  `json:"operator_mode"`
 	SafeToExecute            bool                    `json:"safe_to_execute"`
 	ExecutesWork             bool                    `json:"executes_work"`
@@ -5293,6 +5298,7 @@ func buildMissionAggregateWatchSummary(latest missionAggregateSummary, iteration
 		Latest:                   latest,
 		PrimaryMissionProvenance: latest.PrimaryMissionProvenance,
 		ProvenanceDiagnostics:    latest.ProvenanceDiagnostics,
+		TimelineCompactionBound:  latest.TimelineCompactionBound,
 		OperatorMode:             operatorMode,
 		SafeToExecute:            false,
 		ExecutesWork:             false,
@@ -5371,6 +5377,7 @@ func readMissionAggregate(statusPath, atlasMetadataPath, foundrySmokePath string
 		PrimaryMissionProvenance: atlas.PrimaryMissionProvenance,
 		ProvenanceDiagnostics:    diagnostics,
 		FoundryStatus:            foundry.Status,
+		TimelineCompactionBound:  strings.Contains(diagnostics, "timeline_compaction="),
 		OperatorMode:             operatorMode,
 		SafeToExecute:            false,
 		ExecutesWork:             false,
