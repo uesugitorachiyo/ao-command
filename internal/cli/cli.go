@@ -177,13 +177,16 @@ func missionUsage() string {
 
 func (a App) missionAggregate(args []string) int {
 	var statusPath, atlasMetadataPath, foundrySmokePath string
-	var jsonOut bool
+	var jsonOut, watch bool
+	var iterations int
 	fs := flag.NewFlagSet("mission aggregate", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	fs.StringVar(&statusPath, "status", "", "path to AO Mission command status JSON")
 	fs.StringVar(&atlasMetadataPath, "atlas-metadata", "", "path to AO Atlas Mission workgraph metadata JSON")
 	fs.StringVar(&foundrySmokePath, "foundry-smoke", "", "path to AO Foundry Mission e2e smoke JSON")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	fs.BoolVar(&watch, "watch", false, "poll read-only aggregate status")
+	fs.IntVar(&iterations, "iterations", 1, "bounded watch iterations")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -195,6 +198,24 @@ func (a App) missionAggregate(args []string) int {
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command mission aggregate: %v\n", err)
 		return 1
+	}
+	if watch {
+		if iterations < 1 {
+			fmt.Fprintln(a.Stderr, "ao-command mission aggregate: --iterations must be positive")
+			return 2
+		}
+		watchSummary := buildMissionAggregateWatchSummary(summary, iterations)
+		if jsonOut {
+			return a.writeJSON(watchSummary)
+		}
+		fmt.Fprintf(a.Stdout, "ao_command_mission_aggregate_watch=%s\n", watchSummary.Status)
+		fmt.Fprintf(a.Stdout, "mission_id=%s\n", watchSummary.MissionID)
+		fmt.Fprintf(a.Stdout, "iterations=%d\n", watchSummary.Iterations)
+		fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", watchSummary.SafeToExecute)
+		fmt.Fprintf(a.Stdout, "executes_work=%t\n", watchSummary.ExecutesWork)
+		fmt.Fprintf(a.Stdout, "approves_work=%t\n", watchSummary.ApprovesWork)
+		fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", watchSummary.ExactNextAction)
+		return 0
 	}
 	if jsonOut {
 		return a.writeJSON(summary)
@@ -5187,6 +5208,42 @@ type missionAggregateSummary struct {
 	ApprovesWork             bool   `json:"approves_work"`
 	MutatesRepositories      bool   `json:"mutates_repositories"`
 	ExactNextAction          string `json:"exact_next_action"`
+}
+
+type missionAggregateWatchSummary struct {
+	CommandSchemaVersion     string                  `json:"command_schema_version"`
+	Schema                   string                  `json:"schema"`
+	MissionID                string                  `json:"mission_id"`
+	Status                   string                  `json:"status"`
+	Iterations               int                     `json:"iterations"`
+	Latest                   missionAggregateSummary `json:"latest"`
+	PrimaryMissionProvenance string                  `json:"primary_mission_provenance"`
+	ProvenanceDiagnostics    string                  `json:"provenance_diagnostics"`
+	OperatorMode             string                  `json:"operator_mode"`
+	SafeToExecute            bool                    `json:"safe_to_execute"`
+	ExecutesWork             bool                    `json:"executes_work"`
+	ApprovesWork             bool                    `json:"approves_work"`
+	MutatesRepositories      bool                    `json:"mutates_repositories"`
+	ExactNextAction          string                  `json:"exact_next_action"`
+}
+
+func buildMissionAggregateWatchSummary(latest missionAggregateSummary, iterations int) missionAggregateWatchSummary {
+	return missionAggregateWatchSummary{
+		CommandSchemaVersion:     commandSchemaVersion,
+		Schema:                   "ao.command.mission-aggregate-watch.v0.1",
+		MissionID:                latest.MissionID,
+		Status:                   latest.Status,
+		Iterations:               iterations,
+		Latest:                   latest,
+		PrimaryMissionProvenance: latest.PrimaryMissionProvenance,
+		ProvenanceDiagnostics:    latest.ProvenanceDiagnostics,
+		OperatorMode:             operatorMode,
+		SafeToExecute:            false,
+		ExecutesWork:             false,
+		ApprovesWork:             false,
+		MutatesRepositories:      false,
+		ExactNextAction:          "watch Mission aggregate readback only; do not schedule or execute work from Command",
+	}
 }
 
 func readMissionAggregate(statusPath, atlasMetadataPath, foundrySmokePath string) (missionAggregateSummary, error) {
