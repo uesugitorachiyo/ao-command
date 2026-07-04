@@ -374,6 +374,113 @@ func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
 	}
 }
 
+func TestMissionGatewayReadsReplayBundle(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "mission", "gateway-replay-bundle.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "gateway", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission gateway replay bundle exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_gateway=ready",
+		"gateway_count=3",
+		"intent_recorded=12",
+		"denied=2",
+		"invalid=1",
+		"safe_to_execute=false",
+		"executes_work=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission gateway replay bundle stdout missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestMissionDashboardReadsCompactReadback(t *testing.T) {
+	dashboardPath := filepath.Join("..", "..", "examples", "mission", "dashboard.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_dashboard=ready",
+		"mission_id=mission-demo",
+		"current_route=ao-atlas",
+		"event_count=2",
+		"compact=true",
+		"safe_to_execute=false",
+		"executes_work=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission dashboard stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission dashboard JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-dashboard.v0.1" || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected mission dashboard summary: %#v", got)
+	}
+}
+
+func TestMissionReadinessReadsBundle(t *testing.T) {
+	bundlePath := filepath.Join("..", "..", "examples", "mission", "readiness-bundle.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "readiness", "--bundle", bundlePath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission readiness exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_readiness=ready",
+		"repo_count=2",
+		"ready_repos=2",
+		"blocked_repos=0",
+		"safe_to_execute=false",
+		"executes_work=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission readiness stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{"mission", "readiness", "--bundle", bundlePath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission readiness json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission readiness JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-readiness.v0.1" || got["ready_repos"] != float64(2) || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected mission readiness summary: %#v", got)
+	}
+}
+
+func TestMissionDashboardAndReadinessRejectAuthorityDrift(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "dashboard",
+			args: []string{"mission", "dashboard", "--dashboard", filepath.Join("..", "..", "examples", "mission", "invalid", "dashboard.unsafe.json")},
+		},
+		{
+			name: "readiness",
+			args: []string{"mission", "readiness", "--bundle", filepath.Join("..", "..", "examples", "mission", "invalid", "readiness-bundle.unsafe.json")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _, stderr := runWithFake(tc.args, &fakeRunner{})
+			if code == 0 || !strings.Contains(stderr, "must not claim execution") {
+				t.Fatalf("expected authority drift rejection, code=%d stderr=%s", code, stderr)
+			}
+		})
+	}
+}
+
 func TestMissionEvidenceReadsSchedulerRecoveryAndLedgerCompaction(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

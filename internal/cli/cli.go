@@ -123,6 +123,8 @@ Usage:
   ao-command mission next --decision PATH [--json]
   ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json]
   ao-command mission artifacts --manifest PATH [--json]
+  ao-command mission dashboard --dashboard PATH [--json]
+  ao-command mission readiness --bundle PATH [--json]
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
@@ -155,6 +157,8 @@ func (a App) mission(args []string) int {
 		return a.missionAggregate(args[1:])
 	case "artifacts":
 		return a.missionArtifacts(args[1:])
+	case "dashboard":
+		return a.missionDashboard(args[1:])
 	case "evidence":
 		return a.missionEvidence(args[1:])
 	case "gateway":
@@ -163,6 +167,8 @@ func (a App) mission(args []string) int {
 		return a.missionHistory(args[1:])
 	case "next":
 		return a.missionNext(args[1:])
+	case "readiness":
+		return a.missionReadiness(args[1:])
 	case "status":
 		return a.missionStatus(args[1:])
 	default:
@@ -172,7 +178,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -430,6 +436,79 @@ func (a App) missionHistory(args []string) int {
 		fmt.Fprintf(a.Stdout, "total_route_count=%d\n", summary.TotalRouteCount)
 	}
 	fmt.Fprintf(a.Stdout, "latest_route=%s\n", summary.LatestRoute)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) missionDashboard(args []string) int {
+	var dashboardPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("mission dashboard", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&dashboardPath, "dashboard", "", "path to AO Mission dashboard readback JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(dashboardPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command mission dashboard: --dashboard is required")
+		return 2
+	}
+	summary, err := readMissionDashboardReadback(dashboardPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command mission dashboard: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_mission_dashboard=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
+	fmt.Fprintf(a.Stdout, "mission_status=%s\n", summary.MissionStatus)
+	fmt.Fprintf(a.Stdout, "current_route=%s\n", summary.CurrentRoute)
+	fmt.Fprintf(a.Stdout, "latest_route=%s\n", summary.LatestRoute)
+	fmt.Fprintf(a.Stdout, "event_count=%d\n", summary.EventCount)
+	fmt.Fprintf(a.Stdout, "compact=%t\n", summary.Compact)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) missionReadiness(args []string) int {
+	var bundlePath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("mission readiness", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&bundlePath, "bundle", "", "path to AO Mission readiness bundle JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(bundlePath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command mission readiness: --bundle is required")
+		return 2
+	}
+	summary, err := readMissionReadinessBundle(bundlePath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command mission readiness: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_mission_readiness=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "repo_count=%d\n", summary.RepoCount)
+	fmt.Fprintf(a.Stdout, "ready_repos=%d\n", summary.ReadyRepos)
+	fmt.Fprintf(a.Stdout, "blocked_repos=%d\n", summary.BlockedRepos)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
@@ -5230,6 +5309,40 @@ type missionHistoryFilters struct {
 	Query  string
 }
 
+type missionDashboardSummary struct {
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Schema               string `json:"schema"`
+	MissionID            string `json:"mission_id"`
+	Status               string `json:"status"`
+	MissionStatus        string `json:"mission_status"`
+	CurrentRoute         string `json:"current_route"`
+	LatestRoute          string `json:"latest_route"`
+	EventCount           int    `json:"event_count"`
+	EventIndexDigest     string `json:"event_index_digest"`
+	Compact              bool   `json:"compact"`
+	OperatorMode         string `json:"operator_mode"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
+type missionReadinessSummary struct {
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Schema               string `json:"schema"`
+	Status               string `json:"status"`
+	RepoCount            int    `json:"repo_count"`
+	ReadyRepos           int    `json:"ready_repos"`
+	BlockedRepos         int    `json:"blocked_repos"`
+	OperatorMode         string `json:"operator_mode"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
 type missionGatewaySummary struct {
 	CommandSchemaVersion string   `json:"command_schema_version"`
 	Schema               string   `json:"schema"`
@@ -5625,12 +5738,111 @@ func missionHistoryFilterLabel(summary missionHistorySummary) string {
 	return strings.Join(parts, ",")
 }
 
+func readMissionDashboardReadback(path string) (missionDashboardSummary, error) {
+	var input struct {
+		Schema              string `json:"schema"`
+		MissionID           string `json:"mission_id"`
+		Status              string `json:"status"`
+		MissionStatus       string `json:"mission_status"`
+		CurrentRoute        string `json:"current_route"`
+		LatestRoute         string `json:"latest_route"`
+		EventCount          int    `json:"event_count"`
+		EventIndexDigest    string `json:"event_index_digest"`
+		Compact             bool   `json:"compact"`
+		SafeToExecute       bool   `json:"safe_to_execute"`
+		ExecutesWork        bool   `json:"executes_work"`
+		ApprovesWork        bool   `json:"approves_work"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		ExactNextAction     string `json:"exact_next_action"`
+	}
+	if err := readJSONFile(path, &input); err != nil {
+		return missionDashboardSummary{}, err
+	}
+	if input.Schema != "ao.mission.dashboard-readback.v0.1" {
+		return missionDashboardSummary{}, fmt.Errorf("unsupported mission dashboard schema %q", input.Schema)
+	}
+	if strings.TrimSpace(input.MissionID) == "" {
+		return missionDashboardSummary{}, fmt.Errorf("mission dashboard readback requires mission_id")
+	}
+	if input.SafeToExecute || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories {
+		return missionDashboardSummary{}, fmt.Errorf("mission dashboard readback must not claim execution, approval, or repository mutation authority")
+	}
+	status := input.Status
+	if strings.TrimSpace(status) == "" {
+		status = "ready"
+	}
+	return missionDashboardSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               "ao.command.mission-dashboard.v0.1",
+		MissionID:            input.MissionID,
+		Status:               status,
+		MissionStatus:        input.MissionStatus,
+		CurrentRoute:         input.CurrentRoute,
+		LatestRoute:          input.LatestRoute,
+		EventCount:           input.EventCount,
+		EventIndexDigest:     input.EventIndexDigest,
+		Compact:              input.Compact,
+		OperatorMode:         operatorMode,
+		SafeToExecute:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		ExactNextAction:      input.ExactNextAction,
+	}, nil
+}
+
+func readMissionReadinessBundle(path string) (missionReadinessSummary, error) {
+	var input struct {
+		Schema              string `json:"schema"`
+		Status              string `json:"status"`
+		RepoCount           int    `json:"repo_count"`
+		ReadyRepos          int    `json:"ready_repos"`
+		BlockedRepos        int    `json:"blocked_repos"`
+		SafeToExecute       bool   `json:"safe_to_execute"`
+		ExecutesWork        bool   `json:"executes_work"`
+		ApprovesWork        bool   `json:"approves_work"`
+		MutatesRepositories bool   `json:"mutates_repositories"`
+		ExactNextAction     string `json:"exact_next_action"`
+	}
+	if err := readJSONFile(path, &input); err != nil {
+		return missionReadinessSummary{}, err
+	}
+	if input.Schema != "ao.mission.readiness-bundle-readback.v0.1" {
+		return missionReadinessSummary{}, fmt.Errorf("unsupported mission readiness schema %q", input.Schema)
+	}
+	if input.SafeToExecute || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories {
+		return missionReadinessSummary{}, fmt.Errorf("mission readiness bundle must not claim execution, approval, or repository mutation authority")
+	}
+	status := input.Status
+	if strings.TrimSpace(status) == "" {
+		status = "ready"
+	}
+	return missionReadinessSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               "ao.command.mission-readiness.v0.1",
+		Status:               status,
+		RepoCount:            input.RepoCount,
+		ReadyRepos:           input.ReadyRepos,
+		BlockedRepos:         input.BlockedRepos,
+		OperatorMode:         operatorMode,
+		SafeToExecute:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		ExactNextAction:      input.ExactNextAction,
+	}, nil
+}
+
 func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 	var input struct {
 		Schema              string `json:"schema"`
 		MissionID           string `json:"mission_id"`
 		Status              string `json:"status"`
 		Gateway             string `json:"gateway"`
+		TelegramReadbacks   int    `json:"telegram_readbacks"`
+		A2AReadbacks        int    `json:"a2a_readbacks"`
+		SchedulerReadbacks  int    `json:"scheduler_readbacks"`
+		TotalIntents        int    `json:"total_intents"`
 		Total               int    `json:"total"`
 		IntentRecorded      int    `json:"intent_recorded"`
 		Denied              int    `json:"denied"`
@@ -5651,7 +5863,7 @@ func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 		return missionGatewaySummary{}, err
 	}
 	switch input.Schema {
-	case "ao.mission.gateway-intent-ledger.v0.1", "ao.mission.telegram-replay-readback.v0.1", "ao.mission.telegram-update-replay-readback.v0.1", "ao.mission.a2a-http-replay-readback.v0.1":
+	case "ao.mission.gateway-intent-ledger.v0.1", "ao.mission.telegram-replay-readback.v0.1", "ao.mission.telegram-update-replay-readback.v0.1", "ao.mission.a2a-http-replay-readback.v0.1", "ao.mission.gateway-replay-bundle-readback.v0.1":
 	default:
 		return missionGatewaySummary{}, fmt.Errorf("unsupported mission gateway schema %q", input.Schema)
 	}
@@ -5661,6 +5873,15 @@ func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 	gatewaySet := map[string]bool{}
 	if input.Gateway != "" {
 		gatewaySet[input.Gateway] = true
+	}
+	if input.TelegramReadbacks > 0 {
+		gatewaySet["telegram"] = true
+	}
+	if input.A2AReadbacks > 0 {
+		gatewaySet["a2a"] = true
+	}
+	if input.SchedulerReadbacks > 0 {
+		gatewaySet["scheduler"] = true
 	}
 	for _, intent := range input.Intents {
 		if intent.MutationAuthority || intent.ExecutesWork || intent.ApprovesWork {
@@ -5675,6 +5896,12 @@ func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 		gateways = append(gateways, gateway)
 	}
 	sort.Strings(gateways)
+	total := input.Total
+	intentRecorded := input.IntentRecorded
+	if input.Schema == "ao.mission.gateway-replay-bundle-readback.v0.1" {
+		total = input.TotalIntents
+		intentRecorded = input.TotalIntents
+	}
 	return missionGatewaySummary{
 		CommandSchemaVersion: commandSchemaVersion,
 		Schema:               "ao.command.mission-gateway.v0.1",
@@ -5683,8 +5910,8 @@ func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {
 		OperatorMode:         operatorMode,
 		GatewayCount:         len(gateways),
 		Gateways:             gateways,
-		Total:                input.Total,
-		IntentRecorded:       input.IntentRecorded,
+		Total:                total,
+		IntentRecorded:       intentRecorded,
 		Denied:               input.Denied,
 		Invalid:              input.Invalid,
 		SafeToExecute:        false,
