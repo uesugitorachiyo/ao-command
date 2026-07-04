@@ -323,6 +323,79 @@ func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
 	}
 }
 
+func TestMissionEvidenceReadsSchedulerRecoveryAndLedgerCompaction(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		fixture      string
+		evidenceKind string
+	}{
+		{
+			name:         "scheduler recovery",
+			fixture:      "scheduler-recovery-readback.ready.json",
+			evidenceKind: "scheduler_recovery",
+		},
+		{
+			name:         "ledger compaction",
+			fixture:      "ledger-compaction-readback.ready.json",
+			evidenceKind: "ledger_compaction",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			readbackPath := filepath.Join("..", "..", "examples", "mission", tc.fixture)
+			code, stdout, stderr := runWithFake([]string{"mission", "evidence", "--readback", readbackPath}, &fakeRunner{})
+			if code != 0 {
+				t.Fatalf("mission evidence exit=%d stderr=%s", code, stderr)
+			}
+			for _, want := range []string{
+				"ao_command_mission_evidence=ready",
+				"mission_id=mission-demo",
+				"evidence_kind=" + tc.evidenceKind,
+				"operator_mode=read_only",
+				"safe_to_execute=false",
+				"schedules_work=false",
+				"executes_work=false",
+				"approves_work=false",
+				"mutates_repositories=false",
+			} {
+				if !strings.Contains(stdout, want) {
+					t.Fatalf("mission evidence stdout missing %q:\n%s", want, stdout)
+				}
+			}
+
+			code, stdout, stderr = runWithFake([]string{"mission", "evidence", "--readback", readbackPath, "--json"}, &fakeRunner{})
+			if code != 0 {
+				t.Fatalf("mission evidence json exit=%d stderr=%s", code, stderr)
+			}
+			var got map[string]any
+			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+				t.Fatalf("invalid mission evidence JSON: %v\n%s", err, stdout)
+			}
+			if got["schema"] != "ao.command.mission-evidence.v0.1" || got["evidence_kind"] != tc.evidenceKind || got["safe_to_execute"] != false {
+				t.Fatalf("unexpected mission evidence summary: %#v", got)
+			}
+		})
+	}
+}
+
+func TestMissionEvidenceRejectsAuthorityDrift(t *testing.T) {
+	dir := t.TempDir()
+	readbackPath := filepath.Join(dir, "scheduler-recovery-readback.json")
+	if err := os.WriteFile(readbackPath, []byte(`{
+  "schema": "ao.mission.scheduler-recovery-readback.v0.1",
+  "mission_id": "mission-demo",
+  "safe_to_execute": true,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runWithFake([]string{"mission", "evidence", "--readback", readbackPath}, &fakeRunner{})
+	if code == 0 || !strings.Contains(stderr, "must not claim scheduling, execution") {
+		t.Fatalf("expected authority drift rejection, code=%d stderr=%s", code, stderr)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
