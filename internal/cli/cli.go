@@ -121,7 +121,7 @@ Usage:
   ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json]
   ao-command mission status --status PATH [--json]
   ao-command mission next --decision PATH [--json]
-  ao-command mission history --history PATH [--json]
+  ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json]
   ao-command mission artifacts --manifest PATH [--json]
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
@@ -172,7 +172,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -384,10 +384,15 @@ func (a App) missionArtifacts(args []string) int {
 
 func (a App) missionHistory(args []string) int {
 	var historyPath string
-	var jsonOut bool
+	var routeFilter, statusFilter, queryFilter string
+	var jsonOut, compact bool
 	fs := flag.NewFlagSet("mission history", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	fs.StringVar(&historyPath, "history", "", "path to AO Mission route history JSON")
+	fs.StringVar(&routeFilter, "route", "", "filter route-history entries by route")
+	fs.StringVar(&statusFilter, "status-filter", "", "filter route-history entries by status")
+	fs.StringVar(&queryFilter, "query", "", "filter route-history entries by reason or exact next action")
+	fs.BoolVar(&compact, "compact", false, "emit compact filtered timeline summary")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -401,12 +406,29 @@ func (a App) missionHistory(args []string) int {
 		fmt.Fprintf(a.Stderr, "ao-command mission history: %v\n", err)
 		return 1
 	}
+	summary = filterMissionRouteHistory(summary, missionHistoryFilters{
+		Route:  routeFilter,
+		Status: statusFilter,
+		Query:  queryFilter,
+	})
 	if jsonOut {
 		return a.writeJSON(summary)
+	}
+	if compact {
+		fmt.Fprintf(a.Stdout, "compact_timeline=mission=%s route_count=%d total_route_count=%d latest_route=%s filters=%s\n", summary.MissionID, summary.RouteCount, summary.TotalRouteCount, summary.LatestRoute, missionHistoryFilterLabel(summary))
+		fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+		fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+		fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+		fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+		fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+		return 0
 	}
 	fmt.Fprintf(a.Stdout, "ao_command_mission_history=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
 	fmt.Fprintf(a.Stdout, "route_count=%d\n", summary.RouteCount)
+	if summary.TotalRouteCount > 0 && summary.TotalRouteCount != summary.RouteCount {
+		fmt.Fprintf(a.Stdout, "total_route_count=%d\n", summary.TotalRouteCount)
+	}
 	fmt.Fprintf(a.Stdout, "latest_route=%s\n", summary.LatestRoute)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
@@ -5189,13 +5211,23 @@ type missionHistorySummary struct {
 	Status               string                    `json:"status"`
 	OperatorMode         string                    `json:"operator_mode"`
 	RouteCount           int                       `json:"route_count"`
+	TotalRouteCount      int                       `json:"total_route_count,omitempty"`
 	LatestRoute          string                    `json:"latest_route"`
+	RouteFilter          string                    `json:"route_filter,omitempty"`
+	StatusFilter         string                    `json:"status_filter,omitempty"`
+	QueryFilter          string                    `json:"query_filter,omitempty"`
 	Routes               []missionRouteHistoryItem `json:"routes"`
 	SafeToExecute        bool                      `json:"safe_to_execute"`
 	ExecutesWork         bool                      `json:"executes_work"`
 	ApprovesWork         bool                      `json:"approves_work"`
 	MutatesRepositories  bool                      `json:"mutates_repositories"`
 	ExactNextAction      string                    `json:"exact_next_action"`
+}
+
+type missionHistoryFilters struct {
+	Route  string
+	Status string
+	Query  string
 }
 
 type missionGatewaySummary struct {
@@ -5523,6 +5555,74 @@ func readMissionRouteHistory(path string) (missionHistorySummary, error) {
 		MutatesRepositories:  false,
 		ExactNextAction:      latest.ExactNextAction,
 	}, nil
+}
+
+func filterMissionRouteHistory(summary missionHistorySummary, filters missionHistoryFilters) missionHistorySummary {
+	filters.Route = strings.TrimSpace(filters.Route)
+	filters.Status = strings.TrimSpace(filters.Status)
+	filters.Query = strings.TrimSpace(filters.Query)
+	if filters.Route == "" && filters.Status == "" && filters.Query == "" {
+		return summary
+	}
+	filtered := make([]missionRouteHistoryItem, 0, len(summary.Routes))
+	for _, item := range summary.Routes {
+		if filters.Route != "" && !strings.EqualFold(item.Route, filters.Route) {
+			continue
+		}
+		if filters.Status != "" && !strings.EqualFold(item.Status, filters.Status) {
+			continue
+		}
+		if filters.Query != "" && !missionRouteHistoryItemMatchesQuery(item, filters.Query) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	summary.TotalRouteCount = len(summary.Routes)
+	summary.RouteFilter = filters.Route
+	summary.StatusFilter = filters.Status
+	summary.QueryFilter = filters.Query
+	summary.RouteCount = len(filtered)
+	summary.Routes = filtered
+	if len(filtered) == 0 {
+		summary.LatestRoute = ""
+		summary.ExactNextAction = "No Mission route-history entries matched the compact timeline filters"
+		return summary
+	}
+	latest := filtered[len(filtered)-1]
+	summary.LatestRoute = latest.Route
+	summary.ExactNextAction = latest.ExactNextAction
+	return summary
+}
+
+func missionRouteHistoryItemMatchesQuery(item missionRouteHistoryItem, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
+	haystack := strings.ToLower(strings.Join([]string{
+		item.Route,
+		item.Reason,
+		item.ExactNextAction,
+		item.Status,
+	}, " "))
+	return strings.Contains(haystack, query)
+}
+
+func missionHistoryFilterLabel(summary missionHistorySummary) string {
+	parts := []string{}
+	if summary.RouteFilter != "" {
+		parts = append(parts, "route:"+summary.RouteFilter)
+	}
+	if summary.StatusFilter != "" {
+		parts = append(parts, "status:"+summary.StatusFilter)
+	}
+	if summary.QueryFilter != "" {
+		parts = append(parts, "query:"+summary.QueryFilter)
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ",")
 }
 
 func readMissionGatewayReadback(path string) (missionGatewaySummary, error) {

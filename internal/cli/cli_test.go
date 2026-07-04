@@ -289,6 +289,57 @@ func TestMissionHistoryReadsAOMissionRouteHistory(t *testing.T) {
 	}
 }
 
+func TestMissionHistoryCompactFiltersTimeline(t *testing.T) {
+	historyPath := filepath.Join("..", "..", "examples", "mission", "route-history.ready.json")
+	code, stdout, stderr := runWithFake([]string{
+		"mission", "history",
+		"--history", historyPath,
+		"--route", "ao-atlas",
+		"--query", "Foundry import",
+		"--compact",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history compact exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"compact_timeline=mission=mission-demo",
+		"route_count=1",
+		"total_route_count=2",
+		"latest_route=ao-atlas",
+		"filters=route:ao-atlas,query:Foundry import",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("compact mission history missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "ao-blueprint") {
+		t.Fatalf("compact mission history leaked filtered route:\n%s", stdout)
+	}
+
+	code, stdout, stderr = runWithFake([]string{
+		"mission", "history",
+		"--history", historyPath,
+		"--route", "ao-atlas",
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history filtered json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission history filtered JSON: %v\n%s", err, stdout)
+	}
+	if got["route_count"] != float64(1) || got["total_route_count"] != float64(2) || got["route_filter"] != "ao-atlas" {
+		t.Fatalf("unexpected filtered mission history JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false {
+		t.Fatalf("filtered mission history widened authority: %#v", got)
+	}
+}
+
 func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
 	gatewayPath := filepath.Join("..", "..", "examples", "mission", "gateway-intent-ledger.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "gateway", "--readback", gatewayPath}, &fakeRunner{})

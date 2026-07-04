@@ -46,6 +46,7 @@ go run ./cmd/ao-command status --forge ../ao-forge
 go run ./cmd/ao-command mission status --status examples/mission/command-status.ready.json
 go run ./cmd/ao-command mission next --decision examples/mission/route-decision.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json
+go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json --route ao-atlas --query "Foundry import" --compact
 go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
 go run ./cmd/ao-command mission gateway --readback examples/mission/gateway-intent-ledger.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json
@@ -92,7 +93,8 @@ approval, or repository mutation authority.
 `mission history` reads AO Mission route-history exports and reports route
 count, latest route, and exact next action in `operator_mode=read_only`. It
 rejects any route-history entry that claims execution, approval, or repository
-mutation authority.
+mutation authority. Compact timeline output can be narrowed with `--route`,
+`--status-filter`, and `--query` without changing read-only authority.
 
 `mission artifacts` reads AO Mission's `ao.mission.artifact-manifest.v0.1`
 artifact manifest and reports the artifact count and refs in
