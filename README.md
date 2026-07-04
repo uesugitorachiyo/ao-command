@@ -52,6 +52,7 @@ go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-r
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json
+go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json
@@ -106,6 +107,13 @@ readbacks and reports them as `ao.command.mission-evidence.v0.1` in
 execution, approval, repository mutation, provider, release, credential,
 direct-main, or concurrent mutation authority. Recovery and compaction evidence
 can support readback and Atlas provenance, but it does not authorize work.
+
+`mission aggregate` reads AO Mission command status, AO Atlas Mission workgraph
+metadata, and AO Foundry Mission e2e smoke output into
+`ao.command.mission-aggregate.v0.1`. It binds mission ID, Atlas workgraph ID,
+primary Mission provenance, and Foundry smoke status while preserving
+`safe_to_execute=false`, `executes_work=false`, `approves_work=false`, and
+`mutates_repositories=false`.
 
 `stack` reads the AO Foundry active-stack readiness ledger and reports the
 active repository count, release handoff gates, `operator_mode=read_only`, and

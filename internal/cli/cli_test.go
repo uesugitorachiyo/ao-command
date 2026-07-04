@@ -414,6 +414,41 @@ func TestMissionEvidenceRejectsInvalidFixtures(t *testing.T) {
 	}
 }
 
+func TestMissionAggregateBindsMissionAtlasFoundryReadbacks(t *testing.T) {
+	statusPath := filepath.Join("..", "..", "examples", "mission", "command-status.ready.json")
+	atlasPath := filepath.Join("..", "..", "examples", "mission", "atlas-workgraph-metadata.ready.json")
+	foundryPath := filepath.Join("..", "..", "examples", "mission", "foundry-e2e-smoke.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "aggregate", "--status", statusPath, "--atlas-metadata", atlasPath, "--foundry-smoke", foundryPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission aggregate exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_aggregate=ready",
+		"mission_id=mission-demo",
+		"atlas_workgraph_id=atlas-readiness-workgraph",
+		"primary_mission_provenance=artifact_manifest",
+		"foundry_status=ready",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission aggregate stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{"mission", "aggregate", "--status", statusPath, "--atlas-metadata", atlasPath, "--foundry-smoke", foundryPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission aggregate json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission aggregate JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-aggregate.v0.1" || got["safe_to_execute"] != false || got["executes_work"] != false {
+		t.Fatalf("unexpected mission aggregate summary: %#v", got)
+	}
+}
+
 func TestStackJSONReportsReadOnlyActiveStack(t *testing.T) {
 	ledger := writeStackLedgerFixture(t)
 	code, stdout, stderr := runWithFake([]string{"stack", "--ledger", ledger, "--json"}, &fakeRunner{})
