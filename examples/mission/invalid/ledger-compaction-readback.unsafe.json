@@ -1,0 +1,18 @@
+{
+  "schema": "ao.mission.ledger-compaction-readback.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "retained_routes": 2,
+  "retained_steps": 2,
+  "safe_to_execute": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": true,
+  "provider_calls": false,
+  "release_or_publish": false,
+  "credential_use": false,
+  "direct_main_mutation": false,
+  "concurrent_mutation": false,
+  "exact_next_action": "invalid fixture: ledger compaction must not mutate repositories"
+}
