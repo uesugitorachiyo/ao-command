@@ -1,0 +1,30 @@
+{
+  "contract_version": "ao.atlas.ao-mission-workgraph-metadata.v0.1",
+  "mission_id": "mission-demo",
+  "workgraph_id": "atlas-readiness-workgraph",
+  "target_instance": "demo-stack",
+  "current_route": "ao-atlas",
+  "node_counts": {
+    "total": 3,
+    "completed": 3
+  },
+  "mission_provenance": {
+    "mission_record": 1,
+    "command_status": 1,
+    "artifact_manifest": 1,
+    "route_history": 1,
+    "scheduler_recovery": 1,
+    "ledger_compaction": 1
+  },
+  "primary_mission_provenance": "artifact_manifest",
+  "provenance_diagnostics": "artifact_manifest=1,command_status=1,ledger_compaction=1,mission_record=1,route_history=1,scheduler_recovery=1",
+  "source_artifacts": {
+    "ao_mission_import": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "workgraph": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "next_action": "send the first safe Atlas workgraph node to AO Foundry import",
+  "safe_to_execute": false,
+  "schedules_work": false,
+  "executes_work": false,
+  "approves_work": false
+}
