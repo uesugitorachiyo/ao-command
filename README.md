@@ -52,6 +52,8 @@ go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-r
 go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json
 go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json
+go run ./cmd/ao-command mission evidence --readback examples/mission/timeline-compaction-readback.ready.json
+go run ./cmd/ao-command mission evidence --readback examples/mission/timeline-compaction-readback.ready.json --json
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json --watch --iterations 3 --jsonl
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json --watch --iterations 3 --compact
@@ -103,7 +105,7 @@ approval, or repository mutation authority.
 claims execution, approval, or repository mutation authority; Telegram and A2A
 intents cannot grant mutation authority.
 
-`mission evidence` reads AO Mission scheduler-recovery and ledger-compaction
+`mission evidence` reads AO Mission scheduler-recovery, ledger-compaction, and timeline-compaction
 readbacks and reports them as `ao.command.mission-evidence.v0.1` in
 `operator_mode=read_only`. It rejects any evidence packet that claims scheduling,
 execution, approval, repository mutation, provider, release, credential,

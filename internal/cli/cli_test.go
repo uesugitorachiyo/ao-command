@@ -339,6 +339,11 @@ func TestMissionEvidenceReadsSchedulerRecoveryAndLedgerCompaction(t *testing.T) 
 			fixture:      "ledger-compaction-readback.ready.json",
 			evidenceKind: "ledger_compaction",
 		},
+		{
+			name:         "timeline compaction",
+			fixture:      "timeline-compaction-readback.ready.json",
+			evidenceKind: "timeline_compaction",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			readbackPath := filepath.Join("..", "..", "examples", "mission", tc.fixture)
@@ -3008,6 +3013,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "README active stack command", doc: readme, want: "go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json"},
 		{name: "README Mission scheduler recovery JSON evidence command", doc: readme, want: "go run ./cmd/ao-command mission evidence --readback examples/mission/scheduler-recovery-readback.ready.json --json"},
 		{name: "README Mission ledger compaction JSON evidence command", doc: readme, want: "go run ./cmd/ao-command mission evidence --readback examples/mission/ledger-compaction-readback.ready.json --json"},
+		{name: "README Mission timeline compaction JSON evidence command", doc: readme, want: "go run ./cmd/ao-command mission evidence --readback examples/mission/timeline-compaction-readback.ready.json --json"},
 		{name: "README Atlas status command", doc: readme, want: "go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json"},
 		{name: "README Atlas observer schema", doc: readme, want: "ao.foundry.atlas-status.v0.1"},
 		{name: "README Atlas compile-only boundary", doc: readme, want: "atlas_authority=compile_only"},
