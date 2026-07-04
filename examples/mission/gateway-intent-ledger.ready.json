@@ -1,0 +1,93 @@
+{
+  "schema": "ao.mission.gateway-intent-ledger.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "total": 7,
+  "intent_recorded": 4,
+  "denied": 1,
+  "invalid": 2,
+  "intents": [
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "telegram",
+      "command": "/status",
+      "status": "intent_recorded",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "telegram",
+      "command": "/continue",
+      "status": "intent_recorded",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "telegram",
+      "command": "/stop",
+      "status": "denied",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "telegram",
+      "command": "status",
+      "status": "invalid",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "a2a",
+      "method": "mission.start",
+      "status": "intent_recorded",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "a2a",
+      "method": "mission.status",
+      "status": "intent_recorded",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    },
+    {
+      "schema": "ao.mission.gateway-intent.v0.1",
+      "mission_id": "mission-demo",
+      "gateway": "a2a",
+      "method": "mission.delete",
+      "status": "invalid",
+      "mutation_authority": false,
+      "executes_work": false,
+      "approves_work": false,
+      "generated_at_utc": "2026-07-03T00:00:00Z"
+    }
+  ],
+  "mutation_authority": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "generated_at_utc": "2026-07-03T00:00:00Z"
+}
