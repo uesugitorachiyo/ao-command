@@ -470,6 +470,30 @@ func (a App) missionDashboard(args []string) int {
 	}
 	if compact {
 		fmt.Fprintf(a.Stdout, "compact_mission_status=mission=%s status=%s route=%s latest_route=%s events=%d\n", summary.MissionID, summary.MissionStatus, summary.CurrentRoute, summary.LatestRoute, summary.EventCount)
+		if summary.hasLongRunStatus() {
+			fmt.Fprintf(a.Stdout, "compact_long_run_status=nodes=%d/%d min_nodes=%d ready=%d blocked=%d failed=%d checkpoints=%d elapsed_minutes=%d min_minutes=%d lease=%s return_gate=%s final_response_allowed=%t\n",
+				summary.CompletedNodes,
+				summary.TotalNodes,
+				summary.MinimumNodes,
+				summary.ReadyNodes,
+				summary.BlockedNodes,
+				summary.FailedNodes,
+				summary.CheckpointCount,
+				summary.ElapsedMinutes,
+				summary.MinMinutes,
+				summary.LeaseHealthStatus,
+				summary.ReturnGateStatus,
+				summary.FinalResponseAllowed,
+			)
+			fmt.Fprintf(a.Stdout, "compact_readback_statuses=workgraph=%s foundry=%s promoter=%s command=%s checkpoint_freshness=%s early_return_risk=%s\n",
+				summary.WorkgraphStatus,
+				summary.FoundryRollupStatus,
+				summary.PromoterStatus,
+				summary.CommandReadbackStatus,
+				summary.CheckpointFreshnessStatus,
+				summary.EarlyReturnRiskStatus,
+			)
+		}
 		fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 		fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
 		fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
@@ -5320,22 +5344,60 @@ type missionHistoryFilters struct {
 }
 
 type missionDashboardSummary struct {
-	CommandSchemaVersion string `json:"command_schema_version"`
-	Schema               string `json:"schema"`
-	MissionID            string `json:"mission_id"`
-	Status               string `json:"status"`
-	MissionStatus        string `json:"mission_status"`
-	CurrentRoute         string `json:"current_route"`
-	LatestRoute          string `json:"latest_route"`
-	EventCount           int    `json:"event_count"`
-	EventIndexDigest     string `json:"event_index_digest"`
-	Compact              bool   `json:"compact"`
-	OperatorMode         string `json:"operator_mode"`
-	SafeToExecute        bool   `json:"safe_to_execute"`
-	ExecutesWork         bool   `json:"executes_work"`
-	ApprovesWork         bool   `json:"approves_work"`
-	MutatesRepositories  bool   `json:"mutates_repositories"`
-	ExactNextAction      string `json:"exact_next_action"`
+	CommandSchemaVersion      string `json:"command_schema_version"`
+	Schema                    string `json:"schema"`
+	MissionID                 string `json:"mission_id"`
+	Status                    string `json:"status"`
+	MissionStatus             string `json:"mission_status"`
+	CurrentRoute              string `json:"current_route"`
+	LatestRoute               string `json:"latest_route"`
+	WorkgraphStatus           string `json:"workgraph_status,omitempty"`
+	FoundryRollupStatus       string `json:"foundry_rollup_status,omitempty"`
+	PromoterStatus            string `json:"promoter_status,omitempty"`
+	CommandReadbackStatus     string `json:"command_readback_status,omitempty"`
+	TotalNodes                int    `json:"total_nodes,omitempty"`
+	MinimumNodes              int    `json:"minimum_nodes,omitempty"`
+	CompletedNodes            int    `json:"completed_nodes,omitempty"`
+	ReadyNodes                int    `json:"ready_nodes,omitempty"`
+	BlockedNodes              int    `json:"blocked_nodes,omitempty"`
+	FailedNodes               int    `json:"failed_nodes,omitempty"`
+	CheckpointCount           int    `json:"checkpoint_count,omitempty"`
+	MinMinutes                int    `json:"min_minutes,omitempty"`
+	ElapsedMinutes            int    `json:"elapsed_minutes,omitempty"`
+	LeaseHealthStatus         string `json:"lease_health_status,omitempty"`
+	CheckpointFreshnessStatus string `json:"checkpoint_freshness_status,omitempty"`
+	ReturnGateStatus          string `json:"return_gate_status,omitempty"`
+	EarlyReturnRiskStatus     string `json:"early_return_risk_status,omitempty"`
+	FinalResponseAllowed      bool   `json:"final_response_allowed"`
+	EventCount                int    `json:"event_count"`
+	EventIndexDigest          string `json:"event_index_digest"`
+	Compact                   bool   `json:"compact"`
+	OperatorMode              string `json:"operator_mode"`
+	SafeToExecute             bool   `json:"safe_to_execute"`
+	ExecutesWork              bool   `json:"executes_work"`
+	ApprovesWork              bool   `json:"approves_work"`
+	MutatesRepositories       bool   `json:"mutates_repositories"`
+	ExactNextAction           string `json:"exact_next_action"`
+}
+
+func (s missionDashboardSummary) hasLongRunStatus() bool {
+	return s.TotalNodes > 0 ||
+		s.MinimumNodes > 0 ||
+		s.CompletedNodes > 0 ||
+		s.ReadyNodes > 0 ||
+		s.BlockedNodes > 0 ||
+		s.FailedNodes > 0 ||
+		s.CheckpointCount > 0 ||
+		s.MinMinutes > 0 ||
+		s.ElapsedMinutes > 0 ||
+		strings.TrimSpace(s.WorkgraphStatus) != "" ||
+		strings.TrimSpace(s.FoundryRollupStatus) != "" ||
+		strings.TrimSpace(s.PromoterStatus) != "" ||
+		strings.TrimSpace(s.CommandReadbackStatus) != "" ||
+		strings.TrimSpace(s.LeaseHealthStatus) != "" ||
+		strings.TrimSpace(s.CheckpointFreshnessStatus) != "" ||
+		strings.TrimSpace(s.ReturnGateStatus) != "" ||
+		strings.TrimSpace(s.EarlyReturnRiskStatus) != ""
 }
 
 type missionReadinessSummary struct {
@@ -5750,20 +5812,38 @@ func missionHistoryFilterLabel(summary missionHistorySummary) string {
 
 func readMissionDashboardReadback(path string) (missionDashboardSummary, error) {
 	var input struct {
-		Schema              string `json:"schema"`
-		MissionID           string `json:"mission_id"`
-		Status              string `json:"status"`
-		MissionStatus       string `json:"mission_status"`
-		CurrentRoute        string `json:"current_route"`
-		LatestRoute         string `json:"latest_route"`
-		EventCount          int    `json:"event_count"`
-		EventIndexDigest    string `json:"event_index_digest"`
-		Compact             bool   `json:"compact"`
-		SafeToExecute       bool   `json:"safe_to_execute"`
-		ExecutesWork        bool   `json:"executes_work"`
-		ApprovesWork        bool   `json:"approves_work"`
-		MutatesRepositories bool   `json:"mutates_repositories"`
-		ExactNextAction     string `json:"exact_next_action"`
+		Schema                    string `json:"schema"`
+		MissionID                 string `json:"mission_id"`
+		Status                    string `json:"status"`
+		MissionStatus             string `json:"mission_status"`
+		CurrentRoute              string `json:"current_route"`
+		LatestRoute               string `json:"latest_route"`
+		WorkgraphStatus           string `json:"workgraph_status"`
+		FoundryRollupStatus       string `json:"foundry_rollup_status"`
+		PromoterStatus            string `json:"promoter_status"`
+		CommandReadbackStatus     string `json:"command_readback_status"`
+		TotalNodes                int    `json:"total_nodes"`
+		MinimumNodes              int    `json:"minimum_nodes"`
+		CompletedNodes            int    `json:"completed_nodes"`
+		ReadyNodes                int    `json:"ready_nodes"`
+		BlockedNodes              int    `json:"blocked_nodes"`
+		FailedNodes               int    `json:"failed_nodes"`
+		CheckpointCount           int    `json:"checkpoint_count"`
+		MinMinutes                int    `json:"min_minutes"`
+		ElapsedMinutes            int    `json:"elapsed_minutes"`
+		LeaseHealthStatus         string `json:"lease_health_status"`
+		CheckpointFreshnessStatus string `json:"checkpoint_freshness_status"`
+		ReturnGateStatus          string `json:"return_gate_status"`
+		EarlyReturnRiskStatus     string `json:"early_return_risk_status"`
+		FinalResponseAllowed      bool   `json:"final_response_allowed"`
+		EventCount                int    `json:"event_count"`
+		EventIndexDigest          string `json:"event_index_digest"`
+		Compact                   bool   `json:"compact"`
+		SafeToExecute             bool   `json:"safe_to_execute"`
+		ExecutesWork              bool   `json:"executes_work"`
+		ApprovesWork              bool   `json:"approves_work"`
+		MutatesRepositories       bool   `json:"mutates_repositories"`
+		ExactNextAction           string `json:"exact_next_action"`
 	}
 	if err := readJSONFile(path, &input); err != nil {
 		return missionDashboardSummary{}, err
@@ -5782,22 +5862,40 @@ func readMissionDashboardReadback(path string) (missionDashboardSummary, error) 
 		status = "ready"
 	}
 	return missionDashboardSummary{
-		CommandSchemaVersion: commandSchemaVersion,
-		Schema:               "ao.command.mission-dashboard.v0.1",
-		MissionID:            input.MissionID,
-		Status:               status,
-		MissionStatus:        input.MissionStatus,
-		CurrentRoute:         input.CurrentRoute,
-		LatestRoute:          input.LatestRoute,
-		EventCount:           input.EventCount,
-		EventIndexDigest:     input.EventIndexDigest,
-		Compact:              input.Compact,
-		OperatorMode:         operatorMode,
-		SafeToExecute:        false,
-		ExecutesWork:         false,
-		ApprovesWork:         false,
-		MutatesRepositories:  false,
-		ExactNextAction:      input.ExactNextAction,
+		CommandSchemaVersion:      commandSchemaVersion,
+		Schema:                    "ao.command.mission-dashboard.v0.1",
+		MissionID:                 input.MissionID,
+		Status:                    status,
+		MissionStatus:             input.MissionStatus,
+		CurrentRoute:              input.CurrentRoute,
+		LatestRoute:               input.LatestRoute,
+		WorkgraphStatus:           input.WorkgraphStatus,
+		FoundryRollupStatus:       input.FoundryRollupStatus,
+		PromoterStatus:            input.PromoterStatus,
+		CommandReadbackStatus:     input.CommandReadbackStatus,
+		TotalNodes:                input.TotalNodes,
+		MinimumNodes:              input.MinimumNodes,
+		CompletedNodes:            input.CompletedNodes,
+		ReadyNodes:                input.ReadyNodes,
+		BlockedNodes:              input.BlockedNodes,
+		FailedNodes:               input.FailedNodes,
+		CheckpointCount:           input.CheckpointCount,
+		MinMinutes:                input.MinMinutes,
+		ElapsedMinutes:            input.ElapsedMinutes,
+		LeaseHealthStatus:         input.LeaseHealthStatus,
+		CheckpointFreshnessStatus: input.CheckpointFreshnessStatus,
+		ReturnGateStatus:          input.ReturnGateStatus,
+		EarlyReturnRiskStatus:     input.EarlyReturnRiskStatus,
+		FinalResponseAllowed:      input.FinalResponseAllowed,
+		EventCount:                input.EventCount,
+		EventIndexDigest:          input.EventIndexDigest,
+		Compact:                   input.Compact,
+		OperatorMode:              operatorMode,
+		SafeToExecute:             false,
+		ExecutesWork:              false,
+		ApprovesWork:              false,
+		MutatesRepositories:       false,
+		ExactNextAction:           input.ExactNextAction,
 	}, nil
 }
 

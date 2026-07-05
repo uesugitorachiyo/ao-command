@@ -1,0 +1,37 @@
+{
+  "schema": "ao.evidence.verification.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "status": "local_checks_passed",
+  "completed_checks": [
+    {
+      "command": "go test ./internal/cli -run 'TestMissionDashboardReadsCompactReadback|TestMissionDashboardCompactLongRunStatus' -count=1",
+      "result": "passed"
+    },
+    {
+      "command": "go test ./... -count=1",
+      "result": "passed"
+    },
+    {
+      "command": "go vet ./...",
+      "result": "passed"
+    },
+    {
+      "command": "go build ./cmd/ao-command",
+      "result": "passed"
+    },
+    {
+      "command": "scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --architecture ../ao-architecture --out docs/evidence/ao-mission-doubled-wave-v01/nodes/node-14-command-long-run-status-readback/production-readiness-audit.json",
+      "result": "passed",
+      "summary": "production_readiness_audit=passed readiness_percent=100 gates=36/36"
+    }
+  ],
+  "remaining_checks": [
+    "GitHub CI after PR"
+  ],
+  "artifacts": [
+    "compact-long-run-status.txt",
+    "long-run-dashboard-command.json",
+    "production-readiness-audit.json"
+  ]
+}

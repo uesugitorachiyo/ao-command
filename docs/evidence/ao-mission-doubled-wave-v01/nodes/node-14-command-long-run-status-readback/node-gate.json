@@ -1,0 +1,33 @@
+{
+  "schema": "ao.evidence.node-gate.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "owner": "ao-command",
+  "status": "local_verified",
+  "route": "command",
+  "active_mutation_node": true,
+  "bounded_scope": [
+    "internal/cli/cli.go",
+    "internal/cli/cli_test.go",
+    "examples/mission/dashboard.long-run.ready.json",
+    "docs/evidence/ao-mission-doubled-wave-v01/nodes/node-14-command-long-run-status-readback"
+  ],
+  "required_checks": [
+    "go test ./... -count=1",
+    "go vet ./...",
+    "go build ./cmd/ao-command",
+    "scripts/production-readiness-audit.sh",
+    "public-safety wording scan over node changes"
+  ],
+  "safety_boundaries": {
+    "direct_main_mutation": false,
+    "credential_or_token_inspection": false,
+    "provider_calls": false,
+    "release_deploy_publish_upload_or_tag": false,
+    "dependency_updates": false,
+    "auth_policy_or_config_widening": false,
+    "hidden_instruction_mutation": false,
+    "broad_rsi_claim": false
+  },
+  "next_gate": "PR, CI, merge, branch cleanup"
+}

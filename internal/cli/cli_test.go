@@ -443,6 +443,42 @@ func TestMissionDashboardReadsCompactReadback(t *testing.T) {
 	}
 }
 
+func TestMissionDashboardCompactLongRunStatus(t *testing.T) {
+	dashboardPath := filepath.Join("..", "..", "examples", "mission", "dashboard.long-run.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--compact"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard long-run compact exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"compact_mission_status=mission=mission-long-run status=active route=ao-atlas latest_route=ao-foundry events=42",
+		"compact_long_run_status=nodes=14/60 min_nodes=15 ready=46 blocked=0 failed=0 checkpoints=14 elapsed_minutes=84 min_minutes=120 lease=minimum_unmet return_gate=blocked_ready_nodes_remain final_response_allowed=false",
+		"compact_readback_statuses=workgraph=in_progress foundry=in_progress promoter=no_promotion command=ready checkpoint_freshness=fresh_checkpoint_required_after_each_node_or_timed_interval early_return_risk=blocked_final_response_ready_nodes_remain",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"exact_next_action=Continue with node 15 through AO Command compact readback evidence.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("compact long-run mission dashboard missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard long-run json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission dashboard long-run JSON: %v\n%s", err, stdout)
+	}
+	if got["total_nodes"] != float64(60) ||
+		got["completed_nodes"] != float64(14) ||
+		got["return_gate_status"] != "blocked_ready_nodes_remain" ||
+		got["final_response_allowed"] != false {
+		t.Fatalf("unexpected long-run mission dashboard JSON: %#v", got)
+	}
+}
+
 func TestMissionReadinessReadsBundle(t *testing.T) {
 	bundlePath := filepath.Join("..", "..", "examples", "mission", "readiness-bundle.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "readiness", "--bundle", bundlePath}, &fakeRunner{})

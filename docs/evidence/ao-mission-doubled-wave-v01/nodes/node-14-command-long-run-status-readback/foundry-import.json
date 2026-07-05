@@ -1,0 +1,22 @@
+{
+  "schema": "ao.foundry.import.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "route": "ao-command",
+  "owning_supervisor": "ao-atlas",
+  "implementation_owner": "ao-command",
+  "status": "imported",
+  "task": "Bind compact AO Command mission status readback to long-run lease/workgraph/checkpoint/final-response state.",
+  "acceptance": [
+    "mission dashboard --compact includes long-run status when fields are present",
+    "mission dashboard --json preserves long-run fields",
+    "tests cover compact and JSON readback",
+    "readback states final_response_allowed=false while ready nodes and lease minimum remain"
+  ],
+  "non_goals": [
+    "no execution authority",
+    "no provider calls",
+    "no release or publish action",
+    "no direct main mutation"
+  ]
+}

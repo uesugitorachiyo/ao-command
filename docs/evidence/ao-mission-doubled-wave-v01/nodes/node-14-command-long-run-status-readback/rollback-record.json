@@ -1,0 +1,19 @@
+{
+  "schema": "ao.evidence.rollback-record.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "rollback_ready": true,
+  "rollback_scope": [
+    "internal/cli/cli.go",
+    "internal/cli/cli_test.go",
+    "examples/mission/dashboard.long-run.ready.json",
+    "docs/evidence/ao-mission-doubled-wave-v01/nodes/node-14-command-long-run-status-readback"
+  ],
+  "rollback_command": "git revert <merge-commit-for-node-14>",
+  "post_rollback_checks": [
+    "go test ./... -count=1",
+    "go vet ./...",
+    "go build ./cmd/ao-command"
+  ],
+  "notes": "The node is additive and does not alter repository authority, release, provider, or credential behavior."
+}

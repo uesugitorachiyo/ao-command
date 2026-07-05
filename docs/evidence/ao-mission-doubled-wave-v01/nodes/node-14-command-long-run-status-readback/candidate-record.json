@@ -1,0 +1,19 @@
+{
+  "schema": "ao.evidence.candidate-record.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "candidate": {
+    "repo": "ao-command",
+    "branch": "codex/doubled-wave-node-14-command-long-run-status",
+    "summary": "Extend mission dashboard compact readback with optional long-run lease, workgraph, checkpoint, return-gate, and final-response fields.",
+    "reason": "AO Mission long-run supervision needs Command to provide a compact status line that shows whether ready nodes, lease minimums, checkpoint freshness, or early-return risk still block final response."
+  },
+  "expected_behavior": [
+    "Existing compact mission dashboard output remains unchanged for fixtures without long-run fields.",
+    "Long-run dashboard fixtures emit compact_long_run_status and compact_readback_statuses lines.",
+    "JSON dashboard readback preserves long-run status fields for downstream Atlas/Mission evidence packets.",
+    "Command remains read-only and does not schedule, approve, execute, or mutate work."
+  ],
+  "risk": "Low: additive parsing and output for optional fields behind hasLongRunStatus.",
+  "rollback": "Revert this branch/PR to remove optional long-run fields and fixture."
+}
