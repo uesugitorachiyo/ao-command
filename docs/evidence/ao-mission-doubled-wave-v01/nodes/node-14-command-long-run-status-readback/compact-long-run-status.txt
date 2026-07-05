@@ -1,0 +1,8 @@
+compact_mission_status=mission=mission-long-run status=active route=ao-atlas latest_route=ao-foundry events=42
+compact_long_run_status=nodes=14/60 min_nodes=15 ready=46 blocked=0 failed=0 checkpoints=14 elapsed_minutes=84 min_minutes=120 lease=minimum_unmet return_gate=blocked_ready_nodes_remain final_response_allowed=false
+compact_readback_statuses=workgraph=in_progress foundry=in_progress promoter=no_promotion command=ready checkpoint_freshness=fresh_checkpoint_required_after_each_node_or_timed_interval early_return_risk=blocked_final_response_ready_nodes_remain
+safe_to_execute=false
+executes_work=false
+approves_work=false
+mutates_repositories=false
+exact_next_action=Continue with node 15 through AO Command compact readback evidence.

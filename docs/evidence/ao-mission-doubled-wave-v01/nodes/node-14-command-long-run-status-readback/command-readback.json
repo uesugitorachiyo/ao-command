@@ -1,0 +1,10 @@
+{
+  "schema": "ao.command.node-readback.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "status": "ready_for_pr",
+  "compact_artifact": "compact-long-run-status.txt",
+  "json_artifact": "long-run-dashboard-command.json",
+  "summary": "AO Command mission dashboard readback now exposes compact long-run state and keeps final response denied while ready nodes or lease minimums remain.",
+  "exact_next_action": "Open AO Command PR for node 14, wait for CI, merge, sync, delete codex branch, then continue node 15."
+}

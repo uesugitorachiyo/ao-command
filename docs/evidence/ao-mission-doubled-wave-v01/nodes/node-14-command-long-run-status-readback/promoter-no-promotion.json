@@ -1,0 +1,12 @@
+{
+  "schema": "ao.evidence.promoter-readback.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "status": "no_promotion",
+  "reason": "Node 14 improves Command readback quality only. It does not promote a capability class or assert RSI.",
+  "promotion_readiness": {
+    "capability_promoted": false,
+    "fully_unsupervised_complex_mutation_promoted": false,
+    "rsi_promoted": false
+  }
+}

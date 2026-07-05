@@ -1,0 +1,17 @@
+{
+  "schema": "ao.evidence.implementation.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "repo": "ao-command",
+  "status": "implemented_local",
+  "changed_surfaces": [
+    "internal/cli/cli.go: parsed optional long-run dashboard fields and emitted compact long-run readback lines",
+    "internal/cli/cli_test.go: added regression coverage for compact and JSON long-run mission dashboard output",
+    "examples/mission/dashboard.long-run.ready.json: added ready-node fixture with blocked final response"
+  ],
+  "generated_artifacts": [
+    "compact-long-run-status.txt",
+    "long-run-dashboard-command.json"
+  ],
+  "behavioral_summary": "AO Command can now show compact long-run mission state, including node progress, lease minimums, checkpoint count, return gate, early-return risk, and final-response permission."
+}

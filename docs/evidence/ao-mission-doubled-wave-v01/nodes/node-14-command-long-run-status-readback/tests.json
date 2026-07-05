@@ -1,0 +1,25 @@
+{
+  "schema": "ao.evidence.tests.v0.1",
+  "mission_id": "ao-mission-doubled-wave-v01",
+  "node_id": "node-14-command-long-run-status-readback",
+  "tests": [
+    {
+      "name": "TestMissionDashboardCompactLongRunStatus",
+      "path": "internal/cli/cli_test.go",
+      "asserts": [
+        "compact_long_run_status reports 14/60 nodes, min_nodes=15, ready=46, checkpoint count, elapsed/min minutes, lease, return gate, and final_response_allowed=false",
+        "compact_readback_statuses reports workgraph, Foundry, Promoter, Command, checkpoint freshness, and early-return risk",
+        "JSON output preserves total_nodes, completed_nodes, return_gate_status, and final_response_allowed"
+      ]
+    },
+    {
+      "name": "TestMissionDashboardReadsCompactReadback",
+      "path": "internal/cli/cli_test.go",
+      "asserts": [
+        "existing compact dashboard readback remains compatible"
+      ]
+    }
+  ],
+  "focused_command": "go test ./internal/cli -run 'TestMissionDashboardReadsCompactReadback|TestMissionDashboardCompactLongRunStatus' -count=1",
+  "focused_result": "passed"
+}
