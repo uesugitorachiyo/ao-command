@@ -1087,6 +1087,8 @@ func (a App) liveMutationApproval(args []string) int {
 	fmt.Fprintf(a.Stdout, "approval_state=%s\n", summary.ApprovalState)
 	fmt.Fprintf(a.Stdout, "request_id=%s\n", summary.RequestID)
 	fmt.Fprintf(a.Stdout, "ticket_id=%s\n", summary.TicketID)
+	fmt.Fprintf(a.Stdout, "request_sha256=%s\n", summary.RequestSHA256)
+	fmt.Fprintf(a.Stdout, "ticket_sha256=%s\n", summary.TicketSHA256)
 	fmt.Fprintf(a.Stdout, "first_failing_check=%s\n", summary.FirstFailingCheck)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
@@ -2112,6 +2114,8 @@ type liveMutationApprovalSummary struct {
 	ApprovalState        string `json:"approval_state"`
 	RequestID            string `json:"request_id"`
 	TicketID             string `json:"ticket_id"`
+	RequestSHA256        string `json:"request_sha256"`
+	TicketSHA256         string `json:"ticket_sha256"`
 	FirstFailingCheck    string `json:"first_failing_check"`
 	OperatorMode         string `json:"operator_mode"`
 	MutatesRepositories  bool   `json:"mutates_repositories"`
@@ -3266,6 +3270,14 @@ func readLiveMutationApproval(requestPath, ticketPath string) (liveMutationAppro
 	if liveMutationMapString(ticket, "schema_version") != "covenant.live-docs-approval-ticket.v1" {
 		return liveMutationApprovalSummary{}, errors.New("ticket schema_version must be covenant.live-docs-approval-ticket.v1")
 	}
+	requestSHA, err := sha256File(requestPath)
+	if err != nil {
+		return liveMutationApprovalSummary{}, fmt.Errorf("hash request: %w", err)
+	}
+	ticketSHA, err := sha256File(ticketPath)
+	if err != nil {
+		return liveMutationApprovalSummary{}, fmt.Errorf("hash ticket: %w", err)
+	}
 	summary := liveMutationApprovalSummary{
 		SchemaVersion:        "ao.command.live-mutation-approval-status.v0.1",
 		CommandSchemaVersion: commandSchemaVersion,
@@ -3275,6 +3287,8 @@ func readLiveMutationApproval(requestPath, ticketPath string) (liveMutationAppro
 		ApprovalState:        liveMutationMapString(ticket, "approval_state"),
 		RequestID:            liveMutationMapString(ticket, "request_id"),
 		TicketID:             liveMutationMapString(ticket, "ticket_id"),
+		RequestSHA256:        requestSHA,
+		TicketSHA256:         ticketSHA,
 		FirstFailingCheck:    "",
 		OperatorMode:         operatorMode,
 		MutatesRepositories:  false,

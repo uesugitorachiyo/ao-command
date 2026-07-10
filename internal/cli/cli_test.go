@@ -1839,6 +1839,14 @@ func TestLiveMutationStatusReportsMultiRepoLowRiskDryRunReadback(t *testing.T) {
 
 func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
 	paths := liveDocsApprovalFixturePaths()
+	requestSHA, err := sha256File(paths.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketSHA, err := sha256File(paths.approvedTicket)
+	if err != nil {
+		t.Fatal(err)
+	}
 	code, stdout, stderr := runWithFake([]string{
 		"live-mutation", "approval",
 		"--request", paths.request,
@@ -1856,6 +1864,8 @@ func TestLiveMutationApprovalReportsApprovedTicketReadOnly(t *testing.T) {
 		"mutates_repositories=false",
 		"request_id=first-live-docs-only-approval-request",
 		"ticket_id=live-docs-approval-ticket",
+		"request_sha256=" + requestSHA,
+		"ticket_sha256=" + ticketSHA,
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("live-mutation approval stdout missing %q:\n%s", want, stdout)
