@@ -1,0 +1,44 @@
+{
+  "schema": "ao.command.mission-approval-inbox.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "operator_mode": "read_only",
+  "approvals": [
+    {
+      "ticket_id": "approval-ticket-pending",
+      "request_id": "request-pilot-dry-run",
+      "status": "pending",
+      "requester": "ao-mission",
+      "scope": "dry_run_golden_path",
+      "summary": "Operator review required before any live pilot or credentialed action.",
+      "created_at_utc": "2026-07-12T00:00:00Z"
+    },
+    {
+      "ticket_id": "approval-ticket-approved",
+      "request_id": "request-docs-readback",
+      "status": "approved",
+      "requester": "ao-blueprint",
+      "scope": "docs_readback_only",
+      "summary": "Documentation readback was approved without execution authority.",
+      "created_at_utc": "2026-07-12T00:10:00Z",
+      "decision_at_utc": "2026-07-12T00:15:00Z",
+      "decision_reason": "readback_only"
+    },
+    {
+      "ticket_id": "approval-ticket-denied",
+      "request_id": "request-provider-call",
+      "status": "denied",
+      "requester": "ao2",
+      "scope": "provider_execution",
+      "summary": "Provider execution remains denied without separate authorization.",
+      "created_at_utc": "2026-07-12T00:20:00Z",
+      "decision_at_utc": "2026-07-12T00:25:00Z",
+      "decision_reason": "provider_calls_denied"
+    }
+  ],
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "exact_next_action": "review pending approval tickets through Covenant before any gated live action"
+}
