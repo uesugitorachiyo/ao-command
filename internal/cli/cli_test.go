@@ -479,6 +479,39 @@ func TestMissionDashboardCompactLongRunStatus(t *testing.T) {
 	}
 }
 
+func TestMissionDashboardTerminalRollupCard(t *testing.T) {
+	dashboardPath := filepath.Join("..", "..", "examples", "mission", "dashboard.terminal-ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--terminal-card"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard terminal-card exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"terminal_rollup_card=mission=mission-terminal-rollup status=terminal_handoff_ready route=complete nodes=40/40 ready=0 blocked=0 failed=0",
+		"terminal_rollup_evidence=foundry=completed promoter=no_promotion_requested command=readback_agrees_no_promotion return_gate=final_response_allowed final_response_allowed=true",
+		"terminal_rollup_safety=promotion_claimed=false rsi_remains_denied=true safe_to_execute=false executes_work=false approves_work=false mutates_repositories=false",
+		"exact_next_action=Use the next Month 6 recommendation wave prompt; no promotion requested and RSI remains denied.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("terminal rollup card missing %q:\n%s", want, stdout)
+		}
+	}
+	code, stdout, stderr = runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath, "--terminal-card", "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission dashboard terminal-card json exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid terminal rollup card JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-terminal-rollup-card.v0.1" ||
+		got["status"] != "terminal_handoff_ready" ||
+		got["promotion_claimed"] != false ||
+		got["rsi_remains_denied"] != true ||
+		got["safe_to_execute"] != false {
+		t.Fatalf("unexpected terminal rollup card JSON: %#v", got)
+	}
+}
+
 func TestMissionApprovalInboxListAndDetailReadbacks(t *testing.T) {
 	inboxPath := filepath.Join("..", "..", "examples", "mission", "approval-inbox.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "approvals", "--inbox", inboxPath}, &fakeRunner{})
