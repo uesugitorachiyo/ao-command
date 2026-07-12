@@ -93,6 +93,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.liveMutation(args[1:])
 	case "mission":
 		return a.mission(args[1:])
+	case "control-plane":
+		return a.controlPlane(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -128,6 +130,7 @@ Usage:
   ao-command mission readiness --bundle PATH [--json]
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
+  ao-command control-plane boundary --packet PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
@@ -182,6 +185,64 @@ func (a App) mission(args []string) int {
 
 func missionUsage() string {
 	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+}
+
+func (a App) controlPlane(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, controlPlaneUsage())
+		return 2
+	}
+	switch args[0] {
+	case "boundary":
+		return a.controlPlaneBoundary(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, controlPlaneUsage())
+		return 2
+	}
+}
+
+func controlPlaneUsage() string {
+	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json]"
+}
+
+func (a App) controlPlaneBoundary(args []string) int {
+	var packetPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("control-plane boundary", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&packetPath, "packet", "", "path to AO Command control-plane client boundary dry-run JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(packetPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command control-plane boundary: --packet is required")
+		return 2
+	}
+	summary, err := readControlPlaneClientBoundary(packetPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command control-plane boundary: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_control_plane_boundary=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "command_role=%s\n", summary.CommandRole)
+	fmt.Fprintf(a.Stdout, "control_plane_role=%s\n", summary.ControlPlaneRole)
+	fmt.Fprintf(a.Stdout, "allowed_operations=%d\n", summary.AllowedOperationCount)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "mutates_control_plane=%t\n", summary.MutatesControlPlane)
+	fmt.Fprintf(a.Stdout, "writes_storage=%t\n", summary.WritesStorage)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	fmt.Fprintf(a.Stdout, "uses_credentials=%t\n", summary.UsesCredentials)
+	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
+	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -5342,6 +5403,123 @@ func readJSONFile(path string, target any) error {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 	return nil
+}
+
+type controlPlaneClientBoundaryPacket struct {
+	Schema              string                                `json:"schema"`
+	Status              string                                `json:"status"`
+	CommandRole         string                                `json:"command_role"`
+	ControlPlaneRole    string                                `json:"control_plane_role"`
+	Boundary            string                                `json:"boundary"`
+	AllowedOperations   []controlPlaneClientBoundaryOperation `json:"allowed_operations"`
+	ForbiddenOperations []string                              `json:"forbidden_operations"`
+	SafeToExecute       bool                                  `json:"safe_to_execute"`
+	ExecutesWork        bool                                  `json:"executes_work"`
+	ApprovesWork        bool                                  `json:"approves_work"`
+	MutatesRepositories bool                                  `json:"mutates_repositories"`
+	MutatesControlPlane bool                                  `json:"mutates_control_plane"`
+	WritesStorage       bool                                  `json:"writes_storage"`
+	CallsProviders      bool                                  `json:"calls_providers"`
+	UsesCredentials     bool                                  `json:"uses_credentials"`
+	ReleasesOrDeploys   bool                                  `json:"releases_or_deploys"`
+	RSIStatus           string                                `json:"rsi_status"`
+	ExactNextAction     string                                `json:"exact_next_action"`
+}
+
+type controlPlaneClientBoundaryOperation struct {
+	Method             string `json:"method"`
+	Path               string `json:"path"`
+	Purpose            string `json:"purpose"`
+	WritesControlPlane bool   `json:"writes_control_plane"`
+}
+
+type controlPlaneClientBoundarySummary struct {
+	CommandSchemaVersion  string                                `json:"command_schema_version"`
+	Schema                string                                `json:"schema"`
+	Status                string                                `json:"status"`
+	CommandRole           string                                `json:"command_role"`
+	ControlPlaneRole      string                                `json:"control_plane_role"`
+	Boundary              string                                `json:"boundary"`
+	AllowedOperationCount int                                   `json:"allowed_operation_count"`
+	AllowedOperations     []controlPlaneClientBoundaryOperation `json:"allowed_operations"`
+	ForbiddenOperations   []string                              `json:"forbidden_operations"`
+	SafeToExecute         bool                                  `json:"safe_to_execute"`
+	ExecutesWork          bool                                  `json:"executes_work"`
+	ApprovesWork          bool                                  `json:"approves_work"`
+	MutatesRepositories   bool                                  `json:"mutates_repositories"`
+	MutatesControlPlane   bool                                  `json:"mutates_control_plane"`
+	WritesStorage         bool                                  `json:"writes_storage"`
+	CallsProviders        bool                                  `json:"calls_providers"`
+	UsesCredentials       bool                                  `json:"uses_credentials"`
+	ReleasesOrDeploys     bool                                  `json:"releases_or_deploys"`
+	RSIStatus             string                                `json:"rsi_status"`
+	ExactNextAction       string                                `json:"exact_next_action"`
+}
+
+func readControlPlaneClientBoundary(path string) (controlPlaneClientBoundarySummary, error) {
+	var packet controlPlaneClientBoundaryPacket
+	if err := readJSONFile(path, &packet); err != nil {
+		return controlPlaneClientBoundarySummary{}, err
+	}
+	if packet.Schema != "ao.command.control-plane-client-boundary-dry-run.v0.1" {
+		return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary schema must be ao.command.control-plane-client-boundary-dry-run.v0.1")
+	}
+	if strings.TrimSpace(packet.Status) == "" ||
+		strings.TrimSpace(packet.CommandRole) == "" ||
+		strings.TrimSpace(packet.ControlPlaneRole) == "" ||
+		strings.TrimSpace(packet.Boundary) == "" ||
+		strings.TrimSpace(packet.ExactNextAction) == "" {
+		return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary requires status, command_role, control_plane_role, boundary, and exact_next_action")
+	}
+	if len(packet.AllowedOperations) == 0 {
+		return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary requires at least one allowed read operation")
+	}
+	if packet.SafeToExecute ||
+		packet.ExecutesWork ||
+		packet.ApprovesWork ||
+		packet.MutatesRepositories ||
+		packet.MutatesControlPlane ||
+		packet.WritesStorage ||
+		packet.CallsProviders ||
+		packet.UsesCredentials ||
+		packet.ReleasesOrDeploys {
+		return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary must remain read-only and cannot execute, approve, mutate repositories, mutate control-plane state, write storage, call providers, use credentials, release, or deploy")
+	}
+	if !strings.EqualFold(packet.RSIStatus, "denied") {
+		return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary must preserve RSI denied status")
+	}
+	for i, op := range packet.AllowedOperations {
+		method := strings.ToUpper(strings.TrimSpace(op.Method))
+		if method == "" || strings.TrimSpace(op.Path) == "" || strings.TrimSpace(op.Purpose) == "" {
+			return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary allowed operation %d requires method, path, and purpose", i)
+		}
+		if op.WritesControlPlane || method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
+			return controlPlaneClientBoundarySummary{}, fmt.Errorf("control-plane boundary must remain read-only")
+		}
+		packet.AllowedOperations[i].Method = method
+	}
+	return controlPlaneClientBoundarySummary{
+		CommandSchemaVersion:  "ao.command.v0.1",
+		Schema:                "ao.command.control-plane-client-boundary-readback.v0.1",
+		Status:                packet.Status,
+		CommandRole:           packet.CommandRole,
+		ControlPlaneRole:      packet.ControlPlaneRole,
+		Boundary:              packet.Boundary,
+		AllowedOperationCount: len(packet.AllowedOperations),
+		AllowedOperations:     append([]controlPlaneClientBoundaryOperation(nil), packet.AllowedOperations...),
+		ForbiddenOperations:   append([]string(nil), packet.ForbiddenOperations...),
+		SafeToExecute:         false,
+		ExecutesWork:          false,
+		ApprovesWork:          false,
+		MutatesRepositories:   false,
+		MutatesControlPlane:   false,
+		WritesStorage:         false,
+		CallsProviders:        false,
+		UsesCredentials:       false,
+		ReleasesOrDeploys:     false,
+		RSIStatus:             packet.RSIStatus,
+		ExactNextAction:       packet.ExactNextAction,
+	}, nil
 }
 
 type missionCommandStatusSummary struct {
