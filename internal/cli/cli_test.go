@@ -479,6 +479,52 @@ func TestMissionDashboardCompactLongRunStatus(t *testing.T) {
 	}
 }
 
+func TestMissionApprovalInboxListAndDetailReadbacks(t *testing.T) {
+	inboxPath := filepath.Join("..", "..", "examples", "mission", "approval-inbox.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "approvals", "--inbox", inboxPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission approvals exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_approvals=ready",
+		"mission_id=mission-demo",
+		"approval_count=3",
+		"pending_count=1",
+		"approved_count=1",
+		"denied_count=1",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission approvals stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "approvals", "--inbox", inboxPath, "--ticket-id", "approval-ticket-pending", "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission approvals detail exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission approvals JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-approval-inbox.v0.1" ||
+		got["selected_ticket_id"] != "approval-ticket-pending" ||
+		got["approval_count"] != float64(3) ||
+		got["safe_to_execute"] != false ||
+		got["executes_work"] != false ||
+		got["approves_work"] != false ||
+		got["mutates_repositories"] != false {
+		t.Fatalf("unexpected mission approvals detail: %#v", got)
+	}
+	approvals, _ := got["approvals"].([]any)
+	if len(approvals) != 1 {
+		t.Fatalf("expected one selected approval, got %#v", approvals)
+	}
+}
+
 func TestMissionReadinessReadsBundle(t *testing.T) {
 	bundlePath := filepath.Join("..", "..", "examples", "mission", "readiness-bundle.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "readiness", "--bundle", bundlePath}, &fakeRunner{})
