@@ -122,7 +122,7 @@ Usage:
   ao-command mission approvals --inbox PATH [--ticket-id ID] [--json]
   ao-command mission status --status PATH [--json]
   ao-command mission next --decision PATH [--json]
-  ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json]
+  ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json]
   ao-command mission artifacts --manifest PATH [--json]
   ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json]
   ao-command mission readiness --bundle PATH [--json]
@@ -181,7 +181,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -435,13 +435,14 @@ func (a App) missionArtifacts(args []string) int {
 func (a App) missionHistory(args []string) int {
 	var historyPath string
 	var routeFilter, statusFilter, queryFilter string
-	var jsonOut, compact bool
+	var jsonOut, compact, pilotReadiness bool
 	fs := flag.NewFlagSet("mission history", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	fs.StringVar(&historyPath, "history", "", "path to AO Mission route history JSON")
 	fs.StringVar(&routeFilter, "route", "", "filter route-history entries by route")
 	fs.StringVar(&statusFilter, "status-filter", "", "filter route-history entries by status")
 	fs.StringVar(&queryFilter, "query", "", "filter route-history entries by reason or exact next action")
+	fs.BoolVar(&pilotReadiness, "pilot-readiness", false, "filter route-history entries to pilot readiness timeline events")
 	fs.BoolVar(&compact, "compact", false, "emit compact filtered timeline summary")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
@@ -457,9 +458,10 @@ func (a App) missionHistory(args []string) int {
 		return 1
 	}
 	summary = filterMissionRouteHistory(summary, missionHistoryFilters{
-		Route:  routeFilter,
-		Status: statusFilter,
-		Query:  queryFilter,
+		Route:          routeFilter,
+		Status:         statusFilter,
+		Query:          queryFilter,
+		PilotReadiness: pilotReadiness,
 	})
 	if jsonOut {
 		return a.writeJSON(summary)
@@ -5452,6 +5454,7 @@ type missionHistorySummary struct {
 	RouteFilter          string                    `json:"route_filter,omitempty"`
 	StatusFilter         string                    `json:"status_filter,omitempty"`
 	QueryFilter          string                    `json:"query_filter,omitempty"`
+	PilotReadinessFilter bool                      `json:"pilot_readiness_filter,omitempty"`
 	Routes               []missionRouteHistoryItem `json:"routes"`
 	SafeToExecute        bool                      `json:"safe_to_execute"`
 	ExecutesWork         bool                      `json:"executes_work"`
@@ -5461,9 +5464,10 @@ type missionHistorySummary struct {
 }
 
 type missionHistoryFilters struct {
-	Route  string
-	Status string
-	Query  string
+	Route          string
+	Status         string
+	Query          string
+	PilotReadiness bool
 }
 
 type missionDashboardSummary struct {
@@ -5972,7 +5976,7 @@ func filterMissionRouteHistory(summary missionHistorySummary, filters missionHis
 	filters.Route = strings.TrimSpace(filters.Route)
 	filters.Status = strings.TrimSpace(filters.Status)
 	filters.Query = strings.TrimSpace(filters.Query)
-	if filters.Route == "" && filters.Status == "" && filters.Query == "" {
+	if filters.Route == "" && filters.Status == "" && filters.Query == "" && !filters.PilotReadiness {
 		return summary
 	}
 	filtered := make([]missionRouteHistoryItem, 0, len(summary.Routes))
@@ -5986,12 +5990,16 @@ func filterMissionRouteHistory(summary missionHistorySummary, filters missionHis
 		if filters.Query != "" && !missionRouteHistoryItemMatchesQuery(item, filters.Query) {
 			continue
 		}
+		if filters.PilotReadiness && !missionRouteHistoryItemMatchesPilotReadiness(item) {
+			continue
+		}
 		filtered = append(filtered, item)
 	}
 	summary.TotalRouteCount = len(summary.Routes)
 	summary.RouteFilter = filters.Route
 	summary.StatusFilter = filters.Status
 	summary.QueryFilter = filters.Query
+	summary.PilotReadinessFilter = filters.PilotReadiness
 	summary.RouteCount = len(filtered)
 	summary.Routes = filtered
 	if len(filtered) == 0 {
@@ -6019,6 +6027,29 @@ func missionRouteHistoryItemMatchesQuery(item missionRouteHistoryItem, query str
 	return strings.Contains(haystack, query)
 }
 
+func missionRouteHistoryItemMatchesPilotReadiness(item missionRouteHistoryItem) bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		item.Route,
+		item.Reason,
+		item.ExactNextAction,
+		item.Status,
+	}, " "))
+	for _, term := range []string{
+		"pilot",
+		"beta",
+		"canary",
+		"readiness",
+		"approval inbox",
+		"stop-rule",
+		"incident",
+	} {
+		if strings.Contains(haystack, term) {
+			return true
+		}
+	}
+	return false
+}
+
 func missionHistoryFilterLabel(summary missionHistorySummary) string {
 	parts := []string{}
 	if summary.RouteFilter != "" {
@@ -6029,6 +6060,9 @@ func missionHistoryFilterLabel(summary missionHistorySummary) string {
 	}
 	if summary.QueryFilter != "" {
 		parts = append(parts, "query:"+summary.QueryFilter)
+	}
+	if summary.PilotReadinessFilter {
+		parts = append(parts, "pilot_readiness:true")
 	}
 	if len(parts) == 0 {
 		return "none"
