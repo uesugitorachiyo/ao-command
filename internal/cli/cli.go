@@ -124,7 +124,7 @@ Usage:
   ao-command mission next --decision PATH [--json]
   ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json]
   ao-command mission artifacts --manifest PATH [--json]
-  ao-command mission dashboard --dashboard PATH [--compact] [--json]
+  ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json]
   ao-command mission readiness --bundle PATH [--json]
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
@@ -181,7 +181,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--compact] [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func (a App) missionAggregate(args []string) int {
@@ -491,11 +491,12 @@ func (a App) missionHistory(args []string) int {
 
 func (a App) missionDashboard(args []string) int {
 	var dashboardPath string
-	var jsonOut, compact bool
+	var jsonOut, compact, terminalCard bool
 	fs := flag.NewFlagSet("mission dashboard", flag.ContinueOnError)
 	fs.SetOutput(a.Stderr)
 	fs.StringVar(&dashboardPath, "dashboard", "", "path to AO Mission dashboard readback JSON")
 	fs.BoolVar(&compact, "compact", false, "emit compact long-run mission status")
+	fs.BoolVar(&terminalCard, "terminal-card", false, "emit terminal rollup card for operator handoff")
 	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -508,6 +509,39 @@ func (a App) missionDashboard(args []string) int {
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "ao-command mission dashboard: %v\n", err)
 		return 1
+	}
+	if terminalCard {
+		card := buildMissionTerminalRollupCard(summary)
+		if jsonOut {
+			return a.writeJSON(card)
+		}
+		fmt.Fprintf(a.Stdout, "terminal_rollup_card=mission=%s status=%s route=%s nodes=%d/%d ready=%d blocked=%d failed=%d\n",
+			card.MissionID,
+			card.Status,
+			card.LatestRoute,
+			card.CompletedNodes,
+			card.TotalNodes,
+			card.ReadyNodes,
+			card.BlockedNodes,
+			card.FailedNodes,
+		)
+		fmt.Fprintf(a.Stdout, "terminal_rollup_evidence=foundry=%s promoter=%s command=%s return_gate=%s final_response_allowed=%t\n",
+			card.FoundryRollupStatus,
+			card.PromoterStatus,
+			card.CommandReadbackStatus,
+			card.ReturnGateStatus,
+			card.FinalResponseAllowed,
+		)
+		fmt.Fprintf(a.Stdout, "terminal_rollup_safety=promotion_claimed=%t rsi_remains_denied=%t safe_to_execute=%t executes_work=%t approves_work=%t mutates_repositories=%t\n",
+			card.PromotionClaimed,
+			card.RSIRemainsDenied,
+			card.SafeToExecute,
+			card.ExecutesWork,
+			card.ApprovesWork,
+			card.MutatesRepositories,
+		)
+		fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", card.ExactNextAction)
+		return 0
 	}
 	if jsonOut {
 		return a.writeJSON(summary)
@@ -5458,6 +5492,8 @@ type missionDashboardSummary struct {
 	ReturnGateStatus          string `json:"return_gate_status,omitempty"`
 	EarlyReturnRiskStatus     string `json:"early_return_risk_status,omitempty"`
 	FinalResponseAllowed      bool   `json:"final_response_allowed"`
+	PromotionClaimed          bool   `json:"promotion_claimed"`
+	RSIRemainsDenied          bool   `json:"rsi_remains_denied"`
 	EventCount                int    `json:"event_count"`
 	EventIndexDigest          string `json:"event_index_digest"`
 	Compact                   bool   `json:"compact"`
@@ -5467,6 +5503,33 @@ type missionDashboardSummary struct {
 	ApprovesWork              bool   `json:"approves_work"`
 	MutatesRepositories       bool   `json:"mutates_repositories"`
 	ExactNextAction           string `json:"exact_next_action"`
+}
+
+type missionTerminalRollupCard struct {
+	CommandSchemaVersion  string `json:"command_schema_version"`
+	Schema                string `json:"schema"`
+	Status                string `json:"status"`
+	MissionID             string `json:"mission_id"`
+	MissionStatus         string `json:"mission_status"`
+	LatestRoute           string `json:"latest_route"`
+	CompletedNodes        int    `json:"completed_nodes"`
+	TotalNodes            int    `json:"total_nodes"`
+	ReadyNodes            int    `json:"ready_nodes"`
+	BlockedNodes          int    `json:"blocked_nodes"`
+	FailedNodes           int    `json:"failed_nodes"`
+	FoundryRollupStatus   string `json:"foundry_rollup_status"`
+	PromoterStatus        string `json:"promoter_status"`
+	CommandReadbackStatus string `json:"command_readback_status"`
+	ReturnGateStatus      string `json:"return_gate_status"`
+	FinalResponseAllowed  bool   `json:"final_response_allowed"`
+	PromotionClaimed      bool   `json:"promotion_claimed"`
+	RSIRemainsDenied      bool   `json:"rsi_remains_denied"`
+	OperatorMode          string `json:"operator_mode"`
+	SafeToExecute         bool   `json:"safe_to_execute"`
+	ExecutesWork          bool   `json:"executes_work"`
+	ApprovesWork          bool   `json:"approves_work"`
+	MutatesRepositories   bool   `json:"mutates_repositories"`
+	ExactNextAction       string `json:"exact_next_action"`
 }
 
 func (s missionDashboardSummary) hasLongRunStatus() bool {
@@ -5999,6 +6062,8 @@ func readMissionDashboardReadback(path string) (missionDashboardSummary, error) 
 		ReturnGateStatus          string `json:"return_gate_status"`
 		EarlyReturnRiskStatus     string `json:"early_return_risk_status"`
 		FinalResponseAllowed      bool   `json:"final_response_allowed"`
+		PromotionClaimed          bool   `json:"promotion_claimed"`
+		RSIRemainsDenied          bool   `json:"rsi_remains_denied"`
 		EventCount                int    `json:"event_count"`
 		EventIndexDigest          string `json:"event_index_digest"`
 		Compact                   bool   `json:"compact"`
@@ -6050,6 +6115,8 @@ func readMissionDashboardReadback(path string) (missionDashboardSummary, error) 
 		ReturnGateStatus:          input.ReturnGateStatus,
 		EarlyReturnRiskStatus:     input.EarlyReturnRiskStatus,
 		FinalResponseAllowed:      input.FinalResponseAllowed,
+		PromotionClaimed:          input.PromotionClaimed,
+		RSIRemainsDenied:          input.RSIRemainsDenied,
 		EventCount:                input.EventCount,
 		EventIndexDigest:          input.EventIndexDigest,
 		Compact:                   input.Compact,
@@ -6060,6 +6127,49 @@ func readMissionDashboardReadback(path string) (missionDashboardSummary, error) 
 		MutatesRepositories:       false,
 		ExactNextAction:           input.ExactNextAction,
 	}, nil
+}
+
+func buildMissionTerminalRollupCard(summary missionDashboardSummary) missionTerminalRollupCard {
+	status := "terminal_handoff_review"
+	if summary.MissionStatus == "done" &&
+		summary.FinalResponseAllowed &&
+		summary.CompletedNodes == summary.TotalNodes &&
+		summary.ReadyNodes == 0 &&
+		summary.BlockedNodes == 0 &&
+		summary.FailedNodes == 0 &&
+		summary.ReturnGateStatus == "final_response_allowed" {
+		status = "terminal_handoff_ready"
+	}
+	exactNextAction := strings.TrimSpace(summary.ExactNextAction)
+	if exactNextAction == "" {
+		exactNextAction = "review terminal rollup card; continue only through AO Mission governed recommendations"
+	}
+	return missionTerminalRollupCard{
+		CommandSchemaVersion:  commandSchemaVersion,
+		Schema:                "ao.command.mission-terminal-rollup-card.v0.1",
+		Status:                status,
+		MissionID:             summary.MissionID,
+		MissionStatus:         summary.MissionStatus,
+		LatestRoute:           summary.LatestRoute,
+		CompletedNodes:        summary.CompletedNodes,
+		TotalNodes:            summary.TotalNodes,
+		ReadyNodes:            summary.ReadyNodes,
+		BlockedNodes:          summary.BlockedNodes,
+		FailedNodes:           summary.FailedNodes,
+		FoundryRollupStatus:   summary.FoundryRollupStatus,
+		PromoterStatus:        summary.PromoterStatus,
+		CommandReadbackStatus: summary.CommandReadbackStatus,
+		ReturnGateStatus:      summary.ReturnGateStatus,
+		FinalResponseAllowed:  summary.FinalResponseAllowed,
+		PromotionClaimed:      summary.PromotionClaimed,
+		RSIRemainsDenied:      summary.RSIRemainsDenied,
+		OperatorMode:          operatorMode,
+		SafeToExecute:         false,
+		ExecutesWork:          false,
+		ApprovesWork:          false,
+		MutatesRepositories:   false,
+		ExactNextAction:       exactNextAction,
+	}
 }
 
 func readMissionReadinessBundle(path string) (missionReadinessSummary, error) {
