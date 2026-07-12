@@ -340,6 +340,106 @@ func TestMissionHistoryCompactFiltersTimeline(t *testing.T) {
 	}
 }
 
+func TestMissionHistoryCompactPilotReadinessFilter(t *testing.T) {
+	historyPath := filepath.Join(t.TempDir(), "route-history.json")
+	history := `[
+  {
+    "schema": "ao.mission.route-decision.v0.1",
+    "mission_id": "mission-pilot",
+    "status": "ready",
+    "route": "ao-blueprint",
+    "reason": "General requirements review",
+    "operator_mode": "read_only",
+    "safe_to_request": true,
+    "safe_to_execute": false,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false,
+    "exact_next_action": "Review ordinary requirements packet"
+  },
+  {
+    "schema": "ao.mission.route-decision.v0.1",
+    "mission_id": "mission-pilot",
+    "status": "ready",
+    "route": "ao-command",
+    "reason": "Pilot readiness timeline should show approval inbox state",
+    "operator_mode": "read_only",
+    "safe_to_request": true,
+    "safe_to_execute": false,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false,
+    "exact_next_action": "Render pilot readiness approval timeline"
+  },
+  {
+    "schema": "ao.mission.route-decision.v0.1",
+    "mission_id": "mission-pilot",
+    "status": "ready",
+    "route": "ao-mission",
+    "reason": "Beta incident readiness handoff",
+    "operator_mode": "read_only",
+    "safe_to_request": true,
+    "safe_to_execute": false,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false,
+    "exact_next_action": "Summarize beta pilot stop-rule readback"
+  }
+]`
+	if err := os.WriteFile(historyPath, []byte(history), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := runWithFake([]string{
+		"mission", "history",
+		"--history", historyPath,
+		"--pilot-readiness",
+		"--compact",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history compact pilot readiness exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"compact_timeline=mission=mission-pilot",
+		"route_count=2",
+		"total_route_count=3",
+		"latest_route=ao-mission",
+		"filters=pilot_readiness:true",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"exact_next_action=Summarize beta pilot stop-rule readback",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("compact pilot readiness history missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "Review ordinary requirements packet") {
+		t.Fatalf("compact pilot readiness history leaked non-pilot route:\n%s", stdout)
+	}
+
+	code, stdout, stderr = runWithFake([]string{
+		"mission", "history",
+		"--history", historyPath,
+		"--pilot-readiness",
+		"--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission history pilot readiness JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission history pilot readiness JSON: %v\n%s", err, stdout)
+	}
+	if got["route_count"] != float64(2) || got["total_route_count"] != float64(3) || got["pilot_readiness_filter"] != true {
+		t.Fatalf("unexpected pilot readiness mission history JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false {
+		t.Fatalf("pilot readiness history widened authority: %#v", got)
+	}
+}
+
 func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
 	gatewayPath := filepath.Join("..", "..", "examples", "mission", "gateway-intent-ledger.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "gateway", "--readback", gatewayPath}, &fakeRunner{})
