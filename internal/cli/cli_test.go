@@ -495,6 +495,94 @@ func TestMissionGatewayReadsReplayBundle(t *testing.T) {
 	}
 }
 
+func TestControlPlaneClientBoundaryDryRun(t *testing.T) {
+	boundaryPath := filepath.Join("..", "..", "examples", "control-plane", "client-boundary.ready.json")
+	code, stdout, stderr := runWithFake([]string{"control-plane", "boundary", "--packet", boundaryPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane boundary exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_control_plane_boundary=ready",
+		"command_role=read_only_operator_client",
+		"control_plane_role=evidence_observer",
+		"allowed_operations=2",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"mutates_control_plane=false",
+		"writes_storage=false",
+		"calls_providers=false",
+		"uses_credentials=false",
+		"releases_or_deploys=false",
+		"rsi_status=denied",
+		"exact_next_action=Use this dry-run boundary as the AO Command client contract before wiring live control-plane reads.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("control-plane boundary stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"control-plane", "boundary", "--packet", boundaryPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane boundary JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid control-plane boundary JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.control-plane-client-boundary-readback.v0.1" ||
+		got["status"] != "ready" ||
+		got["allowed_operation_count"] != float64(2) {
+		t.Fatalf("unexpected control-plane boundary JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["mutates_control_plane"] != false || got["writes_storage"] != false || got["calls_providers"] != false {
+		t.Fatalf("control-plane boundary widened authority: %#v", got)
+	}
+}
+
+func TestControlPlaneClientBoundaryDryRunRejectsWrites(t *testing.T) {
+	boundaryPath := filepath.Join(t.TempDir(), "unsafe-control-plane-boundary.json")
+	boundary := `{
+  "schema": "ao.command.control-plane-client-boundary-dry-run.v0.1",
+  "status": "ready",
+  "command_role": "read_only_operator_client",
+  "control_plane_role": "evidence_observer",
+  "boundary": "unsafe_write_client",
+  "allowed_operations": [
+    {
+      "method": "POST",
+      "path": "/v1/evidence",
+      "purpose": "write evidence",
+      "writes_control_plane": true
+    }
+  ],
+  "forbidden_operations": [],
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "mutates_control_plane": true,
+  "writes_storage": true,
+  "calls_providers": false,
+  "uses_credentials": false,
+  "releases_or_deploys": false,
+  "rsi_status": "denied",
+  "exact_next_action": "Do not accept write-capable control-plane clients."
+}`
+	if err := os.WriteFile(boundaryPath, []byte(boundary), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := runWithFake([]string{"control-plane", "boundary", "--packet", boundaryPath}, &fakeRunner{})
+	if code != 1 {
+		t.Fatalf("unsafe control-plane boundary exit=%d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "must remain read-only") {
+		t.Fatalf("stderr missing read-only rejection: %s", stderr)
+	}
+}
+
 func TestMissionDashboardReadsCompactReadback(t *testing.T) {
 	dashboardPath := filepath.Join("..", "..", "examples", "mission", "dashboard.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "dashboard", "--dashboard", dashboardPath}, &fakeRunner{})

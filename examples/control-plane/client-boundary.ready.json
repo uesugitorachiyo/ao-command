@@ -1,0 +1,37 @@
+{
+  "schema": "ao.command.control-plane-client-boundary-dry-run.v0.1",
+  "status": "ready",
+  "command_role": "read_only_operator_client",
+  "control_plane_role": "evidence_observer",
+  "boundary": "read_only_client_dry_run_no_control_plane_mutation",
+  "allowed_operations": [
+    {
+      "method": "GET",
+      "path": "/v1/evidence/:digest",
+      "purpose": "read content-addressed evidence by digest",
+      "writes_control_plane": false
+    },
+    {
+      "method": "GET",
+      "path": "/v1/missions/:mission_id/timeline",
+      "purpose": "read mission timeline events for operator status",
+      "writes_control_plane": false
+    }
+  ],
+  "forbidden_operations": [
+    "POST /v1/evidence",
+    "PATCH /v1/missions/:mission_id",
+    "DELETE /v1/evidence/:digest"
+  ],
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "mutates_control_plane": false,
+  "writes_storage": false,
+  "calls_providers": false,
+  "uses_credentials": false,
+  "releases_or_deploys": false,
+  "rsi_status": "denied",
+  "exact_next_action": "Use this dry-run boundary as the AO Command client contract before wiring live control-plane reads."
+}
