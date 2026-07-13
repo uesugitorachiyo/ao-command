@@ -4,43 +4,6 @@ AO Command is the read-only operator command surface for the AO stack. It makes
 AO Atlas, AO Foundry, AO Forge, AO2, ao2-control-plane, and AO Covenant evidence
 inspectable from one daily command center.
 
-## Role
-
-AO Command presents read-only Mission and control-plane evidence to operators.
-It owns presentation, not execution, policy, scheduling, or promotion truth.
-
-## Maturity
-
-**Alpha / early beta.** The local CLI and its readback paths are
-`implemented` and `executable-tested`. The external-beta workflow is
-`clean-room-rehearsed`. External beta has not launched.
-
-## Install
-
-```sh
-go build -o bin/ao-command ./cmd/ao-command
-```
-
-## Quickstart
-
-```sh
-bin/ao-command --help
-```
-
-## Safety
-
-No promotion is requested. AO Command is read-only. It cannot grant policy authority, execute mutations,
-activate a candidate, or prove unrestricted RSI. Unrestricted RSI remains
-denied.
-
-## External Beta
-
-Canonical topology and status live in
-[AO Architecture](https://github.com/uesugitorachiyo/ao-architecture).
-See the
-[AO Command component page](https://github.com/uesugitorachiyo/ao-architecture/blob/main/components/ao-command.md)
-for the external-beta boundary.
-
 ## AO Stack Architecture
 
 This repository is part of the AO agent orchestration stack. Start with the
