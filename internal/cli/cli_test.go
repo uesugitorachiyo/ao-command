@@ -440,6 +440,52 @@ func TestMissionHistoryCompactPilotReadinessFilter(t *testing.T) {
 	}
 }
 
+func TestMissionTimelineConsumesStatusTimelineVector(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "mission", "mission-status-timeline.ready.json")
+	code, stdout, stderr := runWithFake([]string{"mission", "timeline", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission timeline exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_mission_timeline=ready",
+		"mission_id=ao-stack-month2-compatibility-workgraph",
+		"mission_status=active",
+		"current_route=ao-atlas",
+		"current_phase=wave3_compatibility",
+		"timeline_event_count=3",
+		"latest_event=operator_timeline",
+		"tested_edge_count=2",
+		"full_stack_compatibility_complete=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mission timeline stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "timeline", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission timeline JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission timeline JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.mission-operator-timeline.v0.1" ||
+		got["status"] != "ready" ||
+		got["mission_id"] != "ao-stack-month2-compatibility-workgraph" ||
+		got["full_stack_compatibility_complete"] != false {
+		t.Fatalf("unexpected mission timeline JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false {
+		t.Fatalf("mission timeline widened authority: %#v", got)
+	}
+}
+
 func TestMissionGatewayReadsAOMissionGatewayLedger(t *testing.T) {
 	gatewayPath := filepath.Join("..", "..", "examples", "mission", "gateway-intent-ledger.ready.json")
 	code, stdout, stderr := runWithFake([]string{"mission", "gateway", "--readback", gatewayPath}, &fakeRunner{})
