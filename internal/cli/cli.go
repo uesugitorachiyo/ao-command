@@ -195,6 +195,8 @@ func (a App) controlPlane(args []string) int {
 	switch args[0] {
 	case "boundary":
 		return a.controlPlaneBoundary(args[1:])
+	case "status":
+		return a.controlPlaneStatus(args[1:])
 	default:
 		fmt.Fprintln(a.Stderr, controlPlaneUsage())
 		return 2
@@ -202,7 +204,7 @@ func (a App) controlPlane(args []string) int {
 }
 
 func controlPlaneUsage() string {
-	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json]"
+	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json] | ao-command control-plane status --readback PATH [--json]"
 }
 
 func (a App) controlPlaneBoundary(args []string) int {
@@ -242,6 +244,43 @@ func (a App) controlPlaneBoundary(args []string) int {
 	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
 	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
 	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) controlPlaneStatus(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("control-plane status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO2 Control Plane current-release readback vector JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command control-plane status: --readback is required")
+		return 2
+	}
+	summary, err := readControlPlaneOperatorStatus(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command control-plane status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_control_plane_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "ao2_version=%s\n", summary.AO2Version)
+	fmt.Fprintf(a.Stdout, "control_plane_version=%s\n", summary.ControlPlaneVersion)
+	fmt.Fprintf(a.Stdout, "matrix_status=%s\n", summary.MatrixStatus)
+	fmt.Fprintf(a.Stdout, "tested_edge_count=%d\n", summary.TestedEdgeCount)
+	fmt.Fprintf(a.Stdout, "full_stack_compatibility_complete=%t\n", summary.FullStackCompatibilityComplete)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
 	return 0
 }
 
@@ -5456,6 +5495,89 @@ type controlPlaneClientBoundarySummary struct {
 	ExactNextAction       string                                `json:"exact_next_action"`
 }
 
+type controlPlaneOperatorStatusVector struct {
+	SchemaVersion                 string                             `json:"schema_version"`
+	VectorID                      string                             `json:"vector_id"`
+	Edge                          string                             `json:"edge"`
+	ControlPlaneReadback          controlPlaneCurrentReleaseReadback `json:"control_plane_readback"`
+	ExpectedCommandOperatorStatus controlPlaneExpectedCommandStatus  `json:"expected_command_operator_status"`
+}
+
+type controlPlaneCurrentReleaseReadback struct {
+	SchemaVersion            string                                `json:"schema_version"`
+	Status                   string                                `json:"status"`
+	CurrentPublicReleasePair controlPlaneCurrentPublicReleasePair  `json:"current_public_release_pair"`
+	Compatibility            controlPlaneCompatibilityReadback     `json:"compatibility"`
+	Authority                controlPlaneReadbackAuthorityBoundary `json:"authority"`
+}
+
+type controlPlaneCurrentPublicReleasePair struct {
+	AO2Version            string `json:"ao2_version"`
+	AO2TagTarget          string `json:"ao2_tag_target"`
+	ControlPlaneVersion   string `json:"control_plane_version"`
+	ControlPlaneTagTarget string `json:"control_plane_tag_target"`
+}
+
+type controlPlaneCompatibilityReadback struct {
+	MatrixStatus                   string `json:"matrix_status"`
+	TestedEdge                     string `json:"tested_edge"`
+	CanonicalVectorCount           int    `json:"canonical_vector_count"`
+	ConsumerTestCount              int    `json:"consumer_test_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+}
+
+type controlPlaneReadbackAuthorityBoundary struct {
+	ControlPlaneApprovesExecution bool `json:"control_plane_approves_execution"`
+	MutatesAO2Artifacts           bool `json:"mutates_ao2_artifacts"`
+	PermitsRelease                bool `json:"permits_release"`
+}
+
+type controlPlaneExpectedCommandStatus struct {
+	SchemaVersion               string                                `json:"schema_version"`
+	Status                      string                                `json:"status"`
+	SourceReadbackSchemaVersion string                                `json:"source_readback_schema_version"`
+	CurrentPublicReleasePair    controlPlaneExpectedReleasePair       `json:"current_public_release_pair"`
+	Compatibility               controlPlaneExpectedCompatibility     `json:"compatibility"`
+	Authority                   controlPlaneExpectedAuthorityBoundary `json:"authority"`
+}
+
+type controlPlaneExpectedReleasePair struct {
+	AO2Version          string `json:"ao2_version"`
+	ControlPlaneVersion string `json:"control_plane_version"`
+}
+
+type controlPlaneExpectedCompatibility struct {
+	MatrixStatus                   string `json:"matrix_status"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+}
+
+type controlPlaneExpectedAuthorityBoundary struct {
+	ExecutesWork        bool `json:"executes_work"`
+	ApprovesWork        bool `json:"approves_work"`
+	MutatesRepositories bool `json:"mutates_repositories"`
+	CallsProviders      bool `json:"calls_providers"`
+	ReleasesOrDeploys   bool `json:"releases_or_deploys"`
+}
+
+type controlPlaneOperatorStatusSummary struct {
+	CommandSchemaVersion           string `json:"command_schema_version"`
+	Schema                         string `json:"schema"`
+	Status                         string `json:"status"`
+	SourceReadbackSchemaVersion    string `json:"source_readback_schema_version"`
+	AO2Version                     string `json:"ao2_version"`
+	ControlPlaneVersion            string `json:"control_plane_version"`
+	MatrixStatus                   string `json:"matrix_status"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+	OperatorMode                   string `json:"operator_mode"`
+	ExecutesWork                   bool   `json:"executes_work"`
+	ApprovesWork                   bool   `json:"approves_work"`
+	MutatesRepositories            bool   `json:"mutates_repositories"`
+	CallsProviders                 bool   `json:"calls_providers"`
+	ReleasesOrDeploys              bool   `json:"releases_or_deploys"`
+}
+
 func readControlPlaneClientBoundary(path string) (controlPlaneClientBoundarySummary, error) {
 	var packet controlPlaneClientBoundaryPacket
 	if err := readJSONFile(path, &packet); err != nil {
@@ -5519,6 +5641,82 @@ func readControlPlaneClientBoundary(path string) (controlPlaneClientBoundarySumm
 		ReleasesOrDeploys:     false,
 		RSIStatus:             packet.RSIStatus,
 		ExactNextAction:       packet.ExactNextAction,
+	}, nil
+}
+
+func readControlPlaneOperatorStatus(path string) (controlPlaneOperatorStatusSummary, error) {
+	var vector controlPlaneOperatorStatusVector
+	if err := readJSONFile(path, &vector); err != nil {
+		return controlPlaneOperatorStatusSummary{}, err
+	}
+	if vector.SchemaVersion != "ao.compatibility.control-plane-readback-vector.v1" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane status schema must be ao.compatibility.control-plane-readback-vector.v1")
+	}
+	if vector.Edge != "ao2-control-plane.evidence_readback -> ao-command.operator_status" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane status vector edge must bind Control Plane readback to Command operator status")
+	}
+	readback := vector.ControlPlaneReadback
+	expected := vector.ExpectedCommandOperatorStatus
+	if readback.SchemaVersion != "ao2-control-plane.current-release-readback.v1" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane readback schema must be ao2-control-plane.current-release-readback.v1")
+	}
+	if expected.SchemaVersion != "ao-command.operator-status.v1" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("expected command operator status schema must be ao-command.operator-status.v1")
+	}
+	if strings.TrimSpace(readback.Status) == "" || strings.TrimSpace(expected.Status) == "" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane status requires readback and operator status")
+	}
+	pair := readback.CurrentPublicReleasePair
+	if pair.AO2Version == "" || pair.ControlPlaneVersion == "" || pair.AO2TagTarget == "" || pair.ControlPlaneTagTarget == "" {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane status requires current public release pair versions and tag targets")
+	}
+	if expected.SourceReadbackSchemaVersion != readback.SchemaVersion {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("operator status must identify the source readback schema")
+	}
+	if expected.CurrentPublicReleasePair.AO2Version != pair.AO2Version ||
+		expected.CurrentPublicReleasePair.ControlPlaneVersion != pair.ControlPlaneVersion {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("operator status release pair must match Control Plane readback")
+	}
+	if readback.Compatibility.CanonicalVectorCount < 0 ||
+		readback.Compatibility.ConsumerTestCount < 0 ||
+		expected.Compatibility.TestedEdgeCount < 0 {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("compatibility evidence counts must be non-negative")
+	}
+	if expected.Compatibility.TestedEdgeCount != readback.Compatibility.ConsumerTestCount {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("operator tested edge count must match Control Plane consumer test count")
+	}
+	if readback.Compatibility.FullStackCompatibilityComplete ||
+		expected.Compatibility.FullStackCompatibilityComplete {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane status must not claim full stack compatibility complete")
+	}
+	if readback.Authority.ControlPlaneApprovesExecution ||
+		readback.Authority.MutatesAO2Artifacts ||
+		readback.Authority.PermitsRelease {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("control-plane readback must not approve execution, mutate AO2 artifacts, or permit release")
+	}
+	if expected.Authority.ExecutesWork ||
+		expected.Authority.ApprovesWork ||
+		expected.Authority.MutatesRepositories ||
+		expected.Authority.CallsProviders ||
+		expected.Authority.ReleasesOrDeploys {
+		return controlPlaneOperatorStatusSummary{}, fmt.Errorf("operator status must remain read-only")
+	}
+	return controlPlaneOperatorStatusSummary{
+		CommandSchemaVersion:           commandSchemaVersion,
+		Schema:                         "ao.command.control-plane-operator-status.v0.1",
+		Status:                         expected.Status,
+		SourceReadbackSchemaVersion:    expected.SourceReadbackSchemaVersion,
+		AO2Version:                     pair.AO2Version,
+		ControlPlaneVersion:            pair.ControlPlaneVersion,
+		MatrixStatus:                   readback.Compatibility.MatrixStatus,
+		TestedEdgeCount:                expected.Compatibility.TestedEdgeCount,
+		FullStackCompatibilityComplete: false,
+		OperatorMode:                   operatorMode,
+		ExecutesWork:                   false,
+		ApprovesWork:                   false,
+		MutatesRepositories:            false,
+		CallsProviders:                 false,
+		ReleasesOrDeploys:              false,
 	}, nil
 }
 

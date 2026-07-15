@@ -541,6 +541,51 @@ func TestControlPlaneClientBoundaryDryRun(t *testing.T) {
 	}
 }
 
+func TestControlPlaneOperatorStatusReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "control-plane", "current-release-status.ready.json")
+	code, stdout, stderr := runWithFake([]string{"control-plane", "status", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_control_plane_status=current_release_pair_observed",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.15",
+		"matrix_status=proposed",
+		"tested_edge_count=1",
+		"full_stack_compatibility_complete=false",
+		"operator_mode=read_only",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("control-plane status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"control-plane", "status", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane status JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid control-plane status JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.control-plane-operator-status.v0.1" ||
+		got["status"] != "current_release_pair_observed" ||
+		got["ao2_version"] != "v0.5.1" ||
+		got["control_plane_version"] != "v0.1.15" ||
+		got["full_stack_compatibility_complete"] != false {
+		t.Fatalf("unexpected control-plane status JSON: %#v", got)
+	}
+	if got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false || got["calls_providers"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("control-plane status widened authority: %#v", got)
+	}
+}
+
 func TestControlPlaneClientBoundaryDryRunRejectsWrites(t *testing.T) {
 	boundaryPath := filepath.Join(t.TempDir(), "unsafe-control-plane-boundary.json")
 	boundary := `{
