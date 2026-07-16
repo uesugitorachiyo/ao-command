@@ -632,6 +632,57 @@ func TestControlPlaneOperatorStatusReadback(t *testing.T) {
 	}
 }
 
+func TestControlledLoopStatusReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "controlled-loop", "month4-observation.ready.json")
+	code, stdout, stderr := runWithFake([]string{"controlled-loop", "status", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("controlled-loop status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_controlled_loop_status=dry_run_observed",
+		"proposal_id=month4-fixture-only-self-change-proposal",
+		"policy_gate=human_approval_required",
+		"approval_status=required",
+		"dry_run_only=true",
+		"rollback_verified=true",
+		"observation_status=passed",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+		"exact_next_action=Keep Month 4 fixture-only; do not request live self-modification or RSI.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("controlled-loop status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"controlled-loop", "status", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("controlled-loop status JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid controlled-loop status JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.controlled-loop-status.v0.1" ||
+		got["status"] != "dry_run_observed" ||
+		got["dry_run_only"] != true ||
+		got["rollback_verified"] != true ||
+		got["rsi_status"] != "denied" ||
+		got["promotion_requested"] != false {
+		t.Fatalf("unexpected controlled-loop status JSON: %#v", got)
+	}
+	if got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false || got["calls_providers"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("controlled-loop readback widened authority: %#v", got)
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
