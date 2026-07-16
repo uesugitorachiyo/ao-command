@@ -95,6 +95,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.mission(args[1:])
 	case "control-plane":
 		return a.controlPlane(args[1:])
+	case "controlled-loop":
+		return a.controlledLoop(args[1:])
 	case "covenant":
 		return a.covenant(args[1:])
 	case "forge":
@@ -139,6 +141,7 @@ Usage:
   ao-command mission evidence --readback PATH [--json]
   ao-command control-plane boundary --packet PATH [--json]
   ao-command covenant policy --readback PATH [--json]
+  ao-command controlled-loop status --readback PATH [--json]
   ao-command forge timeline --readback PATH [--json]
   ao-command promoter status --readback PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
@@ -217,6 +220,66 @@ func (a App) controlPlane(args []string) int {
 
 func controlPlaneUsage() string {
 	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json] | ao-command control-plane status --readback PATH [--json]"
+}
+
+func (a App) controlledLoop(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, controlledLoopUsage())
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.controlledLoopStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, controlledLoopUsage())
+		return 2
+	}
+}
+
+func controlledLoopUsage() string {
+	return "ao-command controlled-loop: usage: ao-command controlled-loop status --readback PATH [--json]"
+}
+
+func (a App) controlledLoopStatus(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("controlled-loop status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO2 Control Plane Month 4 dry-run observation JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command controlled-loop status: --readback is required")
+		return 2
+	}
+	summary, err := readControlledLoopStatus(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command controlled-loop status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_controlled_loop_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "proposal_id=%s\n", summary.ProposalID)
+	fmt.Fprintf(a.Stdout, "policy_gate=%s\n", summary.PolicyGate)
+	fmt.Fprintf(a.Stdout, "approval_status=%s\n", summary.ApprovalStatus)
+	fmt.Fprintf(a.Stdout, "dry_run_only=%t\n", summary.DryRunOnly)
+	fmt.Fprintf(a.Stdout, "rollback_verified=%t\n", summary.RollbackVerified)
+	fmt.Fprintf(a.Stdout, "observation_status=%s\n", summary.ObservationStatus)
+	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
+	fmt.Fprintf(a.Stdout, "promotion_requested=%t\n", summary.PromotionRequested)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
+	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
 }
 
 func (a App) covenant(args []string) int {
@@ -6050,6 +6113,58 @@ type promoterStatusSummary struct {
 	MutatesRepositories     bool   `json:"mutates_repositories"`
 }
 
+type controlledLoopObservationReadback struct {
+	SchemaVersion         string                              `json:"schema_version"`
+	Status                string                              `json:"status"`
+	ProducerSchemaVersion string                              `json:"producer_schema_version"`
+	ProducerStatus        string                              `json:"producer_status"`
+	ProposalID            string                              `json:"proposal_id"`
+	Observation           controlledLoopObservation           `json:"observation"`
+	Gaps                  []map[string]any                    `json:"gaps"`
+	TrustBoundary         controlledLoopObservationTrustBound `json:"trust_boundary"`
+}
+
+type controlledLoopObservation struct {
+	DryRunOnly         bool `json:"dry_run_only"`
+	RollbackVerified   bool `json:"rollback_verified"`
+	ApprovalRequired   bool `json:"approval_required"`
+	ProviderExecution  bool `json:"provider_execution"`
+	RSIAuthorized      bool `json:"rsi_authorized"`
+	PromotionRequested bool `json:"promotion_requested"`
+}
+
+type controlledLoopObservationTrustBound struct {
+	ControlPlaneApprovesSelfChange bool `json:"control_plane_approves_self_change"`
+	MutatesAOArtifacts             bool `json:"mutates_ao_artifacts"`
+	AppliesAOPatches               bool `json:"applies_ao_patches"`
+	MutatesGitHubRepositories      bool `json:"mutates_github_repositories"`
+	ProviderAPIKeysAllowed         bool `json:"provider_api_keys_allowed"`
+	CredentialMaterialIncluded     bool `json:"credential_material_included"`
+}
+
+type controlledLoopStatusSummary struct {
+	CommandSchemaVersion string `json:"command_schema_version"`
+	Schema               string `json:"schema"`
+	Status               string `json:"status"`
+	SourceSchemaVersion  string `json:"source_schema_version"`
+	ProposalID           string `json:"proposal_id"`
+	PolicyGate           string `json:"policy_gate"`
+	ApprovalStatus       string `json:"approval_status"`
+	DryRunOnly           bool   `json:"dry_run_only"`
+	RollbackVerified     bool   `json:"rollback_verified"`
+	ObservationStatus    string `json:"observation_status"`
+	RSIStatus            string `json:"rsi_status"`
+	PromotionRequested   bool   `json:"promotion_requested"`
+	OperatorMode         string `json:"operator_mode"`
+	SafeToExecute        bool   `json:"safe_to_execute"`
+	ExecutesWork         bool   `json:"executes_work"`
+	ApprovesWork         bool   `json:"approves_work"`
+	MutatesRepositories  bool   `json:"mutates_repositories"`
+	CallsProviders       bool   `json:"calls_providers"`
+	ReleasesOrDeploys    bool   `json:"releases_or_deploys"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
 func readPromoterStatus(path string) (promoterStatusSummary, error) {
 	var vector promoterStatusVector
 	if err := readJSONFile(path, &vector); err != nil {
@@ -6109,6 +6224,62 @@ func readPromoterStatus(path string) (promoterStatusSummary, error) {
 		ExecutesWork:            false,
 		ApprovesWork:            false,
 		MutatesRepositories:     false,
+	}, nil
+}
+
+func readControlledLoopStatus(path string) (controlledLoopStatusSummary, error) {
+	var readback controlledLoopObservationReadback
+	if err := readJSONFile(path, &readback); err != nil {
+		return controlledLoopStatusSummary{}, err
+	}
+	if readback.SchemaVersion != "ao2.cp-month4-controlled-self-improvement-observation.v0.1" {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop readback schema must be ao2.cp-month4-controlled-self-improvement-observation.v0.1")
+	}
+	if readback.Status != "passed" || len(readback.Gaps) != 0 {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop observation must be passed with no gaps")
+	}
+	if readback.ProducerSchemaVersion != "ao2.controlled-self-improvement-dry-run-evidence-pack.v0.1" ||
+		readback.ProducerStatus != "dry_run_passed" ||
+		strings.TrimSpace(readback.ProposalID) == "" {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop observation must bind the AO2 dry-run evidence producer")
+	}
+	obs := readback.Observation
+	if !obs.DryRunOnly || !obs.RollbackVerified || !obs.ApprovalRequired {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop observation requires dry-run-only, rollback-verified, approval-required evidence")
+	}
+	if obs.ProviderExecution || obs.RSIAuthorized || obs.PromotionRequested {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop observation must not claim provider execution, RSI authorization, or promotion request")
+	}
+	trust := readback.TrustBoundary
+	if trust.ControlPlaneApprovesSelfChange ||
+		trust.MutatesAOArtifacts ||
+		trust.AppliesAOPatches ||
+		trust.MutatesGitHubRepositories ||
+		trust.ProviderAPIKeysAllowed ||
+		trust.CredentialMaterialIncluded {
+		return controlledLoopStatusSummary{}, fmt.Errorf("controlled-loop observation trust boundary must remain read-only and credential-free")
+	}
+	return controlledLoopStatusSummary{
+		CommandSchemaVersion: commandSchemaVersion,
+		Schema:               "ao.command.controlled-loop-status.v0.1",
+		Status:               "dry_run_observed",
+		SourceSchemaVersion:  readback.SchemaVersion,
+		ProposalID:           readback.ProposalID,
+		PolicyGate:           "human_approval_required",
+		ApprovalStatus:       "required",
+		DryRunOnly:           true,
+		RollbackVerified:     true,
+		ObservationStatus:    readback.Status,
+		RSIStatus:            "denied",
+		PromotionRequested:   false,
+		OperatorMode:         operatorMode,
+		SafeToExecute:        false,
+		ExecutesWork:         false,
+		ApprovesWork:         false,
+		MutatesRepositories:  false,
+		CallsProviders:       false,
+		ReleasesOrDeploys:    false,
+		ExactNextAction:      "Keep Month 4 fixture-only; do not request live self-modification or RSI.",
 	}, nil
 }
 

@@ -1,0 +1,25 @@
+{
+  "schema_version": "ao2.cp-month4-controlled-self-improvement-observation.v0.1",
+  "status": "passed",
+  "producer_path": "tests/fixtures/controlled-self-improvement/dry-run-evidence-pack.v0.1.json",
+  "producer_schema_version": "ao2.controlled-self-improvement-dry-run-evidence-pack.v0.1",
+  "producer_status": "dry_run_passed",
+  "proposal_id": "month4-fixture-only-self-change-proposal",
+  "observation": {
+    "dry_run_only": true,
+    "rollback_verified": true,
+    "approval_required": true,
+    "provider_execution": false,
+    "rsi_authorized": false,
+    "promotion_requested": false
+  },
+  "gaps": [],
+  "trust_boundary": {
+    "control_plane_approves_self_change": false,
+    "mutates_ao_artifacts": false,
+    "applies_ao_patches": false,
+    "mutates_github_repositories": false,
+    "provider_api_keys_allowed": false,
+    "credential_material_included": false
+  }
+}
