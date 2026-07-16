@@ -683,6 +683,62 @@ func TestControlledLoopStatusReadback(t *testing.T) {
 	}
 }
 
+func TestMonth5OperatorWorkflowReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "month5-workflow.ready.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_operator_workflow=ready",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.15",
+		"compatibility_edges=16",
+		"compatibility_gate_complete=false",
+		"dry_run_only=true",
+		"policy_gate=human_approval_required",
+		"safe_next_work=multi_repo_product_coordination",
+		"support_evidence=ao2_version,platform,exact_command,expected_result,actual_result,evidence_path,approval_status,manifest_or_checksum_state,rollback_status,observation_status,sanitized_logs",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"external_beta_launched=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+		"exact_next_action=Start Month 5 product coordination and operator workflow hardening; do not start RSI or release work.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("operator workflow stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.operator-workflow-readback.v0.1" ||
+		got["status"] != "ready" ||
+		got["ao2_version"] != "v0.5.1" ||
+		got["control_plane_version"] != "v0.1.15" ||
+		got["compatibility_gate_complete"] != false ||
+		got["rsi_status"] != "denied" ||
+		got["promotion_requested"] != false ||
+		got["external_beta_launched"] != false {
+		t.Fatalf("unexpected operator workflow JSON: %#v", got)
+	}
+	if got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false || got["calls_providers"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("operator workflow widened authority: %#v", got)
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
