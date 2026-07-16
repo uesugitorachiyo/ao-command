@@ -1589,7 +1589,9 @@ func (a App) operatorWorkflow(args []string) int {
 		fmt.Fprintf(a.Stdout, "first_pass_verification_rate=%s\n", trimFloat(summary.FirstPassVerificationRate))
 		fmt.Fprintf(a.Stdout, "recovery_rate=%s\n", trimFloat(summary.RecoveryRate))
 		fmt.Fprintf(a.Stdout, "rollback_result=%s\n", summary.RollbackResult)
-		fmt.Fprintf(a.Stdout, "unsupported_claim_count=%d\n", summary.UnsupportedClaimCount)
+		if summary.UnsupportedClaimCount != nil {
+			fmt.Fprintf(a.Stdout, "unsupported_claim_count=%d\n", *summary.UnsupportedClaimCount)
+		}
 	}
 	fmt.Fprintf(a.Stdout, "dry_run_only=%t\n", summary.DryRunOnly)
 	fmt.Fprintf(a.Stdout, "policy_gate=%s\n", summary.PolicyGate)
@@ -6485,7 +6487,7 @@ type operatorWorkflowSummary struct {
 	FirstPassVerificationRate             float64  `json:"first_pass_verification_rate,omitempty"`
 	RecoveryRate                          float64  `json:"recovery_rate,omitempty"`
 	RollbackResult                        string   `json:"rollback_result,omitempty"`
-	UnsupportedClaimCount                 int      `json:"unsupported_claim_count"`
+	UnsupportedClaimCount                 *int     `json:"unsupported_claim_count,omitempty"`
 	DryRunOnly                            bool     `json:"dry_run_only"`
 	RollbackVisible                       bool     `json:"rollback_visible"`
 	ObservationVisible                    bool     `json:"observation_visible"`
@@ -6632,6 +6634,11 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		state.CallsProviders || state.ReleasesOrDeploys {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow must remain read-only")
 	}
+	var unsupportedClaimCount *int
+	if strings.TrimSpace(benchmark.Version) != "" {
+		count := benchmark.UnsupportedClaimCount
+		unsupportedClaimCount = &count
+	}
 	return operatorWorkflowSummary{
 		CommandSchemaVersion:                  commandSchemaVersion,
 		Schema:                                "ao.command.operator-workflow-readback.v0.1",
@@ -6656,7 +6663,7 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		FirstPassVerificationRate:             benchmark.FirstPassVerificationRate,
 		RecoveryRate:                          benchmark.RecoveryRate,
 		RollbackResult:                        benchmark.RollbackResult,
-		UnsupportedClaimCount:                 benchmark.UnsupportedClaimCount,
+		UnsupportedClaimCount:                 unsupportedClaimCount,
 		DryRunOnly:                            state.DryRunOnly,
 		RollbackVisible:                       state.RollbackVisible,
 		ObservationVisible:                    state.ObservationVisible,
