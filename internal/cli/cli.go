@@ -1570,6 +1570,8 @@ func (a App) operatorWorkflow(args []string) int {
 		fmt.Fprintf(a.Stdout, "release_decision=%s\n", summary.ReleaseDecision)
 	}
 	fmt.Fprintf(a.Stdout, "compatibility_edges=%d\n", summary.CompatibilityEdges)
+	fmt.Fprintf(a.Stdout, "canonical_vector_count=%d\n", summary.CanonicalVectorCount)
+	fmt.Fprintf(a.Stdout, "consumer_test_count=%d\n", summary.ConsumerTestCount)
 	fmt.Fprintf(a.Stdout, "compatibility_gate_complete=%t\n", summary.CompatibilityGateComplete)
 	if summary.EvidenceFreshness != "" {
 		fmt.Fprintf(a.Stdout, "evidence_freshness=%s\n", summary.EvidenceFreshness)
