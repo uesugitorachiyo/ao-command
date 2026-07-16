@@ -1036,6 +1036,32 @@ func TestAdoptionMonth5SupportReadinessReadback(t *testing.T) {
 	}
 }
 
+func TestOperatorWorkflowJSONOmitsBenchmarkFieldsWithoutBenchmark(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "adoption-month2-operator-drill-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow month2 adoption JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow month2 adoption JSON: %v\n%s", err, stdout)
+	}
+	for _, field := range []string{
+		"benchmark_version",
+		"benchmark_status",
+		"benchmark_task_classes",
+		"completion_rate",
+		"first_pass_verification_rate",
+		"recovery_rate",
+		"rollback_result",
+		"unsupported_claim_count",
+	} {
+		if _, ok := got[field]; ok {
+			t.Fatalf("operator workflow JSON included benchmark-only field %q without a benchmark: %#v", field, got)
+		}
+	}
+}
+
 func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
 	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
