@@ -6546,7 +6546,7 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow release decision must be no_release when present")
 	}
 	pair := state.CurrentPublicReleasePair
-	if pair.AO2Version != "v0.5.1" || pair.ControlPlaneVersion != "v0.1.15" ||
+	if pair.AO2Version != "v0.5.1" || pair.ControlPlaneVersion != "v0.1.16" ||
 		strings.TrimSpace(pair.AO2TagTarget) == "" || strings.TrimSpace(pair.ControlPlaneTagTarget) == "" {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow must expose current AO2 and Control Plane release pair")
 	}

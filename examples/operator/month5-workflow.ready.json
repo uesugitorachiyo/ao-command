@@ -4,8 +4,8 @@
   "current_public_release_pair": {
     "ao2_version": "v0.5.1",
     "ao2_tag_target": "80ec5321f42d4bab17d5e64fdae6aa099ba59d4a",
-    "control_plane_version": "v0.1.15",
-    "control_plane_tag_target": "f1702b387607566cac457458af9adb5871a5c412"
+    "control_plane_version": "v0.1.16",
+    "control_plane_tag_target": "f4f5fea9fefa1081cebcbabac550b0e08b9f0e3d"
   },
   "compatibility": {
     "matrix_status": "proposed",
