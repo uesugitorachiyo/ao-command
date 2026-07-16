@@ -632,6 +632,96 @@ func TestControlPlaneOperatorStatusReadback(t *testing.T) {
 	}
 }
 
+func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
+	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("covenant policy exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_covenant_policy=ready",
+		"decision_id=policy-ao2-month3-compatibility-wave-d",
+		"decision=allow",
+		"effect_type=compatibility.verify",
+		"resource=ao-stack-month3-wave-d",
+		"policy_status=readback_only",
+		"tested_edge_count=9",
+		"full_stack_compatibility_complete=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("covenant policy stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"covenant", "policy", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("covenant policy JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid covenant policy JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.covenant-policy-readback.v0.1" ||
+		got["status"] != "ready" ||
+		got["decision_id"] != "policy-ao2-month3-compatibility-wave-d" ||
+		got["full_stack_compatibility_complete"] != false {
+		t.Fatalf("unexpected covenant policy JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false {
+		t.Fatalf("covenant policy widened authority: %#v", got)
+	}
+}
+
+func TestForgeTimelineConsumesRunStatusVector(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "forge", "run-timeline.ready.json")
+	code, stdout, stderr := runWithFake([]string{"forge", "timeline", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("forge timeline exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_forge_timeline=ready",
+		"goal_id=ao2-month3-compatibility-wave-d",
+		"run_status=ready",
+		"current_phase=consumer_readback",
+		"timeline_event_count=3",
+		"latest_event=command_readback",
+		"tested_edge_count=10",
+		"full_stack_compatibility_complete=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("forge timeline stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"forge", "timeline", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("forge timeline JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid forge timeline JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.forge-run-timeline.v0.1" ||
+		got["status"] != "ready" ||
+		got["goal_id"] != "ao2-month3-compatibility-wave-d" ||
+		got["full_stack_compatibility_complete"] != false {
+		t.Fatalf("unexpected forge timeline JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false {
+		t.Fatalf("forge timeline widened authority: %#v", got)
+	}
+}
+
 func TestControlPlaneClientBoundaryDryRunRejectsWrites(t *testing.T) {
 	boundaryPath := filepath.Join(t.TempDir(), "unsafe-control-plane-boundary.json")
 	boundary := `{
