@@ -99,6 +99,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.covenant(args[1:])
 	case "forge":
 		return a.forge(args[1:])
+	case "promoter":
+		return a.promoter(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -138,6 +140,7 @@ Usage:
   ao-command control-plane boundary --packet PATH [--json]
   ao-command covenant policy --readback PATH [--json]
   ao-command forge timeline --readback PATH [--json]
+  ao-command promoter status --readback PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
@@ -320,6 +323,62 @@ func (a App) forgeTimeline(args []string) int {
 	fmt.Fprintf(a.Stdout, "latest_event=%s\n", summary.LatestEvent)
 	fmt.Fprintf(a.Stdout, "tested_edge_count=%d\n", summary.TestedEdgeCount)
 	fmt.Fprintf(a.Stdout, "full_stack_compatibility_complete=%t\n", summary.FullStackCompatibilityComplete)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	return 0
+}
+
+func (a App) promoter(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, promoterUsage())
+		return 2
+	}
+	switch args[0] {
+	case "status":
+		return a.promoterStatus(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, promoterUsage())
+		return 2
+	}
+}
+
+func promoterUsage() string {
+	return "ao-command promoter: usage: ao-command promoter status --readback PATH [--json]"
+}
+
+func (a App) promoterStatus(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("promoter status", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO Promoter verdict compatibility vector JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command promoter status: --readback is required")
+		return 2
+	}
+	summary, err := readPromoterStatus(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command promoter status: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_promoter_status=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "verdict_id=%s\n", summary.VerdictID)
+	fmt.Fprintf(a.Stdout, "candidate_id=%s\n", summary.CandidateID)
+	fmt.Fprintf(a.Stdout, "assurance_inputs_accepted=%d\n", summary.AssuranceInputsAccepted)
+	fmt.Fprintf(a.Stdout, "promotion_requested=%t\n", summary.PromotionRequested)
+	fmt.Fprintf(a.Stdout, "promotion_granted=%t\n", summary.PromotionGranted)
+	fmt.Fprintf(a.Stdout, "external_beta_launched=%t\n", summary.ExternalBetaLaunched)
+	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
@@ -5927,6 +5986,129 @@ func readForgeRunTimeline(path string) (forgeRunTimelineSummary, error) {
 		ExecutesWork:                   false,
 		ApprovesWork:                   false,
 		MutatesRepositories:            false,
+	}, nil
+}
+
+type promoterVerdict struct {
+	SchemaVersion           string `json:"schema_version"`
+	Status                  string `json:"status"`
+	VerdictID               string `json:"verdict_id"`
+	CandidateID             string `json:"candidate_id"`
+	AssuranceInputsAccepted int    `json:"assurance_inputs_accepted"`
+	PromotionRequested      bool   `json:"promotion_requested"`
+	PromotionGranted        bool   `json:"promotion_granted"`
+	ExternalBetaLaunched    bool   `json:"external_beta_launched"`
+	RSIStatus               string `json:"rsi_status"`
+	OperatorSummary         string `json:"operator_summary"`
+}
+
+type promoterExpectedCommandStatus struct {
+	SchemaVersion        string `json:"schema_version"`
+	Status               string `json:"status"`
+	SourceVerdictSchema  string `json:"source_verdict_schema"`
+	PromotionRequested   bool   `json:"promotion_requested"`
+	PromotionGranted     bool   `json:"promotion_granted"`
+	ExternalBetaLaunched bool   `json:"external_beta_launched"`
+	RSIStatus            string `json:"rsi_status"`
+}
+
+type promoterAuthorityBoundaries struct {
+	SafeToExecute       bool `json:"safe_to_execute"`
+	ExecutesWork        bool `json:"executes_work"`
+	ApprovesWork        bool `json:"approves_work"`
+	MutatesRepositories bool `json:"mutates_repositories"`
+	CallsProviders      bool `json:"calls_providers"`
+	ReleasesOrDeploys   bool `json:"releases_or_deploys"`
+}
+
+type promoterStatusVector struct {
+	SchemaVersion string                          `json:"schema_version"`
+	VectorID      string                          `json:"vector_id"`
+	Edge          string                          `json:"edge"`
+	Producer      compatibilityRepositoryContract `json:"producer"`
+	Consumer      compatibilityRepositoryContract `json:"consumer"`
+	Verdict       promoterVerdict                 `json:"promoter_verdict"`
+	Expected      promoterExpectedCommandStatus   `json:"expected_command_promotion_status"`
+	Boundaries    promoterAuthorityBoundaries     `json:"authority_boundaries"`
+}
+
+type promoterStatusSummary struct {
+	CommandSchemaVersion    string `json:"command_schema_version"`
+	Schema                  string `json:"schema"`
+	Status                  string `json:"status"`
+	VerdictID               string `json:"verdict_id"`
+	CandidateID             string `json:"candidate_id"`
+	AssuranceInputsAccepted int    `json:"assurance_inputs_accepted"`
+	PromotionRequested      bool   `json:"promotion_requested"`
+	PromotionGranted        bool   `json:"promotion_granted"`
+	ExternalBetaLaunched    bool   `json:"external_beta_launched"`
+	RSIStatus               string `json:"rsi_status"`
+	OperatorMode            string `json:"operator_mode"`
+	SafeToExecute           bool   `json:"safe_to_execute"`
+	ExecutesWork            bool   `json:"executes_work"`
+	ApprovesWork            bool   `json:"approves_work"`
+	MutatesRepositories     bool   `json:"mutates_repositories"`
+}
+
+func readPromoterStatus(path string) (promoterStatusSummary, error) {
+	var vector promoterStatusVector
+	if err := readJSONFile(path, &vector); err != nil {
+		return promoterStatusSummary{}, err
+	}
+	if vector.SchemaVersion != "ao.compatibility.promoter-verdict-to-command-status-vector.v1" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector schema must be ao.compatibility.promoter-verdict-to-command-status-vector.v1")
+	}
+	if vector.Edge != "ao-promoter.promotion_verdict -> ao-command.promotion_status" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector edge must bind Promoter verdict to Command status")
+	}
+	if vector.Producer.Repository != "ao-promoter" || vector.Consumer.Repository != "ao-command" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector producer and consumer repositories are invalid")
+	}
+	if vector.Boundaries.SafeToExecute || vector.Boundaries.ExecutesWork || vector.Boundaries.ApprovesWork ||
+		vector.Boundaries.MutatesRepositories || vector.Boundaries.CallsProviders || vector.Boundaries.ReleasesOrDeploys {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector must remain read-only")
+	}
+	verdict := vector.Verdict
+	expected := vector.Expected
+	if verdict.SchemaVersion != "ao.promoter.promotion-verdict.v1" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter verdict schema must be ao.promoter.promotion-verdict.v1")
+	}
+	if expected.SchemaVersion != "ao-command.promotion-status.v1" {
+		return promoterStatusSummary{}, fmt.Errorf("expected Command promotion status schema must be ao-command.promotion-status.v1")
+	}
+	if verdict.VerdictID == "" || verdict.CandidateID == "" || verdict.Status == "" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter verdict requires verdict_id, candidate_id, and status")
+	}
+	if expected.SourceVerdictSchema != verdict.SchemaVersion {
+		return promoterStatusSummary{}, fmt.Errorf("expected Command status must identify source Promoter schema")
+	}
+	if verdict.PromotionRequested || verdict.PromotionGranted || verdict.ExternalBetaLaunched ||
+		expected.PromotionRequested || expected.PromotionGranted || expected.ExternalBetaLaunched {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector must not claim promotion or external beta launch")
+	}
+	if verdict.RSIStatus != "denied" || expected.RSIStatus != "denied" {
+		return promoterStatusSummary{}, fmt.Errorf("promoter status vector must keep RSI denied")
+	}
+	status := expected.Status
+	if strings.TrimSpace(status) == "" {
+		status = verdict.Status
+	}
+	return promoterStatusSummary{
+		CommandSchemaVersion:    commandSchemaVersion,
+		Schema:                  "ao.command.promoter-status.v0.1",
+		Status:                  status,
+		VerdictID:               verdict.VerdictID,
+		CandidateID:             verdict.CandidateID,
+		AssuranceInputsAccepted: verdict.AssuranceInputsAccepted,
+		PromotionRequested:      false,
+		PromotionGranted:        false,
+		ExternalBetaLaunched:    false,
+		RSIStatus:               "denied",
+		OperatorMode:            operatorMode,
+		SafeToExecute:           false,
+		ExecutesWork:            false,
+		ApprovesWork:            false,
+		MutatesRepositories:     false,
 	}, nil
 }
 

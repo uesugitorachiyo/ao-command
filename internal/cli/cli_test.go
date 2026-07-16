@@ -722,6 +722,53 @@ func TestForgeTimelineConsumesRunStatusVector(t *testing.T) {
 	}
 }
 
+func TestPromoterStatusConsumesPromotionStatusVector(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "promoter", "promotion-status.ready.json")
+	code, stdout, stderr := runWithFake([]string{"promoter", "status", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("promoter status exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_promoter_status=observed",
+		"verdict_id=ao-stack-month3-wave-e-promoter-readback",
+		"candidate_id=ao-stack-current-release-pair",
+		"assurance_inputs_accepted=3",
+		"promotion_requested=false",
+		"promotion_granted=false",
+		"external_beta_launched=false",
+		"rsi_status=denied",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("promoter status stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"promoter", "status", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("promoter status JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid promoter status JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.promoter-status.v0.1" ||
+		got["status"] != "observed" ||
+		got["promotion_requested"] != false ||
+		got["promotion_granted"] != false ||
+		got["external_beta_launched"] != false ||
+		got["rsi_status"] != "denied" {
+		t.Fatalf("unexpected promoter status JSON: %#v", got)
+	}
+	if got["safe_to_execute"] != false || got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false {
+		t.Fatalf("promoter status widened authority: %#v", got)
+	}
+}
+
 func TestControlPlaneClientBoundaryDryRunRejectsWrites(t *testing.T) {
 	boundaryPath := filepath.Join(t.TempDir(), "unsafe-control-plane-boundary.json")
 	boundary := `{
