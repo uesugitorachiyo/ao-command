@@ -1,0 +1,87 @@
+{
+  "schema": "ao.operator.month5-workflow-state.v0.1",
+  "status": "ready",
+  "release_decision": "no_release",
+  "current_public_release_pair": {
+    "ao2_version": "v0.5.1",
+    "ao2_tag_target": "80ec5321f42d4bab17d5e64fdae6aa099ba59d4a",
+    "control_plane_version": "v0.1.15",
+    "control_plane_tag_target": "f1702b387607566cac457458af9adb5871a5c412"
+  },
+  "evidence_freshness": {
+    "status": "fresh",
+    "release_metadata_matches_manifest": true,
+    "matrix_counts_match": true,
+    "tested_edges_have_vectors": true,
+    "tested_edges_have_consumer_tests": true,
+    "local_architecture_vectors_exist": true
+  },
+  "compatibility": {
+    "matrix_status": "proposed",
+    "tested_edges": 16,
+    "canonical_vector_count": 16,
+    "consumer_test_count": 16,
+    "compatibility_gate_complete": false
+  },
+  "compatibility_gate": {
+    "state": "ready",
+    "reason": "The refreshed evidence base is complete and fresh, but gate activation is not authorized.",
+    "activation_authorized": false,
+    "activation_evidence": ""
+  },
+  "gates": {
+    "release_gate": "no_release_selected",
+    "compatibility_evidence_gate": "fresh_ready_not_active",
+    "policy_gate": "human_approval_required",
+    "dry_run_self_improvement_gate": "fixture_only_dry_run",
+    "observation_readback_gate": "required",
+    "promotion_no_rsi_gate": "denied"
+  },
+  "safe_next_work": "adoption_support_readiness_before_month6_assessment",
+  "support_evidence": [
+    "ao2_version",
+    "platform",
+    "exact_command",
+    "expected_result",
+    "actual_result",
+    "evidence_path",
+    "approval_status",
+    "manifest_or_checksum_state",
+    "rollback_status",
+    "observation_status",
+    "sanitized_logs"
+  ],
+  "support_states": [
+    "fresh",
+    "stale",
+    "blocked",
+    "denied",
+    "unsupported"
+  ],
+  "support_package": [
+    "install",
+    "checksum",
+    "manifest_mismatch",
+    "approval_replay",
+    "rollback",
+    "windows_safe_rollback",
+    "operator_readback",
+    "issue_report_fields"
+  ],
+  "dry_run_only": true,
+  "rollback_visible": true,
+  "observation_visible": true,
+  "rsi_status": "denied",
+  "promotion_requested": false,
+  "promotion_granted": false,
+  "external_beta_launched": false,
+  "provider_pilot_ran": false,
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "calls_providers": false,
+  "releases_or_deploys": false,
+  "operator_mode": "read_only",
+  "exact_next_action": "Close Month 5 adoption support readiness; recommend Month 6 adoption readiness and release/no-release assessment without release, beta, promotion, provider, gate activation, or RSI authority."
+}
