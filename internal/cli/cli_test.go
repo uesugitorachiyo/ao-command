@@ -911,6 +911,68 @@ func TestAdoptionMonth2OperatorDrillReadback(t *testing.T) {
 	}
 }
 
+func TestAdoptionMonth3EvidenceMaintenanceReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "adoption-month3-evidence-maintenance-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow month3 maintenance exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_operator_workflow=ready",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.15",
+		"release_decision=no_release",
+		"compatibility_edges=16",
+		"canonical_vector_count=16",
+		"consumer_test_count=16",
+		"compatibility_gate_complete=false",
+		"evidence_freshness=fresh",
+		"release_metadata_matches_manifest=true",
+		"matrix_counts_match=true",
+		"compatibility_gate_state=ready",
+		"compatibility_gate_activation_authorized=false",
+		"safe_next_work=controlled_improvement_evaluation_refresh_after_maintenance",
+		"support_evidence=ao2_version,platform,exact_command,expected_result,actual_result,evidence_path,approval_status,manifest_or_checksum_state,rollback_status,observation_status,sanitized_logs",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"external_beta_launched=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+		"exact_next_action=Close Month 3 evidence maintenance automation; recommend Month 4 controlled improvement evaluation refresh without release, beta, promotion, provider, gate activation, or RSI authority.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("operator workflow month3 maintenance stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow month3 maintenance JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow month3 maintenance JSON: %v\n%s", err, stdout)
+	}
+	if got["evidence_freshness"] != "fresh" ||
+		got["compatibility_gate_state"] != "ready" ||
+		got["compatibility_gate_activation_authorized"] != false ||
+		got["safe_next_work"] != "controlled_improvement_evaluation_refresh_after_maintenance" ||
+		got["rsi_status"] != "denied" ||
+		got["promotion_requested"] != false ||
+		got["external_beta_launched"] != false ||
+		got["provider_pilot_ran"] != false {
+		t.Fatalf("unexpected operator workflow month3 maintenance JSON: %#v", got)
+	}
+	if got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false || got["calls_providers"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("operator workflow month3 maintenance widened authority: %#v", got)
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
