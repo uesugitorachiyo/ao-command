@@ -973,6 +973,69 @@ func TestAdoptionMonth3EvidenceMaintenanceReadback(t *testing.T) {
 	}
 }
 
+func TestAdoptionMonth5SupportReadinessReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "adoption-month5-support-readiness-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow month5 support readiness exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_operator_workflow=ready",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.15",
+		"release_decision=no_release",
+		"compatibility_edges=16",
+		"compatibility_gate_complete=false",
+		"evidence_freshness=fresh",
+		"compatibility_gate_state=ready",
+		"compatibility_gate_activation_authorized=false",
+		"safe_next_work=adoption_support_readiness_before_month6_assessment",
+		"support_states=fresh,stale,blocked,denied,unsupported",
+		"support_package=install,checksum,manifest_mismatch,approval_replay,rollback,windows_safe_rollback,operator_readback,issue_report_fields",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"external_beta_launched=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+		"exact_next_action=Close Month 5 adoption support readiness; recommend Month 6 adoption readiness and release/no-release assessment without release, beta, promotion, provider, gate activation, or RSI authority.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("operator workflow month5 support readiness stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow month5 support readiness JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow month5 support readiness JSON: %v\n%s", err, stdout)
+	}
+	if got["compatibility_gate_state"] != "ready" ||
+		got["compatibility_gate_activation_authorized"] != false ||
+		got["safe_next_work"] != "adoption_support_readiness_before_month6_assessment" ||
+		got["rsi_status"] != "denied" ||
+		got["promotion_requested"] != false ||
+		got["external_beta_launched"] != false ||
+		got["provider_pilot_ran"] != false {
+		t.Fatalf("unexpected operator workflow month5 support readiness JSON: %#v", got)
+	}
+	states := got["support_states"].([]any)
+	if len(states) != 5 {
+		t.Fatalf("operator workflow month5 support readiness missing support states: %#v", got)
+	}
+	packageItems := got["support_package"].([]any)
+	if len(packageItems) != 8 {
+		t.Fatalf("operator workflow month5 support readiness missing support package: %#v", got)
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})

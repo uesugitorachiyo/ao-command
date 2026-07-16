@@ -1585,6 +1585,12 @@ func (a App) operatorWorkflow(args []string) int {
 	fmt.Fprintf(a.Stdout, "policy_gate=%s\n", summary.PolicyGate)
 	fmt.Fprintf(a.Stdout, "safe_next_work=%s\n", summary.SafeNextWork)
 	fmt.Fprintf(a.Stdout, "support_evidence=%s\n", strings.Join(summary.SupportEvidence, ","))
+	if len(summary.SupportStates) > 0 {
+		fmt.Fprintf(a.Stdout, "support_states=%s\n", strings.Join(summary.SupportStates, ","))
+	}
+	if len(summary.SupportPackage) > 0 {
+		fmt.Fprintf(a.Stdout, "support_package=%s\n", strings.Join(summary.SupportPackage, ","))
+	}
 	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
 	fmt.Fprintf(a.Stdout, "promotion_requested=%t\n", summary.PromotionRequested)
 	fmt.Fprintf(a.Stdout, "external_beta_launched=%t\n", summary.ExternalBetaLaunched)
@@ -6373,6 +6379,8 @@ type operatorWorkflowState struct {
 	Gates                    operatorWorkflowGates       `json:"gates"`
 	SafeNextWork             string                      `json:"safe_next_work"`
 	SupportEvidence          []string                    `json:"support_evidence"`
+	SupportStates            []string                    `json:"support_states,omitempty"`
+	SupportPackage           []string                    `json:"support_package,omitempty"`
 	DryRunOnly               bool                        `json:"dry_run_only"`
 	RollbackVisible          bool                        `json:"rollback_visible"`
 	ObservationVisible       bool                        `json:"observation_visible"`
@@ -6454,6 +6462,8 @@ type operatorWorkflowSummary struct {
 	PolicyGate                            string   `json:"policy_gate"`
 	SafeNextWork                          string   `json:"safe_next_work"`
 	SupportEvidence                       []string `json:"support_evidence"`
+	SupportStates                         []string `json:"support_states,omitempty"`
+	SupportPackage                        []string `json:"support_package,omitempty"`
 	RSIStatus                             string   `json:"rsi_status"`
 	PromotionRequested                    bool     `json:"promotion_requested"`
 	PromotionGranted                      bool     `json:"promotion_granted"`
@@ -6467,6 +6477,15 @@ type operatorWorkflowSummary struct {
 	CallsProviders                        bool     `json:"calls_providers"`
 	ReleasesOrDeploys                     bool     `json:"releases_or_deploys"`
 	ExactNextAction                       string   `json:"exact_next_action"`
+}
+
+func stringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
@@ -6535,6 +6554,20 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow support evidence missing %s", item)
 		}
 	}
+	if len(state.SupportStates) > 0 {
+		for _, item := range []string{"fresh", "stale", "blocked", "denied", "unsupported"} {
+			if !stringSliceContains(state.SupportStates, item) {
+				return operatorWorkflowSummary{}, fmt.Errorf("operator workflow support states missing %s", item)
+			}
+		}
+	}
+	if len(state.SupportPackage) > 0 {
+		for _, item := range []string{"install", "checksum", "manifest_mismatch", "approval_replay", "rollback", "windows_safe_rollback", "operator_readback", "issue_report_fields"} {
+			if !stringSliceContains(state.SupportPackage, item) {
+				return operatorWorkflowSummary{}, fmt.Errorf("operator workflow support package missing %s", item)
+			}
+		}
+	}
 	if !state.DryRunOnly || !state.RollbackVisible || !state.ObservationVisible {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow must expose dry-run, rollback, and observation state")
 	}
@@ -6569,6 +6602,8 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		PolicyGate:                            gates.PolicyGate,
 		SafeNextWork:                          state.SafeNextWork,
 		SupportEvidence:                       state.SupportEvidence,
+		SupportStates:                         state.SupportStates,
+		SupportPackage:                        state.SupportPackage,
 		RSIStatus:                             state.RSIStatus,
 		PromotionRequested:                    state.PromotionRequested,
 		PromotionGranted:                      state.PromotionGranted,
