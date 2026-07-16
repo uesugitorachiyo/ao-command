@@ -1113,6 +1113,82 @@ func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	}
 }
 
+func TestConsumesBoundedAutonomyBenchmarkCommandVector(t *testing.T) {
+	vectorPath := filepath.Join("..", "..", "examples", "compatibility", "bounded-autonomy-benchmark-to-command-readback-v0.1.json")
+	vectorBytes, err := os.ReadFile(vectorPath)
+	if err != nil {
+		t.Fatalf("read compatibility vector: %v", err)
+	}
+	var vector map[string]any
+	if err := json.Unmarshal(vectorBytes, &vector); err != nil {
+		t.Fatalf("invalid compatibility vector JSON: %v", err)
+	}
+	if vector["schema"] != "ao.architecture.bounded-autonomy-command-readback-vector.v0.1" {
+		t.Fatalf("unexpected vector schema: %#v", vector["schema"])
+	}
+	producer := vector["producer"].(map[string]any)
+	consumer := vector["consumer"].(map[string]any)
+	if producer["repository"] != "ao-architecture" ||
+		consumer["repository"] != "ao-command" ||
+		consumer["expected_test"] != "TestConsumesBoundedAutonomyBenchmarkCommandVector" {
+		t.Fatalf("unexpected vector producer/consumer: %#v", vector)
+	}
+
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow bounded autonomy vector JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow bounded autonomy vector JSON: %v\n%s", err, stdout)
+	}
+
+	expected := vector["expected_command_readback"].(map[string]any)
+	for _, field := range []string{
+		"schema",
+		"benchmark_version",
+		"benchmark_status",
+		"rollback_result",
+		"compatibility_gate_state",
+		"operator_mode",
+	} {
+		if got[field] != expected[field] {
+			t.Fatalf("field %s = %#v, want %#v", field, got[field], expected[field])
+		}
+	}
+	for _, field := range []string{
+		"benchmark_task_classes",
+		"unsupported_claim_count",
+	} {
+		if got[field].(float64) != expected[field].(float64) {
+			t.Fatalf("field %s = %#v, want %#v", field, got[field], expected[field])
+		}
+	}
+	for _, field := range []string{
+		"completion_rate",
+		"first_pass_verification_rate",
+		"recovery_rate",
+	} {
+		if got[field].(float64) != expected[field].(float64) {
+			t.Fatalf("field %s = %#v, want %#v", field, got[field], expected[field])
+		}
+	}
+	for _, field := range []string{
+		"compatibility_gate_activation_authorized",
+		"safe_to_execute",
+		"executes_work",
+		"approves_work",
+		"mutates_repositories",
+		"calls_providers",
+		"releases_or_deploys",
+	} {
+		if got[field] != expected[field] {
+			t.Fatalf("field %s = %#v, want %#v", field, got[field], expected[field])
+		}
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
