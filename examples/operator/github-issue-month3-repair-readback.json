@@ -1,0 +1,37 @@
+{
+  "schema": "ao.command.github-issue-month3-repair-readback.v0.1",
+  "status": "ready",
+  "current_public_release_pair": {
+    "ao2": "v0.5.1",
+    "control_plane": "v0.1.16"
+  },
+  "repair_state": {
+    "source_fixture": "deterministic_authentic_bug",
+    "pre_patch_regression_failed_expected": true,
+    "post_patch_verification_passed": true,
+    "rollback_exact_state_restored": true,
+    "replay_digest_match": true,
+    "resume_without_duplicate_edits": true,
+    "false_fix_rejected": true
+  },
+  "operator_states": [
+    "repair_verified",
+    "rollback_verified",
+    "replay_accepted",
+    "resume_verified",
+    "awaiting_month4_draft_pr_workflow"
+  ],
+  "readback": {
+    "feature_generated_draft_pr_exists": false,
+    "exact_next_action": "Proceed to Month 4 AO repository issue-to-draft-PR workflow only after Month 3 implementation PRs are merged and synced."
+  },
+  "denied_actions": {
+    "feature_generated_pr_auto_merge": false,
+    "issue_write_performed": false,
+    "maintainer_contacted": false,
+    "provider_call_performed": false,
+    "release_selected": false,
+    "rsi_authorized": false
+  },
+  "operator_mode": "read_only"
+}

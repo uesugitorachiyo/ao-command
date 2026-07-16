@@ -1215,6 +1215,51 @@ func TestGitHubIssueMonth2AuthenticityReadbackKeepsOperatorReadOnly(t *testing.T
 	}
 }
 
+func TestGitHubIssueMonth3RepairReadbackShowsVerifiedRepairAndNoDraftPR(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "github-issue-month3-repair-readback.json")
+	body, err := os.ReadFile(readbackPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["schema"] != "ao.command.github-issue-month3-repair-readback.v0.1" ||
+		got["status"] != "ready" ||
+		got["operator_mode"] != "read_only" {
+		t.Fatalf("unexpected Month 3 repair readback identity: %#v", got)
+	}
+	pair := got["current_public_release_pair"].(map[string]any)
+	if pair["ao2"] != "v0.5.1" || pair["control_plane"] != "v0.1.16" {
+		t.Fatalf("current public pair drifted: %#v", pair)
+	}
+	repair := got["repair_state"].(map[string]any)
+	for _, key := range []string{
+		"pre_patch_regression_failed_expected",
+		"post_patch_verification_passed",
+		"rollback_exact_state_restored",
+		"replay_digest_match",
+		"resume_without_duplicate_edits",
+		"false_fix_rejected",
+	} {
+		if repair[key] != true {
+			t.Fatalf("repair_state.%s = %#v, want true", key, repair[key])
+		}
+	}
+	readback := got["readback"].(map[string]any)
+	if readback["feature_generated_draft_pr_exists"] != false ||
+		!strings.Contains(readback["exact_next_action"].(string), "Month 4") {
+		t.Fatalf("readback should keep generated PR absent and hand off to Month 4: %#v", readback)
+	}
+	denied := got["denied_actions"].(map[string]any)
+	for action, value := range denied {
+		if value != false {
+			t.Fatalf("denied_actions.%s = %#v, want false", action, value)
+		}
+	}
+}
+
 func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
 	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
