@@ -1566,6 +1566,9 @@ func (a App) operatorWorkflow(args []string) int {
 	fmt.Fprintf(a.Stdout, "ao_command_operator_workflow=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "ao2_version=%s\n", summary.AO2Version)
 	fmt.Fprintf(a.Stdout, "control_plane_version=%s\n", summary.ControlPlaneVersion)
+	if summary.ReleaseDecision != "" {
+		fmt.Fprintf(a.Stdout, "release_decision=%s\n", summary.ReleaseDecision)
+	}
 	fmt.Fprintf(a.Stdout, "compatibility_edges=%d\n", summary.CompatibilityEdges)
 	fmt.Fprintf(a.Stdout, "compatibility_gate_complete=%t\n", summary.CompatibilityGateComplete)
 	fmt.Fprintf(a.Stdout, "dry_run_only=%t\n", summary.DryRunOnly)
@@ -6353,6 +6356,7 @@ type operatorWorkflowState struct {
 	Schema                   string                      `json:"schema"`
 	Status                   string                      `json:"status"`
 	CurrentPublicReleasePair operatorWorkflowReleasePair `json:"current_public_release_pair"`
+	ReleaseDecision          string                      `json:"release_decision,omitempty"`
 	Compatibility            operatorWorkflowCompat      `json:"compatibility"`
 	Gates                    operatorWorkflowGates       `json:"gates"`
 	SafeNextWork             string                      `json:"safe_next_work"`
@@ -6405,6 +6409,7 @@ type operatorWorkflowSummary struct {
 	Status                    string   `json:"status"`
 	AO2Version                string   `json:"ao2_version"`
 	ControlPlaneVersion       string   `json:"control_plane_version"`
+	ReleaseDecision           string   `json:"release_decision,omitempty"`
 	CompatibilityEdges        int      `json:"compatibility_edges"`
 	CanonicalVectorCount      int      `json:"canonical_vector_count"`
 	ConsumerTestCount         int      `json:"consumer_test_count"`
@@ -6440,6 +6445,10 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 	}
 	if state.Status != "ready" {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow status must be ready")
+	}
+	releaseDecision := strings.TrimSpace(state.ReleaseDecision)
+	if releaseDecision != "" && releaseDecision != "no_release" {
+		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow release decision must be no_release when present")
 	}
 	pair := state.CurrentPublicReleasePair
 	if pair.AO2Version != "v0.5.1" || pair.ControlPlaneVersion != "v0.1.15" ||
@@ -6487,6 +6496,7 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		Status:                    state.Status,
 		AO2Version:                pair.AO2Version,
 		ControlPlaneVersion:       pair.ControlPlaneVersion,
+		ReleaseDecision:           releaseDecision,
 		CompatibilityEdges:        compat.TestedEdges,
 		CanonicalVectorCount:      compat.CanonicalVectorCount,
 		ConsumerTestCount:         compat.ConsumerTestCount,
