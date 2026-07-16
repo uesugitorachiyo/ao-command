@@ -1,0 +1,59 @@
+{
+  "schema_version": "ao.compatibility.covenant-policy-decision-to-command-readback-vector.v1",
+  "vector_id": "ao-covenant-policy-decision-to-ao-command-readback-v1",
+  "edge": "ao-covenant.policy_decision -> ao-command.policy_readback",
+  "producer": {
+    "repository": "ao-covenant",
+    "contract": "ao.covenant.policy-decision.v1"
+  },
+  "consumer": {
+    "repository": "ao-command",
+    "contract": "ao-command.policy-readback.v1"
+  },
+  "covenant_policy_decision": {
+    "schema_version": "ao.covenant.policy-decision.v1",
+    "decision_id": "policy-ao2-month3-compatibility-wave-d",
+    "decision": "allow",
+    "effect_type": "compatibility.verify",
+    "resource": "ao-stack-month3-wave-d",
+    "reason": "Compatibility evidence may be read by AO Command as readback only.",
+    "policy_status": "readback_only",
+    "safe_to_execute": false,
+    "approval_ticket_id": ""
+  },
+  "expected_command_policy_readback": {
+    "schema_version": "ao-command.policy-readback.v1",
+    "status": "ready",
+    "policy_decision_id": "policy-ao2-month3-compatibility-wave-d",
+    "decision": "allow",
+    "effect_type": "compatibility.verify",
+    "resource": "ao-stack-month3-wave-d",
+    "policy_status": "readback_only",
+    "tested_edge_count": 9,
+    "full_stack_compatibility_complete": false,
+    "safe_to_execute": false,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false
+  },
+  "compatibility": {
+    "matrix_status": "proposed",
+    "tested_edge_count": 9,
+    "full_stack_compatibility_complete": false
+  },
+  "boundaries": {
+    "release_or_publish": false,
+    "creates_tag": false,
+    "uploads_assets": false,
+    "deploys": false,
+    "contacts_external_users": false,
+    "provider_pilot": false,
+    "promotion_requested": false,
+    "promotion_granted": false,
+    "rsi_remains_denied": true,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false,
+    "calls_providers": false
+  }
+}

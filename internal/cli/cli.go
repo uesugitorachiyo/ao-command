@@ -95,6 +95,10 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.mission(args[1:])
 	case "control-plane":
 		return a.controlPlane(args[1:])
+	case "covenant":
+		return a.covenant(args[1:])
+	case "forge":
+		return a.forge(args[1:])
 	case "rsi":
 		return a.rsi(args[1:])
 	case "next":
@@ -132,6 +136,8 @@ Usage:
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
   ao-command control-plane boundary --packet PATH [--json]
+  ao-command covenant policy --readback PATH [--json]
+  ao-command forge timeline --readback PATH [--json]
   ao-command pulse status --preflight PATH --lifecycle PATH --start-gate PATH [--json]
   ao-command blueprint-atlas-foundry status --atlas-blueprint-import PATH --preflight PATH --foundry-gate PATH [--json]
   ao-command complex-refactor status --summary PATH [--json]
@@ -208,6 +214,118 @@ func (a App) controlPlane(args []string) int {
 
 func controlPlaneUsage() string {
 	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json] | ao-command control-plane status --readback PATH [--json]"
+}
+
+func (a App) covenant(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, covenantUsage())
+		return 2
+	}
+	switch args[0] {
+	case "policy":
+		return a.covenantPolicy(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, covenantUsage())
+		return 2
+	}
+}
+
+func covenantUsage() string {
+	return "ao-command covenant: usage: ao-command covenant policy --readback PATH [--json]"
+}
+
+func (a App) covenantPolicy(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("covenant policy", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO Covenant policy decision compatibility vector JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command covenant policy: --readback is required")
+		return 2
+	}
+	summary, err := readCovenantPolicyReadback(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command covenant policy: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_covenant_policy=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "decision_id=%s\n", summary.DecisionID)
+	fmt.Fprintf(a.Stdout, "decision=%s\n", summary.Decision)
+	fmt.Fprintf(a.Stdout, "effect_type=%s\n", summary.EffectType)
+	fmt.Fprintf(a.Stdout, "resource=%s\n", summary.Resource)
+	fmt.Fprintf(a.Stdout, "policy_status=%s\n", summary.PolicyStatus)
+	fmt.Fprintf(a.Stdout, "tested_edge_count=%d\n", summary.TestedEdgeCount)
+	fmt.Fprintf(a.Stdout, "full_stack_compatibility_complete=%t\n", summary.FullStackCompatibilityComplete)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	return 0
+}
+
+func (a App) forge(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.Stderr, forgeUsage())
+		return 2
+	}
+	switch args[0] {
+	case "timeline":
+		return a.forgeTimeline(args[1:])
+	default:
+		fmt.Fprintln(a.Stderr, forgeUsage())
+		return 2
+	}
+}
+
+func forgeUsage() string {
+	return "ao-command forge: usage: ao-command forge timeline --readback PATH [--json]"
+}
+
+func (a App) forgeTimeline(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("forge timeline", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO Forge run status compatibility vector JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command forge timeline: --readback is required")
+		return 2
+	}
+	summary, err := readForgeRunTimeline(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command forge timeline: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_forge_timeline=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "goal_id=%s\n", summary.GoalID)
+	fmt.Fprintf(a.Stdout, "run_status=%s\n", summary.RunStatus)
+	fmt.Fprintf(a.Stdout, "current_phase=%s\n", summary.CurrentPhase)
+	fmt.Fprintf(a.Stdout, "timeline_event_count=%d\n", summary.TimelineEventCount)
+	fmt.Fprintf(a.Stdout, "latest_event=%s\n", summary.LatestEvent)
+	fmt.Fprintf(a.Stdout, "tested_edge_count=%d\n", summary.TestedEdgeCount)
+	fmt.Fprintf(a.Stdout, "full_stack_compatibility_complete=%t\n", summary.FullStackCompatibilityComplete)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	return 0
 }
 
 func (a App) controlPlaneBoundary(args []string) int {
@@ -5485,6 +5603,331 @@ func readJSONFile(path string, target any) error {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 	return nil
+}
+
+type compatibilityRepositoryContract struct {
+	Repository string `json:"repository"`
+	Contract   string `json:"contract"`
+}
+
+type compatibilityBoundaries struct {
+	ReleaseOrPublish      bool `json:"release_or_publish"`
+	CreatesTag            bool `json:"creates_tag"`
+	UploadsAssets         bool `json:"uploads_assets"`
+	Deploys               bool `json:"deploys"`
+	ContactsExternalUsers bool `json:"contacts_external_users"`
+	ProviderPilot         bool `json:"provider_pilot"`
+	PromotionRequested    bool `json:"promotion_requested"`
+	PromotionGranted      bool `json:"promotion_granted"`
+	RSIRemainsDenied      bool `json:"rsi_remains_denied"`
+	ExecutesWork          bool `json:"executes_work"`
+	ApprovesWork          bool `json:"approves_work"`
+	MutatesRepositories   bool `json:"mutates_repositories"`
+	CallsProviders        bool `json:"calls_providers"`
+}
+
+func (b compatibilityBoundaries) validateNoAuthority(label string) error {
+	if b.ReleaseOrPublish || b.CreatesTag || b.UploadsAssets || b.Deploys ||
+		b.ContactsExternalUsers || b.ProviderPilot || b.PromotionRequested ||
+		b.PromotionGranted || b.ExecutesWork || b.ApprovesWork ||
+		b.MutatesRepositories || b.CallsProviders {
+		return fmt.Errorf("%s vector boundaries must not grant release, tag, upload, deployment, external contact, provider, promotion, execution, approval, repository mutation, or provider-call authority", label)
+	}
+	if !b.RSIRemainsDenied {
+		return fmt.Errorf("%s vector must keep RSI denied", label)
+	}
+	return nil
+}
+
+type covenantPolicyDecision struct {
+	SchemaVersion    string `json:"schema_version"`
+	DecisionID       string `json:"decision_id"`
+	Decision         string `json:"decision"`
+	EffectType       string `json:"effect_type"`
+	Resource         string `json:"resource"`
+	Reason           string `json:"reason"`
+	PolicyStatus     string `json:"policy_status"`
+	SafeToExecute    bool   `json:"safe_to_execute"`
+	ApprovalTicketID string `json:"approval_ticket_id"`
+}
+
+type covenantExpectedCommandPolicyReadback struct {
+	SchemaVersion                  string `json:"schema_version"`
+	Status                         string `json:"status"`
+	PolicyDecisionID               string `json:"policy_decision_id"`
+	Decision                       string `json:"decision"`
+	EffectType                     string `json:"effect_type"`
+	Resource                       string `json:"resource"`
+	PolicyStatus                   string `json:"policy_status"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+	SafeToExecute                  bool   `json:"safe_to_execute"`
+	ExecutesWork                   bool   `json:"executes_work"`
+	ApprovesWork                   bool   `json:"approves_work"`
+	MutatesRepositories            bool   `json:"mutates_repositories"`
+}
+
+type covenantPolicyReadbackVector struct {
+	SchemaVersion string                                `json:"schema_version"`
+	VectorID      string                                `json:"vector_id"`
+	Edge          string                                `json:"edge"`
+	Producer      compatibilityRepositoryContract       `json:"producer"`
+	Consumer      compatibilityRepositoryContract       `json:"consumer"`
+	Decision      covenantPolicyDecision                `json:"covenant_policy_decision"`
+	Expected      covenantExpectedCommandPolicyReadback `json:"expected_command_policy_readback"`
+	Boundaries    compatibilityBoundaries               `json:"boundaries"`
+}
+
+type covenantPolicyReadbackSummary struct {
+	CommandSchemaVersion           string `json:"command_schema_version"`
+	Schema                         string `json:"schema"`
+	Status                         string `json:"status"`
+	DecisionID                     string `json:"decision_id"`
+	Decision                       string `json:"decision"`
+	EffectType                     string `json:"effect_type"`
+	Resource                       string `json:"resource"`
+	PolicyStatus                   string `json:"policy_status"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+	OperatorMode                   string `json:"operator_mode"`
+	SafeToExecute                  bool   `json:"safe_to_execute"`
+	ExecutesWork                   bool   `json:"executes_work"`
+	ApprovesWork                   bool   `json:"approves_work"`
+	MutatesRepositories            bool   `json:"mutates_repositories"`
+}
+
+func readCovenantPolicyReadback(path string) (covenantPolicyReadbackSummary, error) {
+	var vector covenantPolicyReadbackVector
+	if err := readJSONFile(path, &vector); err != nil {
+		return covenantPolicyReadbackSummary{}, err
+	}
+	if vector.SchemaVersion != "ao.compatibility.covenant-policy-decision-to-command-readback-vector.v1" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy vector schema must be ao.compatibility.covenant-policy-decision-to-command-readback-vector.v1")
+	}
+	if vector.Edge != "ao-covenant.policy_decision -> ao-command.policy_readback" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy vector edge must bind Covenant policy decisions to Command readback")
+	}
+	if vector.Producer.Repository != "ao-covenant" || vector.Consumer.Repository != "ao-command" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy vector producer and consumer repositories are invalid")
+	}
+	if err := vector.Boundaries.validateNoAuthority("covenant policy"); err != nil {
+		return covenantPolicyReadbackSummary{}, err
+	}
+	decision := vector.Decision
+	expected := vector.Expected
+	if decision.SchemaVersion != "ao.covenant.policy-decision.v1" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy decision schema must be ao.covenant.policy-decision.v1")
+	}
+	if expected.SchemaVersion != "ao-command.policy-readback.v1" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("expected Command policy readback schema must be ao-command.policy-readback.v1")
+	}
+	if decision.DecisionID == "" || decision.Decision == "" || decision.EffectType == "" || decision.Resource == "" {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy decision requires decision_id, decision, effect_type, and resource")
+	}
+	if expected.PolicyDecisionID != decision.DecisionID ||
+		expected.Decision != decision.Decision ||
+		expected.EffectType != decision.EffectType ||
+		expected.Resource != decision.Resource {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("expected Command policy readback must match Covenant decision identity")
+	}
+	if decision.SafeToExecute || expected.SafeToExecute || expected.ExecutesWork ||
+		expected.ApprovesWork || expected.MutatesRepositories {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy readback must remain read-only")
+	}
+	if expected.TestedEdgeCount < 0 {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy tested edge count must be non-negative")
+	}
+	if expected.FullStackCompatibilityComplete {
+		return covenantPolicyReadbackSummary{}, fmt.Errorf("covenant policy vector must not claim compatibility gate completion")
+	}
+	status := expected.Status
+	if strings.TrimSpace(status) == "" {
+		status = "ready"
+	}
+	return covenantPolicyReadbackSummary{
+		CommandSchemaVersion:           commandSchemaVersion,
+		Schema:                         "ao.command.covenant-policy-readback.v0.1",
+		Status:                         status,
+		DecisionID:                     decision.DecisionID,
+		Decision:                       decision.Decision,
+		EffectType:                     decision.EffectType,
+		Resource:                       decision.Resource,
+		PolicyStatus:                   expected.PolicyStatus,
+		TestedEdgeCount:                expected.TestedEdgeCount,
+		FullStackCompatibilityComplete: false,
+		OperatorMode:                   operatorMode,
+		SafeToExecute:                  false,
+		ExecutesWork:                   false,
+		ApprovesWork:                   false,
+		MutatesRepositories:            false,
+	}, nil
+}
+
+type forgeRunStatus struct {
+	SchemaVersion       string `json:"schema_version"`
+	GoalID              string `json:"goal_id"`
+	Status              string `json:"status"`
+	CurrentPhase        string `json:"current_phase"`
+	SafeToExecute       bool   `json:"safe_to_execute"`
+	ExecutesWork        bool   `json:"executes_work"`
+	ApprovesWork        bool   `json:"approves_work"`
+	MutatesRepositories bool   `json:"mutates_repositories"`
+	ExactNextAction     string `json:"exact_next_action"`
+}
+
+type forgeRunTimelineEvent struct {
+	SchemaVersion string `json:"schema_version"`
+	GoalID        string `json:"goal_id"`
+	Kind          string `json:"kind"`
+	Sequence      int    `json:"sequence"`
+	Status        string `json:"status"`
+	Summary       string `json:"summary"`
+}
+
+type forgeRunTimeline struct {
+	SchemaVersion       string                  `json:"schema_version"`
+	GoalID              string                  `json:"goal_id"`
+	Events              []forgeRunTimelineEvent `json:"events"`
+	SafeToExecute       bool                    `json:"safe_to_execute"`
+	ExecutesWork        bool                    `json:"executes_work"`
+	ApprovesWork        bool                    `json:"approves_work"`
+	MutatesRepositories bool                    `json:"mutates_repositories"`
+}
+
+type forgeExpectedCommandTimeline struct {
+	SchemaVersion                  string `json:"schema_version"`
+	Status                         string `json:"status"`
+	GoalID                         string `json:"goal_id"`
+	RunStatus                      string `json:"run_status"`
+	CurrentPhase                   string `json:"current_phase"`
+	TimelineEventCount             int    `json:"timeline_event_count"`
+	LatestEvent                    string `json:"latest_event"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+	SafeToExecute                  bool   `json:"safe_to_execute"`
+	ExecutesWork                   bool   `json:"executes_work"`
+	ApprovesWork                   bool   `json:"approves_work"`
+	MutatesRepositories            bool   `json:"mutates_repositories"`
+}
+
+type forgeRunTimelineVector struct {
+	SchemaVersion string                          `json:"schema_version"`
+	VectorID      string                          `json:"vector_id"`
+	Edge          string                          `json:"edge"`
+	Producer      compatibilityRepositoryContract `json:"producer"`
+	Consumer      compatibilityRepositoryContract `json:"consumer"`
+	RunStatus     forgeRunStatus                  `json:"forge_run_status"`
+	Timeline      forgeRunTimeline                `json:"timeline"`
+	Expected      forgeExpectedCommandTimeline    `json:"expected_command_run_timeline"`
+	Boundaries    compatibilityBoundaries         `json:"boundaries"`
+}
+
+type forgeRunTimelineSummary struct {
+	CommandSchemaVersion           string `json:"command_schema_version"`
+	Schema                         string `json:"schema"`
+	Status                         string `json:"status"`
+	GoalID                         string `json:"goal_id"`
+	RunStatus                      string `json:"run_status"`
+	CurrentPhase                   string `json:"current_phase"`
+	TimelineEventCount             int    `json:"timeline_event_count"`
+	LatestEvent                    string `json:"latest_event"`
+	TestedEdgeCount                int    `json:"tested_edge_count"`
+	FullStackCompatibilityComplete bool   `json:"full_stack_compatibility_complete"`
+	OperatorMode                   string `json:"operator_mode"`
+	SafeToExecute                  bool   `json:"safe_to_execute"`
+	ExecutesWork                   bool   `json:"executes_work"`
+	ApprovesWork                   bool   `json:"approves_work"`
+	MutatesRepositories            bool   `json:"mutates_repositories"`
+}
+
+func readForgeRunTimeline(path string) (forgeRunTimelineSummary, error) {
+	var vector forgeRunTimelineVector
+	if err := readJSONFile(path, &vector); err != nil {
+		return forgeRunTimelineSummary{}, err
+	}
+	if vector.SchemaVersion != "ao.compatibility.forge-run-status-to-command-timeline-vector.v1" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline vector schema must be ao.compatibility.forge-run-status-to-command-timeline-vector.v1")
+	}
+	if vector.Edge != "ao-forge.run_status -> ao-command.run_timeline" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline vector edge must bind Forge run status to Command timeline")
+	}
+	if vector.Producer.Repository != "ao-forge" || vector.Consumer.Repository != "ao-command" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline vector producer and consumer repositories are invalid")
+	}
+	if err := vector.Boundaries.validateNoAuthority("forge run timeline"); err != nil {
+		return forgeRunTimelineSummary{}, err
+	}
+	runStatus := vector.RunStatus
+	timeline := vector.Timeline
+	expected := vector.Expected
+	if runStatus.SchemaVersion != "ao.forge.run-status.v1" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run status schema must be ao.forge.run-status.v1")
+	}
+	if timeline.SchemaVersion != "ao.forge.run-timeline.v1" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline schema must be ao.forge.run-timeline.v1")
+	}
+	if expected.SchemaVersion != "ao-command.run-timeline.v1" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("expected Command run timeline schema must be ao-command.run-timeline.v1")
+	}
+	if runStatus.GoalID == "" || runStatus.Status == "" || runStatus.CurrentPhase == "" {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run status requires goal_id, status, and current_phase")
+	}
+	if timeline.GoalID != runStatus.GoalID || expected.GoalID != runStatus.GoalID {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline goal IDs must match")
+	}
+	if runStatus.SafeToExecute || runStatus.ExecutesWork || runStatus.ApprovesWork || runStatus.MutatesRepositories ||
+		timeline.SafeToExecute || timeline.ExecutesWork || timeline.ApprovesWork || timeline.MutatesRepositories ||
+		expected.SafeToExecute || expected.ExecutesWork || expected.ApprovesWork || expected.MutatesRepositories {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline readback must remain read-only")
+	}
+	if expected.RunStatus != runStatus.Status || expected.CurrentPhase != runStatus.CurrentPhase {
+		return forgeRunTimelineSummary{}, fmt.Errorf("expected Command run timeline must match Forge run status")
+	}
+	if expected.TimelineEventCount != len(timeline.Events) {
+		return forgeRunTimelineSummary{}, fmt.Errorf("expected Command run timeline event count must match Forge timeline")
+	}
+	if len(timeline.Events) == 0 {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline requires at least one event")
+	}
+	latestEvent := timeline.Events[len(timeline.Events)-1].Kind
+	if expected.LatestEvent != latestEvent {
+		return forgeRunTimelineSummary{}, fmt.Errorf("expected Command latest event must match Forge timeline")
+	}
+	for _, event := range timeline.Events {
+		if event.SchemaVersion != "ao.forge.run-event.v1" {
+			return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline events must use ao.forge.run-event.v1")
+		}
+		if event.GoalID != runStatus.GoalID {
+			return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline event goal ID must match run status")
+		}
+	}
+	if expected.TestedEdgeCount < 0 {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline tested edge count must be non-negative")
+	}
+	if expected.FullStackCompatibilityComplete {
+		return forgeRunTimelineSummary{}, fmt.Errorf("forge run timeline vector must not claim compatibility gate completion")
+	}
+	status := expected.Status
+	if strings.TrimSpace(status) == "" {
+		status = "ready"
+	}
+	return forgeRunTimelineSummary{
+		CommandSchemaVersion:           commandSchemaVersion,
+		Schema:                         "ao.command.forge-run-timeline.v0.1",
+		Status:                         status,
+		GoalID:                         runStatus.GoalID,
+		RunStatus:                      runStatus.Status,
+		CurrentPhase:                   runStatus.CurrentPhase,
+		TimelineEventCount:             len(timeline.Events),
+		LatestEvent:                    latestEvent,
+		TestedEdgeCount:                expected.TestedEdgeCount,
+		FullStackCompatibilityComplete: false,
+		OperatorMode:                   operatorMode,
+		SafeToExecute:                  false,
+		ExecutesWork:                   false,
+		ApprovesWork:                   false,
+		MutatesRepositories:            false,
+	}, nil
 }
 
 type controlPlaneClientBoundaryPacket struct {
