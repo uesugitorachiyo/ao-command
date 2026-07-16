@@ -1121,6 +1121,54 @@ func TestOperatorWorkflowJSONOmitsBenchmarkFieldsWithoutBenchmark(t *testing.T) 
 	}
 }
 
+func TestOperatorWorkflowReadsGitHubIssueMonth1Readback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "github-issue-month1-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow github issue month1 exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_operator_workflow=ready",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.16",
+		"compatibility_edges=16",
+		"compatibility_gate_state=ready",
+		"compatibility_gate_activation_authorized=false",
+		"policy_gate=human_approval_required",
+		"support_evidence=ao2_version,platform,exact_command,expected_result,actual_result,evidence_path,approval_status,manifest_or_checksum_state,rollback_status,observation_status,sanitized_logs",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"external_beta_launched=false",
+		"operator_mode=read_only",
+		"safe_to_execute=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"calls_providers=false",
+		"releases_or_deploys=false",
+		"exact_next_action=Complete Month 1 intake fixtures and do not open, merge, approve, or mark ready any feature-generated PR.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("operator workflow github issue month1 stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow github issue month1 JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow github issue month1 JSON: %v\n%s", err, stdout)
+	}
+	if got["status"] != "ready" || got["compatibility_gate_state"] != "ready" || got["safe_to_execute"] != false {
+		t.Fatalf("unexpected operator workflow github issue month1 JSON: %#v", got)
+	}
+	if got["mutates_repositories"] != false || got["approves_work"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("operator workflow github issue month1 widened authority: %#v", got)
+	}
+}
+
 func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
 	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
