@@ -1169,6 +1169,52 @@ func TestOperatorWorkflowReadsGitHubIssueMonth1Readback(t *testing.T) {
 	}
 }
 
+func TestGitHubIssueMonth2AuthenticityReadbackKeepsOperatorReadOnly(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "github-issue-month2-authenticity-readback.json")
+	body, err := os.ReadFile(readbackPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["schema"] != "ao.command.github-issue-authenticity-readback.v0.1" ||
+		got["status"] != "ready" ||
+		got["operator_mode"] != "read_only" {
+		t.Fatalf("unexpected authenticity readback identity: %#v", got)
+	}
+	pair := got["current_public_release_pair"].(map[string]any)
+	if pair["ao2"] != "v0.5.1" || pair["control_plane"] != "v0.1.16" {
+		t.Fatalf("current public pair drifted: %#v", pair)
+	}
+	truth := got["truth_set"].(map[string]any)
+	if truth["total"].(float64) != 13 ||
+		truth["authentic_bug"].(float64) != 2 ||
+		truth["non_bug_or_blocked"].(float64) != 11 ||
+		truth["precision"].(float64) < 0.95 ||
+		truth["recall"].(float64) < 0.90 {
+		t.Fatalf("truth-set readback drifted: %#v", truth)
+	}
+	readback := got["readback"].(map[string]any)
+	for _, key := range []string{
+		"requires_failing_pre_patch_reproduction",
+		"flaky_requires_repeated_runs",
+		"uncertainty_is_not_authentic_bug",
+		"security_sensitive_public_repair_denied",
+	} {
+		if readback[key] != true {
+			t.Fatalf("readback.%s = %#v, want true", key, readback[key])
+		}
+	}
+	denied := got["denied_actions"].(map[string]any)
+	for action, value := range denied {
+		if value != false {
+			t.Fatalf("denied_actions.%s = %#v, want false", action, value)
+		}
+	}
+}
+
 func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
 	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
