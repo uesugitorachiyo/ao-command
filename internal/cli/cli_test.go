@@ -596,7 +596,7 @@ func TestControlPlaneOperatorStatusReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_control_plane_status=current_release_pair_observed",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"matrix_status=proposed",
 		"tested_edge_count=1",
 		"full_stack_compatibility_complete=false",
@@ -623,7 +623,7 @@ func TestControlPlaneOperatorStatusReadback(t *testing.T) {
 	if got["schema"] != "ao.command.control-plane-operator-status.v0.1" ||
 		got["status"] != "current_release_pair_observed" ||
 		got["ao2_version"] != "v0.5.1" ||
-		got["control_plane_version"] != "v0.1.15" ||
+		got["control_plane_version"] != "v0.1.16" ||
 		got["full_stack_compatibility_complete"] != false {
 		t.Fatalf("unexpected control-plane status JSON: %#v", got)
 	}
@@ -692,7 +692,7 @@ func TestMonth5OperatorWorkflowReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"compatibility_edges=16",
 		"compatibility_gate_complete=false",
 		"dry_run_only=true",
@@ -727,7 +727,7 @@ func TestMonth5OperatorWorkflowReadback(t *testing.T) {
 	if got["schema"] != "ao.command.operator-workflow-readback.v0.1" ||
 		got["status"] != "ready" ||
 		got["ao2_version"] != "v0.5.1" ||
-		got["control_plane_version"] != "v0.1.15" ||
+		got["control_plane_version"] != "v0.1.16" ||
 		got["compatibility_gate_complete"] != false ||
 		got["rsi_status"] != "denied" ||
 		got["promotion_requested"] != false ||
@@ -748,7 +748,7 @@ func TestMonth6NoReleaseOperatorWorkflowReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"compatibility_gate_complete=false",
@@ -784,7 +784,7 @@ func TestMonth6NoReleaseOperatorWorkflowReadback(t *testing.T) {
 		got["status"] != "ready" ||
 		got["release_decision"] != "no_release" ||
 		got["ao2_version"] != "v0.5.1" ||
-		got["control_plane_version"] != "v0.1.15" ||
+		got["control_plane_version"] != "v0.1.16" ||
 		got["compatibility_gate_complete"] != false ||
 		got["rsi_status"] != "denied" ||
 		got["promotion_requested"] != false ||
@@ -805,7 +805,7 @@ func TestAdoptionMonth1CompatibilityGateReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"compatibility_gate_complete=false",
@@ -862,7 +862,7 @@ func TestAdoptionMonth2OperatorDrillReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"compatibility_gate_complete=false",
@@ -920,7 +920,7 @@ func TestAdoptionMonth3EvidenceMaintenanceReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"canonical_vector_count=16",
@@ -982,7 +982,7 @@ func TestBoundedAutonomyMonth4ControlledImprovementReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"canonical_vector_count=16",
@@ -1041,7 +1041,7 @@ func TestAdoptionMonth5SupportReadinessReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"release_decision=no_release",
 		"compatibility_edges=16",
 		"compatibility_gate_complete=false",
@@ -1130,7 +1130,7 @@ func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
 	for _, want := range []string{
 		"ao_command_operator_workflow=ready",
 		"ao2_version=v0.5.1",
-		"control_plane_version=v0.1.15",
+		"control_plane_version=v0.1.16",
 		"benchmark_version=bounded-autonomy-month1-v0.1",
 		"benchmark_status=baseline_recorded",
 		"benchmark_task_classes=7",
