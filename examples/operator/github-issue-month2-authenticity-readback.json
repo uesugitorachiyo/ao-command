@@ -1,0 +1,41 @@
+{
+  "schema": "ao.command.github-issue-authenticity-readback.v0.1",
+  "status": "ready",
+  "current_public_release_pair": {
+    "ao2": "v0.5.1",
+    "control_plane": "v0.1.16"
+  },
+  "truth_set": {
+    "total": 13,
+    "authentic_bug": 2,
+    "non_bug_or_blocked": 11,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "operator_states": [
+    "authentic_bug_deterministic",
+    "authentic_bug_flaky_measured",
+    "cannot_reproduce",
+    "environment_blocked",
+    "policy_blocked",
+    "security_routing_required",
+    "untrusted_instruction_ignored"
+  ],
+  "readback": {
+    "requires_failing_pre_patch_reproduction": true,
+    "flaky_requires_repeated_runs": true,
+    "uncertainty_is_not_authentic_bug": true,
+    "security_sensitive_public_repair_denied": true,
+    "exact_next_action": "Proceed to isolated repair only for authentic_bug_* states with failing pre-patch reproduction evidence."
+  },
+  "denied_actions": {
+    "github_write_performed": false,
+    "feature_generated_pr_opened": false,
+    "issue_write_performed": false,
+    "maintainer_contacted": false,
+    "provider_call_performed": false,
+    "release_selected": false,
+    "rsi_authorized": false
+  },
+  "operator_mode": "read_only"
+}
