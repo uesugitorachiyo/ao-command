@@ -1571,6 +1571,14 @@ func (a App) operatorWorkflow(args []string) int {
 	}
 	fmt.Fprintf(a.Stdout, "compatibility_edges=%d\n", summary.CompatibilityEdges)
 	fmt.Fprintf(a.Stdout, "compatibility_gate_complete=%t\n", summary.CompatibilityGateComplete)
+	if summary.EvidenceFreshness != "" {
+		fmt.Fprintf(a.Stdout, "evidence_freshness=%s\n", summary.EvidenceFreshness)
+		fmt.Fprintf(a.Stdout, "release_metadata_matches_manifest=%t\n", summary.ReleaseMetadataMatchesManifest)
+		fmt.Fprintf(a.Stdout, "matrix_counts_match=%t\n", summary.MatrixCountsMatch)
+		fmt.Fprintf(a.Stdout, "compatibility_gate_state=%s\n", summary.CompatibilityGateState)
+		fmt.Fprintf(a.Stdout, "compatibility_gate_reason=%s\n", summary.CompatibilityGateReason)
+		fmt.Fprintf(a.Stdout, "compatibility_gate_activation_authorized=%t\n", summary.CompatibilityGateActivationAuthorized)
+	}
 	fmt.Fprintf(a.Stdout, "dry_run_only=%t\n", summary.DryRunOnly)
 	fmt.Fprintf(a.Stdout, "policy_gate=%s\n", summary.PolicyGate)
 	fmt.Fprintf(a.Stdout, "safe_next_work=%s\n", summary.SafeNextWork)
@@ -6357,7 +6365,9 @@ type operatorWorkflowState struct {
 	Status                   string                      `json:"status"`
 	CurrentPublicReleasePair operatorWorkflowReleasePair `json:"current_public_release_pair"`
 	ReleaseDecision          string                      `json:"release_decision,omitempty"`
+	EvidenceFreshness        operatorEvidenceFreshness   `json:"evidence_freshness,omitempty"`
 	Compatibility            operatorWorkflowCompat      `json:"compatibility"`
+	CompatibilityGate        operatorCompatibilityGate   `json:"compatibility_gate,omitempty"`
 	Gates                    operatorWorkflowGates       `json:"gates"`
 	SafeNextWork             string                      `json:"safe_next_work"`
 	SupportEvidence          []string                    `json:"support_evidence"`
@@ -6394,6 +6404,22 @@ type operatorWorkflowCompat struct {
 	CompatibilityGateComplete bool   `json:"compatibility_gate_complete"`
 }
 
+type operatorEvidenceFreshness struct {
+	Status                         string `json:"status"`
+	ReleaseMetadataMatchesManifest bool   `json:"release_metadata_matches_manifest"`
+	MatrixCountsMatch              bool   `json:"matrix_counts_match"`
+	TestedEdgesHaveVectors         bool   `json:"tested_edges_have_vectors"`
+	TestedEdgesHaveConsumerTests   bool   `json:"tested_edges_have_consumer_tests"`
+	LocalArchitectureVectorsExist  bool   `json:"local_architecture_vectors_exist"`
+}
+
+type operatorCompatibilityGate struct {
+	State                string `json:"state"`
+	Reason               string `json:"reason"`
+	ActivationAuthorized bool   `json:"activation_authorized"`
+	ActivationEvidence   string `json:"activation_evidence"`
+}
+
 type operatorWorkflowGates struct {
 	ReleaseGate               string `json:"release_gate"`
 	CompatibilityEvidenceGate string `json:"compatibility_evidence_gate"`
@@ -6404,35 +6430,41 @@ type operatorWorkflowGates struct {
 }
 
 type operatorWorkflowSummary struct {
-	CommandSchemaVersion      string   `json:"command_schema_version"`
-	Schema                    string   `json:"schema"`
-	Status                    string   `json:"status"`
-	AO2Version                string   `json:"ao2_version"`
-	ControlPlaneVersion       string   `json:"control_plane_version"`
-	ReleaseDecision           string   `json:"release_decision,omitempty"`
-	CompatibilityEdges        int      `json:"compatibility_edges"`
-	CanonicalVectorCount      int      `json:"canonical_vector_count"`
-	ConsumerTestCount         int      `json:"consumer_test_count"`
-	CompatibilityGateComplete bool     `json:"compatibility_gate_complete"`
-	DryRunOnly                bool     `json:"dry_run_only"`
-	RollbackVisible           bool     `json:"rollback_visible"`
-	ObservationVisible        bool     `json:"observation_visible"`
-	PolicyGate                string   `json:"policy_gate"`
-	SafeNextWork              string   `json:"safe_next_work"`
-	SupportEvidence           []string `json:"support_evidence"`
-	RSIStatus                 string   `json:"rsi_status"`
-	PromotionRequested        bool     `json:"promotion_requested"`
-	PromotionGranted          bool     `json:"promotion_granted"`
-	ExternalBetaLaunched      bool     `json:"external_beta_launched"`
-	ProviderPilotRan          bool     `json:"provider_pilot_ran"`
-	OperatorMode              string   `json:"operator_mode"`
-	SafeToExecute             bool     `json:"safe_to_execute"`
-	ExecutesWork              bool     `json:"executes_work"`
-	ApprovesWork              bool     `json:"approves_work"`
-	MutatesRepositories       bool     `json:"mutates_repositories"`
-	CallsProviders            bool     `json:"calls_providers"`
-	ReleasesOrDeploys         bool     `json:"releases_or_deploys"`
-	ExactNextAction           string   `json:"exact_next_action"`
+	CommandSchemaVersion                  string   `json:"command_schema_version"`
+	Schema                                string   `json:"schema"`
+	Status                                string   `json:"status"`
+	AO2Version                            string   `json:"ao2_version"`
+	ControlPlaneVersion                   string   `json:"control_plane_version"`
+	ReleaseDecision                       string   `json:"release_decision,omitempty"`
+	CompatibilityEdges                    int      `json:"compatibility_edges"`
+	CanonicalVectorCount                  int      `json:"canonical_vector_count"`
+	ConsumerTestCount                     int      `json:"consumer_test_count"`
+	CompatibilityGateComplete             bool     `json:"compatibility_gate_complete"`
+	EvidenceFreshness                     string   `json:"evidence_freshness,omitempty"`
+	ReleaseMetadataMatchesManifest        bool     `json:"release_metadata_matches_manifest,omitempty"`
+	MatrixCountsMatch                     bool     `json:"matrix_counts_match,omitempty"`
+	CompatibilityGateState                string   `json:"compatibility_gate_state,omitempty"`
+	CompatibilityGateReason               string   `json:"compatibility_gate_reason,omitempty"`
+	CompatibilityGateActivationAuthorized bool     `json:"compatibility_gate_activation_authorized"`
+	DryRunOnly                            bool     `json:"dry_run_only"`
+	RollbackVisible                       bool     `json:"rollback_visible"`
+	ObservationVisible                    bool     `json:"observation_visible"`
+	PolicyGate                            string   `json:"policy_gate"`
+	SafeNextWork                          string   `json:"safe_next_work"`
+	SupportEvidence                       []string `json:"support_evidence"`
+	RSIStatus                             string   `json:"rsi_status"`
+	PromotionRequested                    bool     `json:"promotion_requested"`
+	PromotionGranted                      bool     `json:"promotion_granted"`
+	ExternalBetaLaunched                  bool     `json:"external_beta_launched"`
+	ProviderPilotRan                      bool     `json:"provider_pilot_ran"`
+	OperatorMode                          string   `json:"operator_mode"`
+	SafeToExecute                         bool     `json:"safe_to_execute"`
+	ExecutesWork                          bool     `json:"executes_work"`
+	ApprovesWork                          bool     `json:"approves_work"`
+	MutatesRepositories                   bool     `json:"mutates_repositories"`
+	CallsProviders                        bool     `json:"calls_providers"`
+	ReleasesOrDeploys                     bool     `json:"releases_or_deploys"`
+	ExactNextAction                       string   `json:"exact_next_action"`
 }
 
 func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
@@ -6459,6 +6491,28 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 	if compat.TestedEdges != 16 || compat.CanonicalVectorCount != 16 || compat.ConsumerTestCount != 16 ||
 		compat.CompatibilityGateComplete {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow compatibility evidence must show 16 tested edges and gate false")
+	}
+	evidence := state.EvidenceFreshness
+	gate := state.CompatibilityGate
+	hasFreshness := strings.TrimSpace(evidence.Status) != "" || strings.TrimSpace(gate.State) != ""
+	if hasFreshness {
+		if evidence.Status != "fresh" ||
+			!evidence.ReleaseMetadataMatchesManifest ||
+			!evidence.MatrixCountsMatch ||
+			!evidence.TestedEdgesHaveVectors ||
+			!evidence.TestedEdgesHaveConsumerTests ||
+			!evidence.LocalArchitectureVectorsExist {
+			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow evidence freshness must be fresh with all checks true")
+		}
+		if gate.State != "ready" && gate.State != "false" && gate.State != "blocked" && gate.State != "denied" {
+			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow compatibility gate state must be false, ready, blocked, or denied")
+		}
+		if strings.TrimSpace(gate.Reason) == "" {
+			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow compatibility gate reason is required")
+		}
+		if gate.ActivationAuthorized || strings.TrimSpace(gate.ActivationEvidence) != "" {
+			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow compatibility gate activation must remain unauthorized")
+		}
 	}
 	gates := state.Gates
 	if gates.PolicyGate != "human_approval_required" ||
@@ -6491,35 +6545,41 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		return operatorWorkflowSummary{}, fmt.Errorf("operator workflow must remain read-only")
 	}
 	return operatorWorkflowSummary{
-		CommandSchemaVersion:      commandSchemaVersion,
-		Schema:                    "ao.command.operator-workflow-readback.v0.1",
-		Status:                    state.Status,
-		AO2Version:                pair.AO2Version,
-		ControlPlaneVersion:       pair.ControlPlaneVersion,
-		ReleaseDecision:           releaseDecision,
-		CompatibilityEdges:        compat.TestedEdges,
-		CanonicalVectorCount:      compat.CanonicalVectorCount,
-		ConsumerTestCount:         compat.ConsumerTestCount,
-		CompatibilityGateComplete: compat.CompatibilityGateComplete,
-		DryRunOnly:                state.DryRunOnly,
-		RollbackVisible:           state.RollbackVisible,
-		ObservationVisible:        state.ObservationVisible,
-		PolicyGate:                gates.PolicyGate,
-		SafeNextWork:              state.SafeNextWork,
-		SupportEvidence:           state.SupportEvidence,
-		RSIStatus:                 state.RSIStatus,
-		PromotionRequested:        state.PromotionRequested,
-		PromotionGranted:          state.PromotionGranted,
-		ExternalBetaLaunched:      state.ExternalBetaLaunched,
-		ProviderPilotRan:          state.ProviderPilotRan,
-		OperatorMode:              state.OperatorMode,
-		SafeToExecute:             state.SafeToExecute,
-		ExecutesWork:              state.ExecutesWork,
-		ApprovesWork:              state.ApprovesWork,
-		MutatesRepositories:       state.MutatesRepositories,
-		CallsProviders:            state.CallsProviders,
-		ReleasesOrDeploys:         state.ReleasesOrDeploys,
-		ExactNextAction:           state.ExactNextAction,
+		CommandSchemaVersion:                  commandSchemaVersion,
+		Schema:                                "ao.command.operator-workflow-readback.v0.1",
+		Status:                                state.Status,
+		AO2Version:                            pair.AO2Version,
+		ControlPlaneVersion:                   pair.ControlPlaneVersion,
+		ReleaseDecision:                       releaseDecision,
+		CompatibilityEdges:                    compat.TestedEdges,
+		CanonicalVectorCount:                  compat.CanonicalVectorCount,
+		ConsumerTestCount:                     compat.ConsumerTestCount,
+		CompatibilityGateComplete:             compat.CompatibilityGateComplete,
+		EvidenceFreshness:                     evidence.Status,
+		ReleaseMetadataMatchesManifest:        evidence.ReleaseMetadataMatchesManifest,
+		MatrixCountsMatch:                     evidence.MatrixCountsMatch,
+		CompatibilityGateState:                gate.State,
+		CompatibilityGateReason:               gate.Reason,
+		CompatibilityGateActivationAuthorized: gate.ActivationAuthorized,
+		DryRunOnly:                            state.DryRunOnly,
+		RollbackVisible:                       state.RollbackVisible,
+		ObservationVisible:                    state.ObservationVisible,
+		PolicyGate:                            gates.PolicyGate,
+		SafeNextWork:                          state.SafeNextWork,
+		SupportEvidence:                       state.SupportEvidence,
+		RSIStatus:                             state.RSIStatus,
+		PromotionRequested:                    state.PromotionRequested,
+		PromotionGranted:                      state.PromotionGranted,
+		ExternalBetaLaunched:                  state.ExternalBetaLaunched,
+		ProviderPilotRan:                      state.ProviderPilotRan,
+		OperatorMode:                          state.OperatorMode,
+		SafeToExecute:                         state.SafeToExecute,
+		ExecutesWork:                          state.ExecutesWork,
+		ApprovesWork:                          state.ApprovesWork,
+		MutatesRepositories:                   state.MutatesRepositories,
+		CallsProviders:                        state.CallsProviders,
+		ReleasesOrDeploys:                     state.ReleasesOrDeploys,
+		ExactNextAction:                       state.ExactNextAction,
 	}, nil
 }
 
