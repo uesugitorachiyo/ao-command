@@ -1581,6 +1581,16 @@ func (a App) operatorWorkflow(args []string) int {
 		fmt.Fprintf(a.Stdout, "compatibility_gate_reason=%s\n", summary.CompatibilityGateReason)
 		fmt.Fprintf(a.Stdout, "compatibility_gate_activation_authorized=%t\n", summary.CompatibilityGateActivationAuthorized)
 	}
+	if summary.BenchmarkVersion != "" {
+		fmt.Fprintf(a.Stdout, "benchmark_version=%s\n", summary.BenchmarkVersion)
+		fmt.Fprintf(a.Stdout, "benchmark_status=%s\n", summary.BenchmarkStatus)
+		fmt.Fprintf(a.Stdout, "benchmark_task_classes=%d\n", summary.BenchmarkTaskClasses)
+		fmt.Fprintf(a.Stdout, "completion_rate=%s\n", trimFloat(summary.CompletionRate))
+		fmt.Fprintf(a.Stdout, "first_pass_verification_rate=%s\n", trimFloat(summary.FirstPassVerificationRate))
+		fmt.Fprintf(a.Stdout, "recovery_rate=%s\n", trimFloat(summary.RecoveryRate))
+		fmt.Fprintf(a.Stdout, "rollback_result=%s\n", summary.RollbackResult)
+		fmt.Fprintf(a.Stdout, "unsupported_claim_count=%d\n", summary.UnsupportedClaimCount)
+	}
 	fmt.Fprintf(a.Stdout, "dry_run_only=%t\n", summary.DryRunOnly)
 	fmt.Fprintf(a.Stdout, "policy_gate=%s\n", summary.PolicyGate)
 	fmt.Fprintf(a.Stdout, "safe_next_work=%s\n", summary.SafeNextWork)
@@ -6376,6 +6386,7 @@ type operatorWorkflowState struct {
 	EvidenceFreshness        operatorEvidenceFreshness   `json:"evidence_freshness,omitempty"`
 	Compatibility            operatorWorkflowCompat      `json:"compatibility"`
 	CompatibilityGate        operatorCompatibilityGate   `json:"compatibility_gate,omitempty"`
+	Benchmark                operatorBenchmark           `json:"benchmark,omitempty"`
 	Gates                    operatorWorkflowGates       `json:"gates"`
 	SafeNextWork             string                      `json:"safe_next_work"`
 	SupportEvidence          []string                    `json:"support_evidence"`
@@ -6430,6 +6441,17 @@ type operatorCompatibilityGate struct {
 	ActivationEvidence   string `json:"activation_evidence"`
 }
 
+type operatorBenchmark struct {
+	Version                   string  `json:"version"`
+	Status                    string  `json:"status"`
+	TaskClasses               int     `json:"task_classes"`
+	CompletionRate            float64 `json:"completion_rate"`
+	FirstPassVerificationRate float64 `json:"first_pass_verification_rate"`
+	RecoveryRate              float64 `json:"recovery_rate"`
+	RollbackResult            string  `json:"rollback_result"`
+	UnsupportedClaimCount     int     `json:"unsupported_claim_count"`
+}
+
 type operatorWorkflowGates struct {
 	ReleaseGate               string `json:"release_gate"`
 	CompatibilityEvidenceGate string `json:"compatibility_evidence_gate"`
@@ -6456,6 +6478,14 @@ type operatorWorkflowSummary struct {
 	CompatibilityGateState                string   `json:"compatibility_gate_state,omitempty"`
 	CompatibilityGateReason               string   `json:"compatibility_gate_reason,omitempty"`
 	CompatibilityGateActivationAuthorized bool     `json:"compatibility_gate_activation_authorized"`
+	BenchmarkVersion                      string   `json:"benchmark_version,omitempty"`
+	BenchmarkStatus                       string   `json:"benchmark_status,omitempty"`
+	BenchmarkTaskClasses                  int      `json:"benchmark_task_classes,omitempty"`
+	CompletionRate                        float64  `json:"completion_rate,omitempty"`
+	FirstPassVerificationRate             float64  `json:"first_pass_verification_rate,omitempty"`
+	RecoveryRate                          float64  `json:"recovery_rate,omitempty"`
+	RollbackResult                        string   `json:"rollback_result,omitempty"`
+	UnsupportedClaimCount                 int      `json:"unsupported_claim_count"`
 	DryRunOnly                            bool     `json:"dry_run_only"`
 	RollbackVisible                       bool     `json:"rollback_visible"`
 	ObservationVisible                    bool     `json:"observation_visible"`
@@ -6486,6 +6516,16 @@ func stringSliceContains(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func trimFloat(value float64) string {
+	text := fmt.Sprintf("%.6f", value)
+	text = strings.TrimRight(text, "0")
+	text = strings.TrimRight(text, ".")
+	if text == "" {
+		return "0"
+	}
+	return text
 }
 
 func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
@@ -6533,6 +6573,19 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		}
 		if gate.ActivationAuthorized || strings.TrimSpace(gate.ActivationEvidence) != "" {
 			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow compatibility gate activation must remain unauthorized")
+		}
+	}
+	benchmark := state.Benchmark
+	if strings.TrimSpace(benchmark.Version) != "" {
+		if benchmark.Version != "bounded-autonomy-month1-v0.1" ||
+			benchmark.Status != "baseline_recorded" ||
+			benchmark.TaskClasses != 7 ||
+			benchmark.CompletionRate < 0 ||
+			benchmark.FirstPassVerificationRate < 0 ||
+			benchmark.RecoveryRate < 0 ||
+			strings.TrimSpace(benchmark.RollbackResult) == "" ||
+			benchmark.UnsupportedClaimCount != 0 {
+			return operatorWorkflowSummary{}, fmt.Errorf("operator workflow bounded autonomy benchmark baseline is incomplete")
 		}
 	}
 	gates := state.Gates
@@ -6596,6 +6649,14 @@ func readOperatorWorkflow(path string) (operatorWorkflowSummary, error) {
 		CompatibilityGateState:                gate.State,
 		CompatibilityGateReason:               gate.Reason,
 		CompatibilityGateActivationAuthorized: gate.ActivationAuthorized,
+		BenchmarkVersion:                      benchmark.Version,
+		BenchmarkStatus:                       benchmark.Status,
+		BenchmarkTaskClasses:                  benchmark.TaskClasses,
+		CompletionRate:                        benchmark.CompletionRate,
+		FirstPassVerificationRate:             benchmark.FirstPassVerificationRate,
+		RecoveryRate:                          benchmark.RecoveryRate,
+		RollbackResult:                        benchmark.RollbackResult,
+		UnsupportedClaimCount:                 benchmark.UnsupportedClaimCount,
 		DryRunOnly:                            state.DryRunOnly,
 		RollbackVisible:                       state.RollbackVisible,
 		ObservationVisible:                    state.ObservationVisible,

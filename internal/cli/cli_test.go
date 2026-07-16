@@ -1036,6 +1036,57 @@ func TestAdoptionMonth5SupportReadinessReadback(t *testing.T) {
 	}
 }
 
+func TestBoundedAutonomyMonth1BenchmarkReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "operator", "bounded-autonomy-month1-baseline-readback.json")
+	code, stdout, stderr := runWithFake([]string{"operator", "workflow", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow bounded autonomy month1 exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_operator_workflow=ready",
+		"ao2_version=v0.5.1",
+		"control_plane_version=v0.1.15",
+		"benchmark_version=bounded-autonomy-month1-v0.1",
+		"benchmark_status=baseline_recorded",
+		"benchmark_task_classes=7",
+		"completion_rate=1",
+		"first_pass_verification_rate=0.93",
+		"recovery_rate=1",
+		"rollback_result=passed",
+		"unsupported_claim_count=0",
+		"rsi_status=denied",
+		"promotion_requested=false",
+		"external_beta_launched=false",
+		"safe_to_execute=false",
+		"releases_or_deploys=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("operator workflow bounded autonomy month1 stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"operator", "workflow", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("operator workflow bounded autonomy month1 JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid operator workflow bounded autonomy month1 JSON: %v\n%s", err, stdout)
+	}
+	if got["benchmark_version"] != "bounded-autonomy-month1-v0.1" ||
+		got["benchmark_status"] != "baseline_recorded" ||
+		got["benchmark_task_classes"].(float64) != 7 ||
+		got["unsupported_claim_count"].(float64) != 0 ||
+		got["rsi_status"] != "denied" ||
+		got["promotion_requested"] != false ||
+		got["external_beta_launched"] != false {
+		t.Fatalf("unexpected operator workflow bounded autonomy month1 JSON: %#v", got)
+	}
+	if got["executes_work"] != false || got["approves_work"] != false || got["mutates_repositories"] != false || got["calls_providers"] != false || got["releases_or_deploys"] != false {
+		t.Fatalf("operator workflow bounded autonomy month1 widened authority: %#v", got)
+	}
+}
+
 func TestCovenantPolicyConsumesPolicyReadbackVector(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "covenant", "policy-readback.ready.json")
 	code, stdout, stderr := runWithFake([]string{"covenant", "policy", "--readback", readbackPath}, &fakeRunner{})
