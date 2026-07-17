@@ -3952,20 +3952,23 @@ func TestRSIHealthAcceptsFoundryPulseScorePercentGate(t *testing.T) {
 
 func TestRSIHealthFailsClosedWhenFoundryNextTaskDoesNotBind(t *testing.T) {
 	paths := writeRSIHealthFixtures(t, true)
-	if err := os.WriteFile(paths.foundryNextTask, []byte(`{
-  "schema_version": "ao.foundry.rsi-next-improvement-task.v0.1",
-  "status": "ready",
-  "generated_by": "foundry pulse run",
-  "candidate_evidence_path": "tmp/wrong-candidate.json",
-  "gate_evidence_path": "`+paths.foundry+`",
-  "required_improvement_percent": 5,
-  "actual_improvement_percent": 10,
-  "autonomous_claim": "derived_local_next_improvement",
-  "mutates_repositories": false,
-  "next_actions": [
-    "retain rsi_next_improvement_task with RSI candidate and gate evidence"
-  ]
-}`), 0o644); err != nil {
+	mismatchedNextTask := map[string]any{
+		"schema_version":               "ao.foundry.rsi-next-improvement-task.v0.1",
+		"status":                       "ready",
+		"generated_by":                 "foundry pulse run",
+		"candidate_evidence_path":      "tmp/wrong-candidate.json",
+		"gate_evidence_path":           paths.foundry,
+		"required_improvement_percent": 5,
+		"actual_improvement_percent":   10,
+		"autonomous_claim":             "derived_local_next_improvement",
+		"mutates_repositories":         false,
+		"next_actions":                 []string{"retain rsi_next_improvement_task with RSI candidate and gate evidence"},
+	}
+	mismatchedBytes, err := json.MarshalIndent(mismatchedNextTask, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal mismatched foundry next task: %v", err)
+	}
+	if err := os.WriteFile(paths.foundryNextTask, append(mismatchedBytes, '\n'), 0o644); err != nil {
 		t.Fatalf("write mismatched foundry next task: %v", err)
 	}
 	code, stdout, stderr := runWithFake([]string{
@@ -4420,7 +4423,8 @@ func TestRehearseRunsDryRunAndInspect(t *testing.T) {
 			t.Fatalf("rehearsal env missing %q: %#v", want, fake.calls[0].Env)
 		}
 	}
-	if !reflect.DeepEqual(fake.calls[1].Args, []string{"run", "./cmd/forge", "release-preview", "inspect", "--audit", "/tmp/rehearse/release-preview-audit.json", "--json"}) {
+	expectedAudit := filepath.Join("/tmp/rehearse", "release-preview-audit.json")
+	if !reflect.DeepEqual(fake.calls[1].Args, []string{"run", "./cmd/forge", "release-preview", "inspect", "--audit", expectedAudit, "--json"}) {
 		t.Fatalf("unexpected inspect args: %#v", fake.calls[1].Args)
 	}
 	if !strings.Contains(stdout, "ao_command_rehearse=passed") {
@@ -4447,7 +4451,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", filepath.Join(path...), err)
 		}
-		return string(content)
+		return strings.ReplaceAll(string(content), "\r\n", "\n")
 	}
 
 	readme := read("README.md")
