@@ -632,6 +632,87 @@ func TestControlPlaneOperatorStatusReadback(t *testing.T) {
 	}
 }
 
+func TestControlPlaneQualificationProgressReadback(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "control-plane", "windows-qualification-progress.ready.json")
+	code, stdout, stderr := runWithFake([]string{"control-plane", "qualification-progress", "--readback", readbackPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane qualification-progress exit=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"ao_command_control_plane_qualification_progress=windows_qualification_progress_observed",
+		"request_id=windows-stack-qualification-20260718T230000Z",
+		"state=running",
+		"shards=3/8",
+		"current_shards=1",
+		"cache_hits=19",
+		"cache_misses=4",
+		"bounded_eta_seconds_or_unknown=540",
+		"global_deadline_at=2026-07-19T02:20:00Z",
+		"operator_mode=read_only",
+		"release_readiness=false",
+		"executes_work=false",
+		"approves_work=false",
+		"mutates_repositories=false",
+		"mutates_control_plane=false",
+		"calls_providers=false",
+		"uses_credentials=false",
+		"releases_or_deploys=false",
+		"control_plane_approves_release=false",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("control-plane qualification-progress stdout missing %q:\n%s", want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runWithFake([]string{"control-plane", "qualification-progress", "--readback", readbackPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("control-plane qualification-progress JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid control-plane qualification-progress JSON: %v\n%s", err, stdout)
+	}
+	if got["schema"] != "ao.command.control-plane-qualification-progress.v0.1" ||
+		got["status"] != "windows_qualification_progress_observed" ||
+		got["request_id"] != "windows-stack-qualification-20260718T230000Z" ||
+		got["state"] != "running" ||
+		got["completed_shards"] != float64(3) ||
+		got["total_shards"] != float64(8) ||
+		got["release_readiness"] != false {
+		t.Fatalf("unexpected control-plane qualification-progress JSON: %#v", got)
+	}
+	if got["executes_work"] != false ||
+		got["approves_work"] != false ||
+		got["mutates_repositories"] != false ||
+		got["mutates_control_plane"] != false ||
+		got["calls_providers"] != false ||
+		got["uses_credentials"] != false ||
+		got["releases_or_deploys"] != false ||
+		got["control_plane_approves_release"] != false {
+		t.Fatalf("control-plane qualification-progress widened authority: %#v", got)
+	}
+}
+
+func TestControlPlaneQualificationProgressRejectsReleaseReadinessClaim(t *testing.T) {
+	readbackPath := filepath.Join("..", "..", "examples", "control-plane", "windows-qualification-progress.ready.json")
+	body, err := os.ReadFile(readbackPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsafeBody := strings.Replace(string(body), `"release_readiness": false`, `"release_readiness": true`, 1)
+	unsafePath := filepath.Join(t.TempDir(), "unsafe-progress.json")
+	if err := os.WriteFile(unsafePath, []byte(unsafeBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runWithFake([]string{"control-plane", "qualification-progress", "--readback", unsafePath}, &fakeRunner{})
+	if code == 0 {
+		t.Fatalf("unsafe qualification progress unexpectedly passed")
+	}
+	if !strings.Contains(stderr, "must not store credentials, mutate releases, approve release, or claim release readiness") {
+		t.Fatalf("unsafe qualification progress stderr missing authority denial:\n%s", stderr)
+	}
+}
+
 func TestControlledLoopStatusReadback(t *testing.T) {
 	readbackPath := filepath.Join("..", "..", "examples", "controlled-loop", "month4-observation.ready.json")
 	code, stdout, stderr := runWithFake([]string{"controlled-loop", "status", "--readback", readbackPath}, &fakeRunner{})

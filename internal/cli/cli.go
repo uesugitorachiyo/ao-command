@@ -142,6 +142,8 @@ Usage:
   ao-command mission gateway --readback PATH [--json]
   ao-command mission evidence --readback PATH [--json]
   ao-command control-plane boundary --packet PATH [--json]
+  ao-command control-plane qualification-progress --readback PATH [--json]
+  ao-command control-plane status --readback PATH [--json]
   ao-command operator workflow --readback PATH [--json]
   ao-command covenant policy --readback PATH [--json]
   ao-command controlled-loop status --readback PATH [--json]
@@ -213,6 +215,8 @@ func (a App) controlPlane(args []string) int {
 	switch args[0] {
 	case "boundary":
 		return a.controlPlaneBoundary(args[1:])
+	case "qualification-progress":
+		return a.controlPlaneQualificationProgress(args[1:])
 	case "status":
 		return a.controlPlaneStatus(args[1:])
 	default:
@@ -222,7 +226,7 @@ func (a App) controlPlane(args []string) int {
 }
 
 func controlPlaneUsage() string {
-	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json] | ao-command control-plane status --readback PATH [--json]"
+	return "ao-command control-plane: usage: ao-command control-plane boundary --packet PATH [--json] | ao-command control-plane qualification-progress --readback PATH [--json] | ao-command control-plane status --readback PATH [--json]"
 }
 
 func (a App) controlledLoop(args []string) int {
@@ -490,6 +494,50 @@ func (a App) controlPlaneBoundary(args []string) int {
 	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
 	fmt.Fprintf(a.Stdout, "rsi_status=%s\n", summary.RSIStatus)
 	fmt.Fprintf(a.Stdout, "exact_next_action=%s\n", summary.ExactNextAction)
+	return 0
+}
+
+func (a App) controlPlaneQualificationProgress(args []string) int {
+	var readbackPath string
+	var jsonOut bool
+	fs := flag.NewFlagSet("control-plane qualification-progress", flag.ContinueOnError)
+	fs.SetOutput(a.Stderr)
+	fs.StringVar(&readbackPath, "readback", "", "path to AO2 Control Plane Windows qualification progress readback vector JSON")
+	fs.BoolVar(&jsonOut, "json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(readbackPath) == "" {
+		fmt.Fprintln(a.Stderr, "ao-command control-plane qualification-progress: --readback is required")
+		return 2
+	}
+	summary, err := readControlPlaneQualificationProgress(readbackPath)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "ao-command control-plane qualification-progress: %v\n", err)
+		return 1
+	}
+	if jsonOut {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_control_plane_qualification_progress=%s\n", summary.Status)
+	fmt.Fprintf(a.Stdout, "request_id=%s\n", summary.RequestID)
+	fmt.Fprintf(a.Stdout, "state=%s\n", summary.State)
+	fmt.Fprintf(a.Stdout, "shards=%d/%d\n", summary.CompletedShards, summary.TotalShards)
+	fmt.Fprintf(a.Stdout, "current_shards=%d\n", summary.CurrentShardCount)
+	fmt.Fprintf(a.Stdout, "cache_hits=%d\n", summary.CacheHits)
+	fmt.Fprintf(a.Stdout, "cache_misses=%d\n", summary.CacheMisses)
+	fmt.Fprintf(a.Stdout, "bounded_eta_seconds_or_unknown=%d\n", summary.BoundedETASecondsOrUnknown)
+	fmt.Fprintf(a.Stdout, "global_deadline_at=%s\n", summary.GlobalDeadlineAt)
+	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
+	fmt.Fprintf(a.Stdout, "release_readiness=%t\n", summary.ReleaseReadiness)
+	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
+	fmt.Fprintf(a.Stdout, "approves_work=%t\n", summary.ApprovesWork)
+	fmt.Fprintf(a.Stdout, "mutates_repositories=%t\n", summary.MutatesRepositories)
+	fmt.Fprintf(a.Stdout, "mutates_control_plane=%t\n", summary.MutatesControlPlane)
+	fmt.Fprintf(a.Stdout, "calls_providers=%t\n", summary.CallsProviders)
+	fmt.Fprintf(a.Stdout, "uses_credentials=%t\n", summary.UsesCredentials)
+	fmt.Fprintf(a.Stdout, "releases_or_deploys=%t\n", summary.ReleasesOrDeploys)
+	fmt.Fprintf(a.Stdout, "control_plane_approves_release=%t\n", summary.ControlPlaneApprovesRelease)
 	return 0
 }
 
@@ -6822,6 +6870,125 @@ type controlPlaneOperatorStatusSummary struct {
 	ReleasesOrDeploys              bool   `json:"releases_or_deploys"`
 }
 
+type controlPlaneQualificationProgressVector struct {
+	SchemaVersion                 string                                    `json:"schema_version"`
+	VectorID                      string                                    `json:"vector_id"`
+	Edge                          string                                    `json:"edge"`
+	ControlPlaneProgressReadback  controlPlaneQualificationProgressReadback `json:"control_plane_progress_readback"`
+	ExpectedCommandProgressStatus controlPlaneExpectedProgressStatus        `json:"expected_command_progress_status"`
+}
+
+type controlPlaneQualificationProgressReadback struct {
+	SchemaVersion              string                                   `json:"schema_version"`
+	ArtifactSchemaVersion      string                                   `json:"artifact_schema_version"`
+	SHA256                     string                                   `json:"sha256"`
+	IngestedAt                 string                                   `json:"ingested_at"`
+	RequestID                  string                                   `json:"request_id"`
+	ProfileDigest              string                                   `json:"profile_digest"`
+	SourceHeads                map[string]string                        `json:"source_heads"`
+	State                      string                                   `json:"state"`
+	StartedAt                  string                                   `json:"started_at"`
+	UpdatedAt                  string                                   `json:"updated_at"`
+	ElapsedSeconds             int                                      `json:"elapsed_seconds"`
+	CompletedShards            int                                      `json:"completed_shards"`
+	TotalShards                int                                      `json:"total_shards"`
+	CurrentShards              []controlPlaneQualificationProgressShard `json:"current_shards"`
+	LastCompletedShard         string                                   `json:"last_completed_shard"`
+	CacheHits                  int                                      `json:"cache_hits"`
+	CacheMisses                int                                      `json:"cache_misses"`
+	BoundedETASecondsOrUnknown int                                      `json:"bounded_eta_seconds_or_unknown"`
+	GlobalDeadlineAt           string                                   `json:"global_deadline_at"`
+	ReleaseReadiness           bool                                     `json:"release_readiness"`
+	ControlPlaneReadback       controlPlaneProgressObserverBoundary     `json:"control_plane_readback"`
+	TrustBoundary              controlPlaneProgressTrustBoundary        `json:"trust_boundary"`
+}
+
+type controlPlaneQualificationProgressShard struct {
+	ShardID           string `json:"shard_id"`
+	CheckpointID      string `json:"checkpoint_id"`
+	State             string `json:"state"`
+	StartedAt         string `json:"started_at"`
+	CompletedRows     int    `json:"completed_rows"`
+	TotalRows         int    `json:"total_rows"`
+	CurrentRepository string `json:"current_repository"`
+}
+
+type controlPlaneProgressObserverBoundary struct {
+	Role                     string `json:"role"`
+	RequiresCredentials      bool   `json:"requires_credentials"`
+	CanMutateAO2Artifacts    bool   `json:"can_mutate_ao2_artifacts"`
+	CanMutateReleaseMetadata bool   `json:"can_mutate_release_metadata"`
+	CanClaimReleaseReadiness bool   `json:"can_claim_release_readiness"`
+}
+
+type controlPlaneProgressTrustBoundary struct {
+	ReadOnly                    bool `json:"read_only"`
+	StoresCredentials           bool `json:"stores_credentials"`
+	MutatesReleases             bool `json:"mutates_releases"`
+	ControlPlaneApprovesRelease bool `json:"control_plane_approves_release"`
+}
+
+type controlPlaneExpectedProgressStatus struct {
+	SchemaVersion               string                                `json:"schema_version"`
+	Status                      string                                `json:"status"`
+	SourceReadbackSchemaVersion string                                `json:"source_readback_schema_version"`
+	RequestID                   string                                `json:"request_id"`
+	State                       string                                `json:"state"`
+	Metrics                     controlPlaneExpectedProgressMetrics   `json:"metrics"`
+	GlobalDeadlineAt            string                                `json:"global_deadline_at"`
+	Authority                   controlPlaneExpectedProgressAuthority `json:"authority"`
+}
+
+type controlPlaneExpectedProgressMetrics struct {
+	ElapsedSeconds             int `json:"elapsed_seconds"`
+	CompletedShards            int `json:"completed_shards"`
+	TotalShards                int `json:"total_shards"`
+	CurrentShardCount          int `json:"current_shard_count"`
+	CacheHits                  int `json:"cache_hits"`
+	CacheMisses                int `json:"cache_misses"`
+	BoundedETASecondsOrUnknown int `json:"bounded_eta_seconds_or_unknown"`
+}
+
+type controlPlaneExpectedProgressAuthority struct {
+	OperatorMode                string `json:"operator_mode"`
+	ReleaseReadiness            bool   `json:"release_readiness"`
+	ExecutesWork                bool   `json:"executes_work"`
+	ApprovesWork                bool   `json:"approves_work"`
+	MutatesRepositories         bool   `json:"mutates_repositories"`
+	MutatesControlPlane         bool   `json:"mutates_control_plane"`
+	CallsProviders              bool   `json:"calls_providers"`
+	UsesCredentials             bool   `json:"uses_credentials"`
+	ReleasesOrDeploys           bool   `json:"releases_or_deploys"`
+	ControlPlaneApprovesRelease bool   `json:"control_plane_approves_release"`
+}
+
+type controlPlaneQualificationProgressSummary struct {
+	CommandSchemaVersion        string `json:"command_schema_version"`
+	Schema                      string `json:"schema"`
+	Status                      string `json:"status"`
+	SourceReadbackSchemaVersion string `json:"source_readback_schema_version"`
+	RequestID                   string `json:"request_id"`
+	State                       string `json:"state"`
+	ElapsedSeconds              int    `json:"elapsed_seconds"`
+	CompletedShards             int    `json:"completed_shards"`
+	TotalShards                 int    `json:"total_shards"`
+	CurrentShardCount           int    `json:"current_shard_count"`
+	CacheHits                   int    `json:"cache_hits"`
+	CacheMisses                 int    `json:"cache_misses"`
+	BoundedETASecondsOrUnknown  int    `json:"bounded_eta_seconds_or_unknown"`
+	GlobalDeadlineAt            string `json:"global_deadline_at"`
+	OperatorMode                string `json:"operator_mode"`
+	ReleaseReadiness            bool   `json:"release_readiness"`
+	ExecutesWork                bool   `json:"executes_work"`
+	ApprovesWork                bool   `json:"approves_work"`
+	MutatesRepositories         bool   `json:"mutates_repositories"`
+	MutatesControlPlane         bool   `json:"mutates_control_plane"`
+	CallsProviders              bool   `json:"calls_providers"`
+	UsesCredentials             bool   `json:"uses_credentials"`
+	ReleasesOrDeploys           bool   `json:"releases_or_deploys"`
+	ControlPlaneApprovesRelease bool   `json:"control_plane_approves_release"`
+}
+
 func readControlPlaneClientBoundary(path string) (controlPlaneClientBoundarySummary, error) {
 	var packet controlPlaneClientBoundaryPacket
 	if err := readJSONFile(path, &packet); err != nil {
@@ -6961,6 +7128,120 @@ func readControlPlaneOperatorStatus(path string) (controlPlaneOperatorStatusSumm
 		MutatesRepositories:            false,
 		CallsProviders:                 false,
 		ReleasesOrDeploys:              false,
+	}, nil
+}
+
+func readControlPlaneQualificationProgress(path string) (controlPlaneQualificationProgressSummary, error) {
+	var vector controlPlaneQualificationProgressVector
+	if err := readJSONFile(path, &vector); err != nil {
+		return controlPlaneQualificationProgressSummary{}, err
+	}
+	if vector.SchemaVersion != "ao.compatibility.control-plane-qualification-progress-to-command-readback-vector.v1" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress schema must be ao.compatibility.control-plane-qualification-progress-to-command-readback-vector.v1")
+	}
+	if vector.Edge != "ao2-control-plane.windows_qualification_progress_readback -> ao-command.qualification_progress_status" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress vector edge must bind Control Plane progress readback to Command progress status")
+	}
+	readback := vector.ControlPlaneProgressReadback
+	expected := vector.ExpectedCommandProgressStatus
+	if readback.SchemaVersion != "ao2.cp-windows-stack-qualification-progress-readback.v1" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress readback schema must be ao2.cp-windows-stack-qualification-progress-readback.v1")
+	}
+	if readback.ArtifactSchemaVersion != "ao2.windows-stack-qualification-progress.v1" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress artifact schema must be ao2.windows-stack-qualification-progress.v1")
+	}
+	if expected.SchemaVersion != "ao-command.qualification-progress-status.v1" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("expected command qualification progress schema must be ao-command.qualification-progress-status.v1")
+	}
+	if expected.SourceReadbackSchemaVersion != readback.SchemaVersion {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("command qualification progress must identify the source readback schema")
+	}
+	if strings.TrimSpace(readback.RequestID) == "" ||
+		strings.TrimSpace(readback.State) == "" ||
+		strings.TrimSpace(readback.GlobalDeadlineAt) == "" ||
+		strings.TrimSpace(expected.Status) == "" {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress requires request_id, state, global_deadline_at, and expected status")
+	}
+	if expected.RequestID != readback.RequestID ||
+		expected.State != readback.State ||
+		expected.GlobalDeadlineAt != readback.GlobalDeadlineAt {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("command qualification progress status must match Control Plane request, state, and global deadline")
+	}
+	if readback.ElapsedSeconds < 0 ||
+		readback.CompletedShards < 0 ||
+		readback.TotalShards < 0 ||
+		readback.CacheHits < 0 ||
+		readback.CacheMisses < 0 ||
+		readback.BoundedETASecondsOrUnknown < 0 {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress metrics must be non-negative")
+	}
+	if readback.CompletedShards > readback.TotalShards {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("completed shards cannot exceed total shards")
+	}
+	metrics := expected.Metrics
+	if metrics.ElapsedSeconds != readback.ElapsedSeconds ||
+		metrics.CompletedShards != readback.CompletedShards ||
+		metrics.TotalShards != readback.TotalShards ||
+		metrics.CurrentShardCount != len(readback.CurrentShards) ||
+		metrics.CacheHits != readback.CacheHits ||
+		metrics.CacheMisses != readback.CacheMisses ||
+		metrics.BoundedETASecondsOrUnknown != readback.BoundedETASecondsOrUnknown {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("command qualification progress metrics must match Control Plane readback metrics")
+	}
+	boundary := readback.ControlPlaneReadback
+	if boundary.Role != "read_only_observer" ||
+		boundary.RequiresCredentials ||
+		boundary.CanMutateAO2Artifacts ||
+		boundary.CanMutateReleaseMetadata ||
+		boundary.CanClaimReleaseReadiness {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress readback must remain a credential-free read-only observer")
+	}
+	trust := readback.TrustBoundary
+	if !trust.ReadOnly ||
+		trust.StoresCredentials ||
+		trust.MutatesReleases ||
+		trust.ControlPlaneApprovesRelease ||
+		readback.ReleaseReadiness {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("control-plane qualification progress trust boundary must not store credentials, mutate releases, approve release, or claim release readiness")
+	}
+	authority := expected.Authority
+	if authority.OperatorMode != operatorMode ||
+		authority.ReleaseReadiness ||
+		authority.ExecutesWork ||
+		authority.ApprovesWork ||
+		authority.MutatesRepositories ||
+		authority.MutatesControlPlane ||
+		authority.CallsProviders ||
+		authority.UsesCredentials ||
+		authority.ReleasesOrDeploys ||
+		authority.ControlPlaneApprovesRelease {
+		return controlPlaneQualificationProgressSummary{}, fmt.Errorf("command qualification progress status must remain read-only")
+	}
+	return controlPlaneQualificationProgressSummary{
+		CommandSchemaVersion:        commandSchemaVersion,
+		Schema:                      "ao.command.control-plane-qualification-progress.v0.1",
+		Status:                      expected.Status,
+		SourceReadbackSchemaVersion: expected.SourceReadbackSchemaVersion,
+		RequestID:                   readback.RequestID,
+		State:                       readback.State,
+		ElapsedSeconds:              readback.ElapsedSeconds,
+		CompletedShards:             readback.CompletedShards,
+		TotalShards:                 readback.TotalShards,
+		CurrentShardCount:           len(readback.CurrentShards),
+		CacheHits:                   readback.CacheHits,
+		CacheMisses:                 readback.CacheMisses,
+		BoundedETASecondsOrUnknown:  readback.BoundedETASecondsOrUnknown,
+		GlobalDeadlineAt:            readback.GlobalDeadlineAt,
+		OperatorMode:                operatorMode,
+		ReleaseReadiness:            false,
+		ExecutesWork:                false,
+		ApprovesWork:                false,
+		MutatesRepositories:         false,
+		MutatesControlPlane:         false,
+		CallsProviders:              false,
+		UsesCredentials:             false,
+		ReleasesOrDeploys:           false,
+		ControlPlaneApprovesRelease: false,
 	}, nil
 }
 

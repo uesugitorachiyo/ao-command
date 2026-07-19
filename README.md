@@ -75,6 +75,7 @@ go run ./cmd/ao-command mission aggregate --status examples/mission/command-stat
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json --watch --iterations 3 --jsonl
 go run ./cmd/ao-command mission aggregate --status examples/mission/command-status.ready.json --atlas-metadata examples/mission/atlas-workgraph-metadata.ready.json --foundry-smoke examples/mission/foundry-e2e-smoke.ready.json --watch --iterations 3 --compact
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
+go run ./cmd/ao-command control-plane qualification-progress --readback examples/control-plane/windows-qualification-progress.ready.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json
 go run ./cmd/ao-command atlas authority-ladder --mission-status examples/authority-ladder/status.blocked.json
 go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-overnight-start-gate/ready.intake-preflight.json --lifecycle ../ao-foundry/examples/pulse-lifecycle/ready-to-start-next-slice.json --start-gate ../ao-foundry/examples/pulse-overnight-start-gate/ready.json
@@ -155,6 +156,13 @@ repositories, publish, call providers, or widen Mission authority.
 active repository count, release handoff gates, `operator_mode=read_only`, and
 `orchestration_owner=ao-foundry`. It does not schedule work, mutate branches,
 publish releases, or write control-plane records.
+
+`control-plane qualification-progress` reads AO2 Control Plane Windows
+qualification progress readbacks and reports request state, shard counts, cache
+counters, bounded ETA, and global deadline in `operator_mode=read_only`. It
+rejects any vector that claims release readiness, approval, credential use,
+provider calls, repository mutation, Control Plane mutation, release, or deploy
+authority.
 
 `atlas status` reads AO Foundry's `ao.foundry.atlas-status.v0.1` observer
 artifact and reports Atlas stack-instance/workgraph readback in AO Command's
