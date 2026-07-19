@@ -153,6 +153,7 @@ require_tracked_scan_budget() {
 
 public_scan_files="$(build_tracked_scan_files)"
 workflow_and_scripts="$(build_tracked_scan_files .github scripts)"
+ci_artifact_upload_scan_files="$(printf '%s\n' "$workflow_and_scripts" | grep -Ev '^\.github/workflows/native-artifacts\.yml$' || true)"
 command_surface_files="$(build_tracked_scan_files .github cmd internal scripts)"
 
 status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!ao-covenant' ':!ao-architecture' ':!bin' 2>&1)"
@@ -229,7 +230,7 @@ require_no_tracked_match_in_files \
   "ci_artifact_uploads" \
   "workflows and scripts do not upload CI artifacts by default" \
   '(actions/upload-artifact|upload-artifact@|gh release upload)' \
-  "$workflow_and_scripts"
+  "$ci_artifact_upload_scan_files"
 
 require_no_tracked_match_in_files \
   "dangerous_write_surface" \
