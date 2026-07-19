@@ -98,16 +98,62 @@ require_no_tracked_match_in_files() {
     add_check "$check_id" "passed" "$summary"
     return
   fi
-  if matches="$(printf '%s\n' "$files" | xargs grep -nE -- "$pattern" 2>/dev/null)"; then
+  local guarded_files
+  if ! guarded_files="$(require_tracked_scan_budget "$files")"; then
+    add_check "$check_id" "failed" "$summary: $guarded_files"
+    return
+  fi
+  if matches="$(printf '%s\n' "$guarded_files" | xargs grep -nE -- "$pattern" 2>/dev/null)"; then
     add_check "$check_id" "failed" "$summary: $matches"
   else
     add_check "$check_id" "passed" "$summary"
   fi
 }
 
-public_scan_files="$(git ls-files | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
-workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
-command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/release-preview-dry-run.sh$' | grep -v '^scripts/install-verify-dry-run.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+max_tracked_scan_files=4096
+max_tracked_scan_file_bytes=$((1024 * 1024))
+max_tracked_scan_total_bytes=$((16 * 1024 * 1024))
+tracked_scan_excludes='^(scripts/production-readiness-audit\.sh|scripts/public-readiness-audit\.sh|scripts/release-preview-dry-run\.sh|scripts/install-verify-dry-run\.sh|scripts/release-governance-dry-run\.sh)$'
+
+build_tracked_scan_files() {
+  git ls-files "$@" | grep -Ev "$tracked_scan_excludes" || true
+}
+
+require_tracked_scan_budget() {
+  local files="$1"
+  local count=0
+  local total=0
+  local file mode size
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+    mode="$(git ls-files -s -- "$file" | awk 'NR == 1 {print $1}')"
+    if [[ "$mode" == "120000" ]]; then
+      printf 'scan_symlink: tracked scan file is a symlink: %s' "$file"
+      return 1
+    fi
+    [[ -f "$file" ]] || continue
+    size="$(wc -c < "$file" | tr -d '[:space:]')"
+    count=$((count + 1))
+    if [[ "$count" -gt "$max_tracked_scan_files" ]]; then
+      printf 'file count limit exceeded for tracked scan files'
+      return 1
+    fi
+    if [[ "$size" -gt "$max_tracked_scan_file_bytes" ]]; then
+      printf 'file size limit exceeded for tracked scan file: %s' "$file"
+      return 1
+    fi
+    total=$((total + size))
+    if [[ "$total" -gt "$max_tracked_scan_total_bytes" ]]; then
+      printf 'total byte limit exceeded for tracked scan files'
+      return 1
+    fi
+  done <<< "$files"
+  printf '%s' "$files"
+}
+
+public_scan_files="$(build_tracked_scan_files)"
+workflow_and_scripts="$(build_tracked_scan_files .github scripts)"
+command_surface_files="$(build_tracked_scan_files .github cmd internal scripts)"
 
 status_output="$(git status --porcelain -- ':!tmp' ':!ao-forge' ':!ao-foundry' ':!ao-covenant' ':!ao-architecture' ':!bin' 2>&1)"
 if [[ -n "$status_output" ]]; then
