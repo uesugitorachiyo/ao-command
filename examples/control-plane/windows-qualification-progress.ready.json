@@ -1,0 +1,94 @@
+{
+  "schema_version": "ao.compatibility.control-plane-qualification-progress-to-command-readback-vector.v1",
+  "vector_id": "ao2-control-plane-windows-qualification-progress-to-ao-command-readback-v1",
+  "edge": "ao2-control-plane.windows_qualification_progress_readback -> ao-command.qualification_progress_status",
+  "producer": {
+    "repository": "ao2-control-plane",
+    "source_pr": 114,
+    "feature": "windows_stack_qualification_progress_readback"
+  },
+  "consumer": {
+    "repository": "ao-command"
+  },
+  "control_plane_progress_readback": {
+    "schema_version": "ao2.cp-windows-stack-qualification-progress-readback.v1",
+    "artifact_schema_version": "ao2.windows-stack-qualification-progress.v1",
+    "sha256": "b36c1e587b5567bc3532e0b547122378163e70313fc8695d6f4c8ba9d32832c3",
+    "ingested_at": "2026-07-19T01:55:00Z",
+    "request_id": "windows-stack-qualification-20260718T230000Z",
+    "profile_digest": "sha256:72b9e8b5e4e5e745b3a9b95d61a0a77ef6fb01c530c5f66a04ce27d9a4a4fd31",
+    "source_heads": {
+      "ao2": "0a4509fb904c90827c11dfcfe1c9e9c552c9f590",
+      "ao2-control-plane": "6336801eedc4a8402d12b306b98603ce0a6fb6b5"
+    },
+    "state": "running",
+    "started_at": "2026-07-19T01:50:00Z",
+    "updated_at": "2026-07-19T01:54:30Z",
+    "elapsed_seconds": 270,
+    "completed_shards": 3,
+    "total_shards": 8,
+    "current_shards": [
+      {
+        "shard_id": "windows-qualification-shard-04",
+        "checkpoint_id": "checkpoint-04",
+        "state": "running",
+        "started_at": "2026-07-19T01:53:10Z",
+        "completed_rows": 11,
+        "total_rows": 30,
+        "current_repository": "ao2"
+      }
+    ],
+    "last_completed_shard": "windows-qualification-shard-03",
+    "cache_hits": 19,
+    "cache_misses": 4,
+    "bounded_eta_seconds_or_unknown": 540,
+    "global_deadline_at": "2026-07-19T02:20:00Z",
+    "release_readiness": false,
+    "control_plane_readback": {
+      "role": "read_only_observer",
+      "requires_credentials": false,
+      "can_mutate_ao2_artifacts": false,
+      "can_mutate_release_metadata": false,
+      "can_claim_release_readiness": false
+    },
+    "trust_boundary": {
+      "read_only": true,
+      "stores_credentials": false,
+      "mutates_releases": false,
+      "control_plane_approves_release": false
+    },
+    "links": {
+      "raw_progress": "/api/v1/windows/qualification/progress/b36c1e587b5567bc3532e0b547122378163e70313fc8695d6f4c8ba9d32832c3",
+      "dashboard": "/api/v1/windows/qualification/progress/dashboard.json"
+    }
+  },
+  "expected_command_progress_status": {
+    "schema_version": "ao-command.qualification-progress-status.v1",
+    "status": "windows_qualification_progress_observed",
+    "source_readback_schema_version": "ao2.cp-windows-stack-qualification-progress-readback.v1",
+    "request_id": "windows-stack-qualification-20260718T230000Z",
+    "state": "running",
+    "metrics": {
+      "elapsed_seconds": 270,
+      "completed_shards": 3,
+      "total_shards": 8,
+      "current_shard_count": 1,
+      "cache_hits": 19,
+      "cache_misses": 4,
+      "bounded_eta_seconds_or_unknown": 540
+    },
+    "global_deadline_at": "2026-07-19T02:20:00Z",
+    "authority": {
+      "operator_mode": "read_only",
+      "release_readiness": false,
+      "executes_work": false,
+      "approves_work": false,
+      "mutates_repositories": false,
+      "mutates_control_plane": false,
+      "calls_providers": false,
+      "uses_credentials": false,
+      "releases_or_deploys": false,
+      "control_plane_approves_release": false
+    }
+  }
+}
