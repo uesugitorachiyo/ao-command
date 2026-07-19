@@ -72,6 +72,47 @@ tracked_files() {
   git ls-files
 }
 
+max_tracked_scan_files=4096
+max_tracked_scan_file_bytes=$((1024 * 1024))
+max_tracked_scan_total_bytes=$((16 * 1024 * 1024))
+tracked_scan_excludes='^(scripts/public-readiness-audit\.sh|scripts/production-readiness-audit\.sh|scripts/release-governance-dry-run\.sh)$'
+
+build_tracked_scan_files() {
+  git ls-files "$@" | grep -Ev "$tracked_scan_excludes" || true
+}
+
+require_tracked_scan_budget() {
+  local files="$1"
+  local count=0
+  local total=0
+  local file mode size
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+    mode="$(git ls-files -s -- "$file" | awk 'NR == 1 {print $1}')"
+    if [[ "$mode" == "120000" ]]; then
+      printf 'scan_symlink: tracked scan file is a symlink: %s' "$file"
+      return 1
+    fi
+    [[ -f "$file" ]] || continue
+    size="$(wc -c < "$file" | tr -d '[:space:]')"
+    count=$((count + 1))
+    if [[ "$count" -gt "$max_tracked_scan_files" ]]; then
+      printf 'file count limit exceeded for tracked scan files'
+      return 1
+    fi
+    if [[ "$size" -gt "$max_tracked_scan_file_bytes" ]]; then
+      printf 'file size limit exceeded for tracked scan file: %s' "$file"
+      return 1
+    fi
+    total=$((total + size))
+    if [[ "$total" -gt "$max_tracked_scan_total_bytes" ]]; then
+      printf 'total byte limit exceeded for tracked scan files'
+      return 1
+    fi
+  done <<< "$files"
+  printf '%s' "$files"
+}
+
 require_no_tracked_match() {
   local check_id="$1"
   local summary="$2"
@@ -94,7 +135,12 @@ require_no_tracked_match_in_files() {
     add_check "$check_id" "passed" "$summary"
     return
   fi
-  if matches="$(printf '%s\n' "$files" | xargs rg -n --pcre2 "$pattern" -- 2>/dev/null)"; then
+  local guarded_files
+  if ! guarded_files="$(require_tracked_scan_budget "$files")"; then
+    add_check "$check_id" "failed" "$summary: $guarded_files"
+    return
+  fi
+  if matches="$(printf '%s\n' "$guarded_files" | xargs rg -n --pcre2 "$pattern" -- 2>/dev/null)"; then
     add_check "$check_id" "failed" "$summary: $matches"
   else
     add_check "$check_id" "passed" "$summary"
@@ -117,7 +163,7 @@ else
   add_check "repository_private" "skipped" "--repo not provided"
 fi
 
-public_scan_files="$(git ls-files | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+public_scan_files="$(build_tracked_scan_files)"
 require_no_tracked_match_in_files \
   "secret_patterns" \
   "tracked files contain no obvious tokens, private keys, or provider secrets" \
@@ -130,14 +176,14 @@ require_no_tracked_match_in_files \
   '(/Users/[^[:space:]")]+|/home/[^[:space:]")]+|C:/Users/[^[:space:]")]+)' \
   "$public_scan_files"
 
-workflow_and_scripts="$(git ls-files .github scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+workflow_and_scripts="$(build_tracked_scan_files .github scripts)"
 require_no_tracked_match_in_files \
   "ci_artifact_uploads" \
   "workflows and scripts do not upload CI artifacts by default" \
   '(actions/upload-artifact|upload-artifact@|gh release upload)' \
   "$workflow_and_scripts"
 
-command_surface_files="$(git ls-files .github cmd internal scripts | grep -v '^scripts/public-readiness-audit.sh$' | grep -v '^scripts/production-readiness-audit.sh$' | grep -v '^scripts/release-governance-dry-run.sh$' || true)"
+command_surface_files="$(build_tracked_scan_files .github cmd internal scripts)"
 require_no_tracked_match_in_files \
   "dangerous_write_surface" \
   "command surface has no public-switch, release-publish, production-promotion, or destructive git operations" \

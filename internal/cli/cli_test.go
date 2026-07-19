@@ -4765,6 +4765,33 @@ func TestDryRunCleanTreeAllowlistIncludesReadOnlyFixtureCheckouts(t *testing.T) 
 	}
 }
 
+func TestReadinessAuditsBoundTrackedFileScans(t *testing.T) {
+	root := repoRoot(t)
+	for _, script := range []string{
+		"scripts/public-readiness-audit.sh",
+		"scripts/production-readiness-audit.sh",
+	} {
+		content, err := os.ReadFile(filepath.Join(root, script))
+		if err != nil {
+			t.Fatalf("read %s: %v", script, err)
+		}
+		text := string(content)
+		for _, want := range []string{
+			"build_tracked_scan_files()",
+			"require_tracked_scan_budget",
+			"git ls-files -s",
+			"scan_symlink",
+			"file count limit",
+			"file size limit",
+			"total byte limit",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s missing tracked scan guard %q", script, want)
+			}
+		}
+	}
+}
+
 func TestWorkflowUsesCurrentNodeRuntimeActions(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
 	if err != nil {
