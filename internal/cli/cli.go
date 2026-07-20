@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -24,8 +25,9 @@ const (
 )
 
 var (
-	buildVersion      = "development"
-	buildSourceCommit = "unknown"
+	buildVersion         = "development"
+	buildSourceCommit    = "unknown"
+	correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
 
 type Command struct {
@@ -778,6 +780,9 @@ func (a App) missionStatus(args []string) int {
 	fmt.Fprintf(a.Stdout, "mission_id=%s\n", summary.MissionID)
 	fmt.Fprintf(a.Stdout, "current_route=%s\n", summary.CurrentRoute)
 	fmt.Fprintf(a.Stdout, "current_phase=%s\n", summary.CurrentPhase)
+	if summary.CorrelationID != "" {
+		fmt.Fprintf(a.Stdout, "correlation_id=%s\n", summary.CorrelationID)
+	}
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
 	fmt.Fprintf(a.Stdout, "safe_to_execute=%t\n", summary.SafeToExecute)
 	fmt.Fprintf(a.Stdout, "executes_work=%t\n", summary.ExecutesWork)
@@ -7285,12 +7290,29 @@ type missionCommandStatusSummary struct {
 	Status               string `json:"status"`
 	CurrentRoute         string `json:"current_route"`
 	CurrentPhase         string `json:"current_phase"`
+	CorrelationID        string `json:"correlation_id,omitempty"`
 	OperatorMode         string `json:"operator_mode"`
 	SafeToExecute        bool   `json:"safe_to_execute"`
 	ExecutesWork         bool   `json:"executes_work"`
 	ApprovesWork         bool   `json:"approves_work"`
 	MutatesRepositories  bool   `json:"mutates_repositories"`
 	ExactNextAction      string `json:"exact_next_action"`
+}
+
+type missionCommandStatusInput struct {
+	Schema               string
+	MissionID            string
+	Status               string
+	CurrentRoute         string
+	CurrentPhase         string
+	CorrelationID        *string
+	OperatorMode         string
+	SafeToExecute        bool
+	ExecutesWork         bool
+	ApprovesWork         bool
+	MutatesRepositories  bool
+	ExactNextAction      string
+	correlationIDPresent bool
 }
 
 type missionApprovalTicket struct {
@@ -7779,20 +7801,8 @@ func readMissionAggregate(statusPath, atlasMetadataPath, foundrySmokePath string
 }
 
 func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) {
-	var input struct {
-		Schema              string `json:"schema"`
-		MissionID           string `json:"mission_id"`
-		Status              string `json:"status"`
-		CurrentRoute        string `json:"current_route"`
-		CurrentPhase        string `json:"current_phase"`
-		OperatorMode        string `json:"operator_mode"`
-		SafeToExecute       bool   `json:"safe_to_execute"`
-		ExecutesWork        bool   `json:"executes_work"`
-		ApprovesWork        bool   `json:"approves_work"`
-		MutatesRepositories bool   `json:"mutates_repositories"`
-		ExactNextAction     string `json:"exact_next_action"`
-	}
-	if err := readJSONFile(path, &input); err != nil {
+	input, err := readStrictMissionCommandStatus(path)
+	if err != nil {
 		return missionCommandStatusSummary{}, err
 	}
 	if input.Schema != "ao.command.mission-status.v0.1" {
@@ -7807,6 +7817,16 @@ func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) 
 	if input.SafeToExecute || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories {
 		return missionCommandStatusSummary{}, fmt.Errorf("mission status must not claim execution, approval, or repository mutation authority")
 	}
+	if input.correlationIDPresent && input.CorrelationID == nil {
+		return missionCommandStatusSummary{}, fmt.Errorf("correlation_id must be a string")
+	}
+	if input.CorrelationID != nil && !correlationIDPattern.MatchString(*input.CorrelationID) {
+		return missionCommandStatusSummary{}, fmt.Errorf("correlation_id must match [A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+	}
+	correlationID := ""
+	if input.CorrelationID != nil {
+		correlationID = *input.CorrelationID
+	}
 	return missionCommandStatusSummary{
 		CommandSchemaVersion: commandSchemaVersion,
 		Schema:               input.Schema,
@@ -7814,6 +7834,7 @@ func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) 
 		Status:               input.Status,
 		CurrentRoute:         input.CurrentRoute,
 		CurrentPhase:         input.CurrentPhase,
+		CorrelationID:        correlationID,
 		OperatorMode:         input.OperatorMode,
 		SafeToExecute:        false,
 		ExecutesWork:         false,
@@ -7821,6 +7842,89 @@ func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) 
 		MutatesRepositories:  false,
 		ExactNextAction:      input.ExactNextAction,
 	}, nil
+}
+
+func readStrictMissionCommandStatus(path string) (missionCommandStatusInput, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return missionCommandStatusInput{}, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	token, err := decoder.Token()
+	if err != nil {
+		return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
+		return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: mission status must be an object")
+	}
+
+	var input missionCommandStatusInput
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: %w", err)
+		}
+		field, ok := token.(string)
+		if !ok {
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: mission status field name must be a string")
+		}
+		if _, ok := seen[field]; ok {
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: duplicate field %q", field)
+		}
+		seen[field] = struct{}{}
+
+		var target any
+		switch field {
+		case "schema":
+			target = &input.Schema
+		case "mission_id":
+			target = &input.MissionID
+		case "status":
+			target = &input.Status
+		case "current_route":
+			target = &input.CurrentRoute
+		case "current_phase":
+			target = &input.CurrentPhase
+		case "correlation_id":
+			input.correlationIDPresent = true
+			target = &input.CorrelationID
+		case "operator_mode":
+			target = &input.OperatorMode
+		case "safe_to_execute":
+			target = &input.SafeToExecute
+		case "executes_work":
+			target = &input.ExecutesWork
+		case "approves_work":
+			target = &input.ApprovesWork
+		case "mutates_repositories":
+			target = &input.MutatesRepositories
+		case "exact_next_action":
+			target = &input.ExactNextAction
+		default:
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: unknown field %q", field)
+		}
+		if err := decoder.Decode(target); err != nil {
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: %w", err)
+		}
+	}
+
+	token, err = decoder.Token()
+	if err != nil {
+		return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '}' {
+		return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: mission status must end with an object")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: multiple JSON values")
+		}
+		return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return input, nil
 }
 
 func readMissionApprovalInbox(path, selectedTicketID string) (missionApprovalInboxSummary, error) {

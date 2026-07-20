@@ -96,8 +96,9 @@ and release governance state.
 
 `mission status` reads AO Mission's `ao.command.mission-status.v0.1` readback
 and reports the mission route, phase, next action, and authority boundary. It
-rejects any packet that claims execution, approval, or repository mutation
-authority.
+also preserves an optional `correlation_id` for objective correlation when it
+matches `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`. It rejects any packet that claims
+execution, approval, or repository mutation authority.
 
 `mission next` reads AO Mission's `ao.mission.route-decision.v0.1` next-action
 readback and reports the next route, reason, and exact next action in
