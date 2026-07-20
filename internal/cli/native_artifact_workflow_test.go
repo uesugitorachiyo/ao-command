@@ -39,21 +39,31 @@ func TestNativeArtifactWorkflowContract(t *testing.T) {
 			t.Fatalf("native artifact workflow must not include %q", forbidden)
 		}
 	}
+	for _, forbiddenTrigger := range []string{"pull_request:", "push:", "schedule:"} {
+		if strings.Contains(workflow, forbiddenTrigger) {
+			t.Fatalf("native artifact uploads must not run by default, found trigger %q", forbiddenTrigger)
+		}
+	}
+	if !strings.Contains(workflow, "workflow_dispatch:") {
+		t.Fatal("native artifact workflow must be explicitly manual")
+	}
 }
 
-func TestProductionReadinessAuditAllowsNativeArtifactWorkflowUploads(t *testing.T) {
+func TestProductionReadinessAuditClassifiesNativeArtifactWorkflowUploads(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "production-readiness-audit.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := string(data)
 	for _, want := range []string{
-		"ci_artifact_upload_scan_files",
-		"native-artifacts",
-		"$ci_artifact_upload_scan_files",
+		"scripts/ci-artifact-upload-policy.rb",
+		"ci_artifact_uploads",
 	} {
 		if !strings.Contains(script, want) {
-			t.Fatalf("production readiness audit must explicitly allow native artifact workflow uploads, missing %q", want)
+			t.Fatalf("production readiness audit must structurally classify artifact uploads, missing %q", want)
 		}
+	}
+	if strings.Contains(script, "native-artifacts\\.yml") {
+		t.Fatal("production readiness audit must not exempt native artifacts by filename")
 	}
 }

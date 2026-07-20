@@ -75,7 +75,7 @@ tracked_files() {
 max_tracked_scan_files=4096
 max_tracked_scan_file_bytes=$((1024 * 1024))
 max_tracked_scan_total_bytes=$((16 * 1024 * 1024))
-tracked_scan_excludes='^(scripts/public-readiness-audit\.sh|scripts/production-readiness-audit\.sh|scripts/release-governance-dry-run\.sh)$'
+tracked_scan_excludes='^(scripts/ci-artifact-upload-policy\.rb|scripts/public-readiness-audit\.sh|scripts/production-readiness-audit\.sh|scripts/release-governance-dry-run\.sh)$'
 
 build_tracked_scan_files() {
   git ls-files "$@" | grep -Ev "$tracked_scan_excludes" || true
@@ -176,12 +176,23 @@ require_no_tracked_match_in_files \
   '(/Users/[^[:space:]")]+|/home/[^[:space:]")]+|C:/Users/[^[:space:]")]+)' \
   "$public_scan_files"
 
-workflow_and_scripts="$(build_tracked_scan_files .github scripts)"
-require_no_tracked_match_in_files \
-  "ci_artifact_uploads" \
-  "workflows and scripts do not upload CI artifacts by default" \
-  '(actions/upload-artifact|upload-artifact@|gh release upload)' \
-  "$workflow_and_scripts"
+workflow_files=()
+while IFS= read -r workflow_file; do
+  [[ -n "$workflow_file" ]] && workflow_files+=("$workflow_file")
+done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml')
+artifact_policy_error=""
+if ! artifact_policy_error="$(ruby scripts/ci-artifact-upload-policy.rb "${workflow_files[@]}" 2>&1)"; then
+  add_check "ci_artifact_uploads" "failed" "workflow artifact upload policy failed: $artifact_policy_error"
+else
+  ancillary_upload_files="$(build_tracked_scan_files .github scripts | grep -Ev '^\.github/workflows/.*\.ya?ml$' || true)"
+  if ! guarded_ancillary_upload_files="$(require_tracked_scan_budget "$ancillary_upload_files")"; then
+    add_check "ci_artifact_uploads" "failed" "ancillary artifact upload scan failed: $guarded_ancillary_upload_files"
+  elif ancillary_upload_matches="$(printf '%s\n' "$guarded_ancillary_upload_files" | xargs rg -n --pcre2 '(actions/upload-artifact|upload-artifact@|gh release (upload|create))' -- 2>/dev/null)"; then
+    add_check "ci_artifact_uploads" "failed" "non-workflow files must not upload CI artifacts: $ancillary_upload_matches"
+  else
+    add_check "ci_artifact_uploads" "passed" "artifact uploads are confined to dispatch-only read-only evidence jobs with at most one guarded protected publisher"
+  fi
+fi
 
 command_surface_files="$(build_tracked_scan_files .github cmd internal scripts)"
 require_no_tracked_match_in_files \

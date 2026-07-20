@@ -1,0 +1,648 @@
+name: release-rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Candidate version without a leading v.
+        required: true
+        type: string
+      tag:
+        description: Candidate tag, exactly v followed by version.
+        required: true
+        type: string
+      source_commit:
+        description: Exact 40-character source commit for every candidate.
+        required: true
+        type: string
+      approved_manifest_base64:
+        description: Base64-encoded bytes of the approved release manifest.
+        required: true
+        type: string
+      approved_manifest_digest:
+        description: SHA-256 of the decoded approved release manifest bytes.
+        required: true
+        type: string
+      release_notes:
+        description: Exact release notes bound to the candidate.
+        required: true
+        type: string
+      dry_run:
+        description: Build private artifacts and a plan without public mutation.
+        required: true
+        default: true
+        type: boolean
+      expected_plan_digest:
+        description: Required for live use; SHA-256 from an exact prior rehearsal plan.
+        required: false
+        default: ""
+        type: string
+      exact_confirmation:
+        description: Required for live use and bound to every release input plus plan digest.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-inputs:
+    name: bind-release-inputs-manifest-and-remote-absence
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release_notes_digest: ${{ steps.bound.outputs.release_notes_digest }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Reconstruct and validate bound manifest
+        id: bound
+        shell: bash
+        env:
+          APPROVED_MANIFEST_BASE64: ${{ inputs.approved_manifest_base64 }}
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EXPECTED_PLAN_DIGEST: ${{ inputs.expected_plan_digest }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || { echo "invalid version" >&2; exit 1; }
+          [[ "$TAG" == "v$VERSION" ]] || { echo "tag must equal v plus version" >&2; exit 1; }
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid source commit" >&2; exit 1; }
+          [[ "$APPROVED_MANIFEST_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid approved manifest digest" >&2; exit 1; }
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "checked out source drift" >&2; exit 1; }
+          [[ "$WORKFLOW_SHA" == "$SOURCE_COMMIT" ]] || { echo "workflow source drift" >&2; exit 1; }
+          if [[ "$DRY_RUN" == "false" ]]; then
+            [[ "$EXPECTED_PLAN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "live release requires expected plan digest" >&2; exit 1; }
+          elif [[ -n "$EXPECTED_PLAN_DIGEST" ]]; then
+            [[ "$EXPECTED_PLAN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid expected plan digest" >&2; exit 1; }
+          fi
+          release_notes_digest=$(printf '%s' "$RELEASE_NOTES" | sha256sum | awk '{print $1}')
+          export RELEASE_NOTES_DIGEST="$release_notes_digest"
+          printf 'release_notes_digest=%s\n' "$RELEASE_NOTES_DIGEST" >> "$GITHUB_OUTPUT"
+          version_source="docs/release/V${VERSION}-OPERATOR-CLOSEOUT.md"
+          [[ -f "$version_source" ]] || { echo "repository version source missing" >&2; exit 1; }
+          IFS= read -r version_heading < "$version_source"
+          [[ "$version_heading" == "# AO Command v${VERSION} Operator Closeout" ]] || { echo "repository version source mismatch" >&2; exit 1; }
+          mkdir -p approved-manifest
+          printf '%s' "$APPROVED_MANIFEST_BASE64" | base64 --decode > approved-manifest/approved-release-manifest.json
+          python3 scripts/release-rehearsal-verify.py manifest
+
+      - name: Require remote tag and release absence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_refs=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          remote_tag_commit=$(printf '%s\n' "$tag_refs" | awk '$2 ~ /\^\{\}$/ {print $1; exit}')
+          if [[ -z "$remote_tag_commit" ]]; then
+            remote_tag_commit=$(printf '%s\n' "$tag_refs" | awk 'NF == 2 {print $1; exit}')
+          fi
+          set +e
+          release_response=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>&1)
+          release_status=$?
+          set -e
+          if [[ "$release_status" -eq 0 ]]; then
+            release_exists=true
+          elif grep -Eq 'HTTP(/[0-9.]+)? 404' <<< "$release_response"; then
+            release_exists=false
+          else
+            printf '%s\n' "$release_response" >&2
+            echo "unable to determine existing release state" >&2
+            exit 1
+          fi
+          export REMOTE_TAG_COMMIT="$remote_tag_commit"
+          export RELEASE_EXISTS="$release_exists"
+          # release-rehearsal-script: validate-tag-state
+          python3 - <<'PY'
+          import os
+
+          if os.environ.get("REMOTE_TAG_COMMIT"):
+              raise SystemExit("remote tag already exists; release requires tag absence")
+          if os.environ.get("RELEASE_EXISTS") == "true":
+              raise SystemExit("remote release already exists; release requires release absence")
+          PY
+
+      - name: Upload immutable approved manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
+          path: approved-manifest/approved-release-manifest.json
+          overwrite: false
+          if-no-files-found: error
+
+  live-preflight:
+    name: require-preconfigured-protected-release-environment
+    needs: validate-inputs
+    if: ${{ inputs.dry_run == false }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Read protected environment configuration
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          set +e
+          environment_json=$(gh api "repos/$GITHUB_REPOSITORY/environments/protected-release" 2>environment-error.txt)
+          environment_status=$?
+          set -e
+          if [[ "$environment_status" -ne 0 ]]; then
+            sed -n '1,20p' environment-error.txt >&2
+            echo "protected-release environment is absent or unreadable" >&2
+            exit 1
+          fi
+          export ENVIRONMENT_JSON="$environment_json"
+          # release-rehearsal-script: validate-environment
+          python3 - <<'PY'
+          import json
+          import os
+
+          try:
+              environment = json.loads(os.environ["ENVIRONMENT_JSON"])
+          except (KeyError, json.JSONDecodeError) as error:
+              raise SystemExit(f"protected-release environment response malformed: {error}")
+          if environment.get("name") != "protected-release":
+              raise SystemExit("protected-release environment identity mismatch")
+          rules = environment.get("protection_rules")
+          if not isinstance(rules, list):
+              raise SystemExit("protected-release environment requires configured reviewers")
+          reviewer_rules = [
+              rule for rule in rules
+              if isinstance(rule, dict)
+              and rule.get("type") == "required_reviewers"
+              and isinstance(rule.get("reviewers"), list)
+              and len(rule["reviewers"]) > 0
+          ]
+          if not reviewer_rules:
+              raise SystemExit("protected-release environment requires configured reviewers")
+          PY
+
+  build-candidate:
+    name: native-candidate (${{ matrix.target_label }})
+    needs: validate-inputs
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target_label: linux-x86_64
+            archive_extension: tar.gz
+            binary_suffix: ""
+            expected_runner_arch: X64
+            expected_goos: linux
+            expected_goarch: amd64
+            expected_executable_format: elf
+          - os: macos-15
+            target_label: macos-aarch64
+            archive_extension: tar.gz
+            binary_suffix: ""
+            expected_runner_arch: ARM64
+            expected_goos: darwin
+            expected_goarch: arm64
+            expected_executable_format: macho
+          - os: windows-2025
+            target_label: windows-x86_64
+            archive_extension: zip
+            binary_suffix: ".exe"
+            expected_runner_arch: X64
+            expected_goos: windows
+            expected_goarch: amd64
+            expected_executable_format: pe
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download bound approved manifest
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
+          path: approved-manifest
+
+      - name: Build package and run separated native smoke checks
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          ARCHIVE_EXTENSION: ${{ matrix.archive_extension }}
+          BINARY_SUFFIX: ${{ matrix.binary_suffix }}
+          EXPECTED_EXECUTABLE_FORMAT: ${{ matrix.expected_executable_format }}
+          EXPECTED_GOARCH: ${{ matrix.expected_goarch }}
+          EXPECTED_GOOS: ${{ matrix.expected_goos }}
+          EXPECTED_RUNNER_ARCH: ${{ matrix.expected_runner_arch }}
+          RELEASE_NOTES_DIGEST: ${{ needs.validate-inputs.outputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          TARGET_LABEL: ${{ matrix.target_label }}
+          VERSION: ${{ inputs.version }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "candidate source drift" >&2; exit 1; }
+          [[ "$WORKFLOW_SHA" == "$SOURCE_COMMIT" ]] || { echo "workflow source drift" >&2; exit 1; }
+          [[ "$RUNNER_ARCH" == "$EXPECTED_RUNNER_ARCH" ]] || { echo "runner architecture substitution" >&2; exit 1; }
+          [[ "$(go env GOOS)" == "$EXPECTED_GOOS" ]] || { echo "native GOOS substitution" >&2; exit 1; }
+          [[ "$(go env GOARCH)" == "$EXPECTED_GOARCH" ]] || { echo "native GOARCH substitution" >&2; exit 1; }
+          actual_manifest_digest=$(python3 -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("approved-manifest/approved-release-manifest.json").read_bytes()).hexdigest())')
+          [[ "$actual_manifest_digest" == "$APPROVED_MANIFEST_DIGEST" ]] || { echo "candidate approved manifest digest mismatch" >&2; exit 1; }
+          candidate_dir="target/release-rehearsal/$TARGET_LABEL"
+          binary="ao-command${BINARY_SUFFIX}"
+          archive="ao-command-$VERSION-$TARGET_LABEL.$ARCHIVE_EXTENSION"
+          mkdir -p "$candidate_dir"
+          go build -trimpath \
+            -ldflags "-X github.com/uesugitorachiyo/ao-command/internal/cli.buildVersion=$VERSION -X github.com/uesugitorachiyo/ao-command/internal/cli.buildSourceCommit=$SOURCE_COMMIT" \
+            -o "$candidate_dir/$binary" ./cmd/ao-command
+          "$candidate_dir/$binary" --help > "$candidate_dir/help-smoke.txt"
+          grep -Fq 'ao-command is the read-only operator command surface' "$candidate_dir/help-smoke.txt"
+          "$candidate_dir/$binary" version --json > "$candidate_dir/version-readback.json"
+          env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u AZURE_OPENAI_API_KEY \
+            "$candidate_dir/$binary" mission status --status examples/mission/command-status.ready.json --json > functional-readback.json
+          export CANDIDATE_DIR="$candidate_dir"
+          python3 - <<'PY'
+          import json
+          import os
+          import struct
+          from pathlib import Path
+
+          root = Path(os.environ["CANDIDATE_DIR"])
+          version = json.loads((root / "version-readback.json").read_text(encoding="utf-8"))
+          if version != {
+              "schema_version": "ao.command.version.v0.1",
+              "version": os.environ["VERSION"],
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "provider_calls": False,
+          }:
+              raise SystemExit("built-binary version identity mismatch")
+          readback = json.loads(Path("functional-readback.json").read_text(encoding="utf-8"))
+          if (
+              readback.get("command_schema_version") != "ao.command.v0.1"
+              or readback.get("status") != "ready"
+              or readback.get("operator_mode") != "read_only"
+              or readback.get("safe_to_execute") is not False
+          ):
+              raise SystemExit("provider-free functional smoke mismatch")
+          functional = {
+              "provider_calls": False,
+              "readback": readback,
+              "schema_version": "ao.command.release-rehearsal-functional-smoke.v0.1",
+              "status": "passed",
+          }
+          (root / "functional-smoke.json").write_text(json.dumps(functional, separators=(",", ":"), sort_keys=True) + "\n", encoding="utf-8")
+          binary = (root / ("ao-command.exe" if os.environ["EXPECTED_GOOS"] == "windows" else "ao-command")).read_bytes()
+          actual = ("unknown", "unknown", "unknown")
+          if len(binary) >= 20 and binary[:4] == b"\x7fELF" and binary[4] == 2 and binary[5] == 1 and struct.unpack_from("<H", binary, 18)[0] == 62:
+              actual = ("elf", "linux", "amd64")
+          elif len(binary) >= 8 and binary[:4] == b"\xcf\xfa\xed\xfe" and struct.unpack_from("<I", binary, 4)[0] == 0x0100000C:
+              actual = ("macho", "darwin", "arm64")
+          elif len(binary) >= 0x46 and binary[:2] == b"MZ":
+              offset = struct.unpack_from("<I", binary, 0x3C)[0]
+              if offset + 6 <= len(binary) and binary[offset:offset + 4] == b"PE\x00\x00" and struct.unpack_from("<H", binary, offset + 4)[0] == 0x8664:
+                  actual = ("pe", "windows", "amd64")
+          expected = (os.environ["EXPECTED_EXECUTABLE_FORMAT"], os.environ["EXPECTED_GOOS"], os.environ["EXPECTED_GOARCH"])
+          if actual != expected:
+              raise SystemExit("built executable format or architecture mismatch")
+          PY
+          rm -f functional-readback.json
+          cp LICENSE "$candidate_dir/LICENSE"
+          go list -m -json all > "$candidate_dir/sbom.json"
+          printf '{"executable_format":"%s","goarch":"%s","goos":"%s","provider_calls":false,"release_notes_digest":"%s","repository":"ao-command","runner_arch":"%s","schema_version":"ao.command.release-rehearsal-provenance.v0.1","source_commit":"%s","target":"%s","version":"%s","workflow_identity":".github/workflows/release-rehearsal.yml@%s"}\n' \
+            "$EXPECTED_EXECUTABLE_FORMAT" "$EXPECTED_GOARCH" "$EXPECTED_GOOS" "$RELEASE_NOTES_DIGEST" "$EXPECTED_RUNNER_ARCH" "$SOURCE_COMMIT" "$TARGET_LABEL" "$VERSION" "$SOURCE_COMMIT" > "$candidate_dir/provenance.json"
+          export ARCHIVE="$archive"
+          export BINARY="$binary"
+          python3 - <<'PY'
+          import gzip
+          import io
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          root = Path(os.environ["CANDIDATE_DIR"])
+          archive = os.environ["ARCHIVE"]
+          binary = os.environ["BINARY"]
+          names = [
+              binary, "LICENSE", "functional-smoke.json", "help-smoke.txt",
+              "provenance.json", "sbom.json", "version-readback.json",
+          ]
+          archive_path = root / archive
+          if archive.endswith(".zip"):
+              with zipfile.ZipFile(archive_path, "w") as package:
+                  for name in names:
+                      info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                      info.compress_type = zipfile.ZIP_DEFLATED
+                      info.external_attr = ((0o755 if name == binary else 0o644) & 0xFFFF) << 16
+                      package.writestr(info, (root / name).read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+          else:
+              with archive_path.open("wb") as output:
+                  with gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed:
+                      with tarfile.open(fileobj=compressed, mode="w", format=tarfile.GNU_FORMAT) as package:
+                          for name in names:
+                              data = (root / name).read_bytes()
+                              info = tarfile.TarInfo(name)
+                              info.size = len(data)
+                              info.mtime = 0
+                              info.uid = 0
+                              info.gid = 0
+                              info.uname = ""
+                              info.gname = ""
+                              info.mode = 0o755 if name == binary else 0o644
+                              package.addfile(info, io.BytesIO(data))
+          PY
+          rm -f "$candidate_dir/$binary"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
+          else
+            shasum -a 256 "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
+          fi
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["CANDIDATE_DIR"])
+          archive = os.environ["ARCHIVE"]
+          names = {
+              archive, "LICENSE", "SHA256SUMS", "functional-smoke.json",
+              "help-smoke.txt", "provenance.json", "sbom.json", "version-readback.json",
+          }
+          inventory = [
+              {"name": name, "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest()}
+              for name in sorted(names)
+          ]
+          archive_digest = next(item["sha256"] for item in inventory if item["name"] == archive)
+          summary = {
+              "approved_manifest_digest": os.environ["APPROVED_MANIFEST_DIGEST"],
+              "archive": archive,
+              "archive_sha256": archive_digest,
+              "executable": os.environ["BINARY"],
+              "executable_format": os.environ["EXPECTED_EXECUTABLE_FORMAT"],
+              "goarch": os.environ["EXPECTED_GOARCH"],
+              "goos": os.environ["EXPECTED_GOOS"],
+              "inventory": inventory,
+              "provider_calls": False,
+              "release_notes_digest": os.environ["RELEASE_NOTES_DIGEST"],
+              "repository": "ao-command",
+              "runner_arch": os.environ["EXPECTED_RUNNER_ARCH"],
+              "schema_version": "ao.command.release-rehearsal-candidate.v0.3",
+              "smoke": {"functional": "passed", "help": "passed", "provider_calls": False, "version": "passed"},
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "tag": os.environ["TAG"],
+              "target": os.environ["TARGET_LABEL"],
+              "version": os.environ["VERSION"],
+          }
+          (root / "candidate-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload immutable private candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ao-command-release-candidate-${{ matrix.target_label }}-${{ inputs.source_commit }}
+          path: target/release-rehearsal/${{ matrix.target_label }}
+          overwrite: false
+          if-no-files-found: error
+
+  assemble-plan:
+    name: assemble-immutable-exact-inventory-plan
+    needs: [validate-inputs, build-candidate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact verifier source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Download bound approved manifest
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
+          path: approved-manifest
+
+      - name: Download exact native candidates
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: ao-command-release-candidate-*-${{ inputs.source_commit }}
+          path: downloaded-candidates
+
+      - name: Strictly verify candidates and assemble plan
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          EXPECTED_PLAN_DIGEST: ${{ inputs.expected_plan_digest }}
+          RELEASE_NOTES_DIGEST: ${{ needs.validate-inputs.outputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "plan verifier source drift" >&2; exit 1; }
+          python3 scripts/release-rehearsal-verify.py assemble
+
+      - name: Upload immutable private rehearsal plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: target/release-rehearsal-plan
+          overwrite: false
+          if-no-files-found: error
+
+  publish:
+    name: protected-live-publish
+    needs: [validate-inputs, live-preflight, assemble-plan]
+    if: ${{ inputs.dry_run == false && needs.validate-inputs.result == 'success' && needs.live-preflight.result == 'success' && needs.assemble-plan.result == 'success' && inputs.exact_confirmation == format('publish-ao-command-{0}-{1}-{2}-{3}-{4}-{5}', inputs.version, inputs.tag, inputs.source_commit, inputs.approved_manifest_digest, needs.validate-inputs.outputs.release_notes_digest, inputs.expected_plan_digest) }}
+    runs-on: ubuntu-24.04
+    environment: protected-release
+    permissions:
+      contents: write
+    steps:
+      # Do not create or modify this environment from this workflow. Repository
+      # administrators must preconfigure protected-release with required reviewers.
+      - name: Checkout exact source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Download bound approved manifest
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
+          path: approved-manifest
+
+      - name: Download immutable rehearsal plan
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: target/release-rehearsal-plan
+
+      - name: Download immutable native candidates
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: ao-command-release-candidate-*-${{ inputs.source_commit }}
+          path: downloaded-candidates
+
+      - name: Recheck remote tag and release absence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_refs=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          [[ -z "$tag_refs" ]] || { echo "remote tag already exists; publisher requires tag absence" >&2; exit 1; }
+          set +e
+          release_response=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>&1)
+          release_status=$?
+          set -e
+          if [[ "$release_status" -eq 0 ]]; then
+            echo "remote release already exists; publisher requires release absence" >&2
+            exit 1
+          fi
+          if ! grep -Eq 'HTTP(/[0-9.]+)? 404' <<< "$release_response"; then
+            printf '%s\n' "$release_response" >&2
+            echo "unable to determine publisher release state" >&2
+            exit 1
+          fi
+
+      - name: Independently reverify complete plan and archives
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          EXACT_CONFIRMATION: ${{ inputs.exact_confirmation }}
+          EXPECTED_PLAN_DIGEST: ${{ inputs.expected_plan_digest }}
+          RELEASE_NOTES_DIGEST: ${{ needs.validate-inputs.outputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-rehearsal-verify.py verify
+
+      - name: Publish exact verified archives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "publisher checkout source drift" >&2; exit 1; }
+          printf '%s' "$RELEASE_NOTES" > release-notes.md
+          mapfile -t archives < <(find downloaded-candidates -type f \( -name '*.tar.gz' -o -name '*.zip' \) | sort)
+          [[ "${#archives[@]}" -eq 3 ]] || { echo "candidate archive inventory is incomplete" >&2; exit 1; }
+          created_tag_commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$SOURCE_COMMIT" \
+            --jq '.object.sha')
+          [[ "$created_tag_commit" == "$SOURCE_COMMIT" ]] || { echo "atomically created tag source mismatch" >&2; exit 1; }
+          confirmed_tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')
+          [[ "$confirmed_tag_commit" == "$SOURCE_COMMIT" ]] || { echo "tag source changed before release creation" >&2; exit 1; }
+          gh release create "$TAG" --verify-tag --title "AO Command $VERSION" --notes-file release-notes.md "${archives[@]}"
+
+  verify-published-release:
+    name: independently-verify-published-assets
+    needs: [validate-inputs, assemble-plan, publish]
+    if: ${{ needs.publish.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact verifier source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Download bound approved manifest
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
+          path: approved-manifest
+
+      - name: Download immutable rehearsal plan
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: target/release-rehearsal-plan
+
+      - name: Download immutable native candidates
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: ao-command-release-candidate-*-${{ inputs.source_commit }}
+          path: downloaded-candidates
+
+      - name: Reverify complete private plan and candidates
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          EXACT_CONFIRMATION: ${{ inputs.exact_confirmation }}
+          EXPECTED_PLAN_DIGEST: ${{ inputs.expected_plan_digest }}
+          RELEASE_NOTES_DIGEST: ${{ needs.validate-inputs.outputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-rehearsal-verify.py verify
+
+      - name: Download and verify exact public assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_refs=$(git ls-remote --refs origin "refs/tags/$TAG")
+          [[ "$(printf '%s\n' "$tag_refs" | awk 'NF == 2 {count++} END {print count + 0}')" -eq 1 ]] || { echo "published tag inventory mismatch" >&2; exit 1; }
+          published_tag_commit=$(printf '%s\n' "$tag_refs" | awk 'NF == 2 {print $1}')
+          [[ "$published_tag_commit" == "$SOURCE_COMMIT" ]] || { echo "published tag source mismatch" >&2; exit 1; }
+          gh release download "$TAG" --dir public-assets
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          plan = json.loads(Path("target/release-rehearsal-plan/release-rehearsal-plan.json").read_text(encoding="utf-8"))
+          candidates = plan["candidates"]
+          expected_assets = {candidate["archive"]: candidate["archive_sha256"] for candidate in candidates}
+          actual_assets = {path.name: path for path in Path("public-assets").iterdir() if path.is_file()}
+          if set(actual_assets) != set(expected_assets):
+              raise SystemExit("public release asset inventory mismatch")
+          for name, expected_digest in expected_assets.items():
+              if hashlib.sha256(actual_assets[name].read_bytes()).hexdigest() != expected_digest:
+                  raise SystemExit(f"public candidate verification failed for {name}")
+          PY
