@@ -1,0 +1,367 @@
+name: release-rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Candidate version without a leading v.
+        required: true
+        type: string
+      tag:
+        description: Candidate tag bound to the version.
+        required: true
+        type: string
+      source_commit:
+        description: Exact 40-character source commit for every candidate.
+        required: true
+        type: string
+      approved_manifest_digest:
+        description: Approved 64-character SHA-256 asset-manifest digest.
+        required: true
+        type: string
+      release_notes:
+        description: Exact release notes bound to the candidate.
+        required: true
+        type: string
+      release_notes_digest:
+        description: SHA-256 digest of the exact release notes.
+        required: true
+        type: string
+      dry_run:
+        description: Rehearse only. Publication is disabled unless explicitly false.
+        required: true
+        default: true
+        type: boolean
+      exact_confirmation:
+        description: Required only for a future live release with every bound value.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-inputs:
+    name: bind-release-inputs
+    runs-on: ubuntu-latest
+    outputs:
+      source_commit: ${{ steps.bound.outputs.source_commit }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Bind version tag source notes and manifest
+        id: bound
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          RELEASE_NOTES_DIGEST: ${{ inputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z.-]*$ ]] || { echo "invalid version" >&2; exit 1; }
+          [[ "$TAG" == "v$VERSION" ]] || { echo "tag must equal v plus version" >&2; exit 1; }
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid source commit" >&2; exit 1; }
+          [[ "$APPROVED_MANIFEST_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid approved manifest digest" >&2; exit 1; }
+          [[ "$RELEASE_NOTES_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid release notes digest" >&2; exit 1; }
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "checked out source drift" >&2; exit 1; }
+          [[ "$WORKFLOW_SHA" == "$SOURCE_COMMIT" ]] || { echo "workflow source drift" >&2; exit 1; }
+          actual_notes_digest=$(printf '%s' "$RELEASE_NOTES" | sha256sum | awk '{print $1}')
+          [[ "$actual_notes_digest" == "$RELEASE_NOTES_DIGEST" ]] || { echo "release notes digest mismatch" >&2; exit 1; }
+          printf 'source_commit=%s\n' "$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+
+  build-candidate:
+    name: native-candidate (${{ matrix.target_label }})
+    needs: validate-inputs
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target_label: linux-x86_64
+            archive_extension: tar.gz
+            binary_suffix: ""
+          - os: macos-latest
+            target_label: macos-aarch64
+            archive_extension: tar.gz
+            binary_suffix: ""
+          - os: windows-latest
+            target_label: windows-x86_64
+            archive_extension: zip
+            binary_suffix: ".exe"
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build and smoke native candidate
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          RELEASE_NOTES_DIGEST: ${{ inputs.release_notes_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          ARCHIVE_EXTENSION: ${{ matrix.archive_extension }}
+          TARGET_LABEL: ${{ matrix.target_label }}
+          VERSION: ${{ inputs.version }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "candidate source drift" >&2; exit 1; }
+          [[ "$WORKFLOW_SHA" == "$SOURCE_COMMIT" ]] || { echo "workflow source drift" >&2; exit 1; }
+          candidate_dir="target/release-rehearsal/$TARGET_LABEL"
+          binary="ao-command${{ matrix.binary_suffix }}"
+          archive="ao-command-$VERSION-$TARGET_LABEL.$ARCHIVE_EXTENSION"
+          mkdir -p "$candidate_dir"
+          go build -trimpath -o "$candidate_dir/$binary" ./cmd/ao-command
+          "$candidate_dir/$binary" --help > "$candidate_dir/smoke.txt" 2>&1
+          cp LICENSE "$candidate_dir/LICENSE"
+          go list -m -json all > "$candidate_dir/sbom.json"
+          printf '{"approved_manifest_digest":"%s","release_notes_digest":"%s","repository":"ao-command","source_commit":"%s","target":"%s","version":"%s","workflow_ref":"%s","workflow_sha":"%s"}\n' \
+            "$APPROVED_MANIFEST_DIGEST" "$RELEASE_NOTES_DIGEST" "$SOURCE_COMMIT" "$TARGET_LABEL" "$VERSION" "$GITHUB_WORKFLOW_REF" "$GITHUB_WORKFLOW_SHA" > "$candidate_dir/provenance.json"
+          if [[ "$ARCHIVE_EXTENSION" == "zip" ]]; then
+            (cd "$candidate_dir" && 7z a "$archive" "$binary" LICENSE smoke.txt sbom.json provenance.json)
+          else
+            (cd "$candidate_dir" && tar -czf "$archive" "$binary" LICENSE smoke.txt sbom.json provenance.json)
+          fi
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
+          else
+            shasum -a 256 "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
+          fi
+          archive_sha256=$(awk '{print $1}' "$candidate_dir/SHA256SUMS")
+          printf '{"approved_manifest_digest":"%s","archive":"%s","archive_sha256":"%s","release_notes_digest":"%s","repository":"ao-command","schema_version":"ao.command.release-rehearsal-candidate.v0.1","smoke":{"command":"--help","expected_success":true,"status":"passed"},"source_commit":"%s","tag":"%s","target":"%s","version":"%s"}\n' \
+            "$APPROVED_MANIFEST_DIGEST" "$archive" "$archive_sha256" "$RELEASE_NOTES_DIGEST" "$SOURCE_COMMIT" "$TAG" "$TARGET_LABEL" "$VERSION" > "$candidate_dir/candidate-summary.json"
+
+      - name: Upload immutable candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: ao-command-release-candidate-${{ matrix.target_label }}-${{ inputs.source_commit }}
+          path: target/release-rehearsal/${{ matrix.target_label }}
+          overwrite: false
+          if-no-files-found: error
+
+  assemble-plan:
+    name: assemble-immutable-plan
+    needs: [validate-inputs, build-candidate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact native candidates
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ao-command-release-candidate-*-${{ inputs.source_commit }}
+          path: downloaded-candidates
+
+      - name: Verify exact inventory and assemble checksummed plan
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          RELEASE_NOTES_DIGEST: ${{ inputs.release_notes_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("downloaded-candidates")
+          out = Path("target/release-rehearsal-plan")
+          out.mkdir(parents=True, exist_ok=True)
+          expected_targets = {"linux-x86_64", "macos-aarch64", "windows-x86_64"}
+          summaries = sorted(root.rglob("candidate-summary.json"))
+          if len(summaries) != len(expected_targets):
+              raise SystemExit(f"unexpected artifact inventory: expected {len(expected_targets)} summaries, found {len(summaries)}")
+          candidates = []
+          for summary_path in summaries:
+              candidate = json.loads(summary_path.read_text(encoding="utf-8"))
+              archive = summary_path.parent / candidate["archive"]
+              expected_files = {
+                  "LICENSE", "SHA256SUMS", "candidate-summary.json", "provenance.json", "sbom.json", "smoke.txt", candidate["archive"],
+              }
+              actual_files = {path.name for path in summary_path.parent.iterdir() if path.is_file()}
+              if actual_files != expected_files:
+                  raise SystemExit(f"unexpected artifact inventory for {summary_path.parent}: {sorted(actual_files)}")
+              if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest() != candidate["archive_sha256"]:
+                  raise SystemExit(f"candidate archive checksum mismatch for {archive}")
+              if (summary_path.parent / "SHA256SUMS").read_text(encoding="utf-8").split()[0] != candidate["archive_sha256"]:
+                  raise SystemExit(f"checksum manifest mismatch for {archive}")
+              for key, environment_key in {
+                  "source_commit": "SOURCE_COMMIT",
+                  "version": "VERSION",
+                  "tag": "TAG",
+                  "approved_manifest_digest": "APPROVED_MANIFEST_DIGEST",
+                  "release_notes_digest": "RELEASE_NOTES_DIGEST",
+              }.items():
+                  if candidate[key] != os.environ[environment_key]:
+                      raise SystemExit(f"{key} drift in {summary_path}")
+              if candidate["smoke"] != {"command": "--help", "expected_success": True, "status": "passed"}:
+                  raise SystemExit(f"smoke contract mismatch in {summary_path}")
+              candidates.append(candidate)
+          targets = [candidate["target"] for candidate in candidates]
+          if set(targets) != expected_targets or len(targets) != len(set(targets)):
+              raise SystemExit(f"missing, duplicate, or unexpected target: {targets}")
+          plan = {
+              "approved_manifest_digest": os.environ["APPROVED_MANIFEST_DIGEST"],
+              "candidates": sorted(candidates, key=lambda candidate: candidate["target"]),
+              "immutable": True,
+              "release_notes_digest": os.environ["RELEASE_NOTES_DIGEST"],
+              "repository": "ao-command",
+              "schema_version": "ao.command.release-rehearsal-plan.v0.1",
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "tag": os.environ["TAG"],
+              "version": os.environ["VERSION"],
+          }
+          boundary = {
+              "dry_run": os.environ["DRY_RUN"].lower() == "true",
+              "publication_performed": False,
+              "public_upload_attempted": False,
+              "release_creation_attempted": False,
+              "schema_version": "ao.command.release-rehearsal-dry-run-boundary.v0.1",
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "tag_creation_attempted": False,
+          }
+          plan_path = out / "release-rehearsal-plan.json"
+          plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          (out / "dry-run-boundary.json").write_text(json.dumps(boundary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          (out / "release-rehearsal-plan.sha256").write_text(f"{hashlib.sha256(plan_path.read_bytes()).hexdigest()}  {plan_path.name}\n", encoding="utf-8")
+          PY
+
+      - name: Upload immutable rehearsal plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: target/release-rehearsal-plan
+          overwrite: false
+          if-no-files-found: error
+
+  publish:
+    name: protected-live-publish
+    needs: [validate-inputs, assemble-plan]
+    if: ${{ inputs.dry_run == false && inputs.exact_confirmation == format('publish-ao-command-{0}-{1}-{2}-{3}', inputs.version, inputs.tag, inputs.source_commit, inputs.approved_manifest_digest) }}
+    runs-on: ubuntu-latest
+    environment: protected-release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+
+      - name: Download immutable rehearsal plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: release-plan
+
+      - name: Download immutable native candidates
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ao-command-release-candidate-*-${{ inputs.source_commit }}
+          path: release-candidates
+
+      - name: Verify plan before publication
+        shell: bash
+        env:
+          APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          (cd release-plan && sha256sum -c release-rehearsal-plan.sha256)
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          plan = json.loads(Path("release-plan/release-rehearsal-plan.json").read_text(encoding="utf-8"))
+          for key, environment_key in {
+              "version": "VERSION",
+              "tag": "TAG",
+              "source_commit": "SOURCE_COMMIT",
+              "approved_manifest_digest": "APPROVED_MANIFEST_DIGEST",
+          }.items():
+              if plan[key] != os.environ[environment_key]:
+                  raise SystemExit(f"promotion plan {key} does not match bound input")
+          expected_targets = {"linux-x86_64", "macos-aarch64", "windows-x86_64"}
+          if {candidate["target"] for candidate in plan["candidates"]} != expected_targets:
+              raise SystemExit("promotion plan does not contain exactly three native candidates")
+          archives = {path.name: path for path in Path("release-candidates").rglob("*") if path.is_file()}
+          for candidate in plan["candidates"]:
+              archive = archives.get(candidate["archive"])
+              if archive is None or hashlib.sha256(archive.read_bytes()).hexdigest() != candidate["archive_sha256"]:
+                  raise SystemExit(f"candidate archive checksum mismatch for {candidate['archive']}")
+          PY
+
+      - name: Publish exact bound release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$RELEASE_NOTES" > release-notes.md
+          mapfile -t archives < <(find release-candidates -type f \( -name '*.tar.gz' -o -name '*.zip' \) | sort)
+          [[ "${#archives[@]}" -eq 3 ]] || { echo "candidate archive inventory is incomplete" >&2; exit 1; }
+          gh release create "$TAG" --target "$SOURCE_COMMIT" --title "AO Command $VERSION" --notes-file release-notes.md "${archives[@]}"
+
+  verify-published-release:
+    name: independently-verify-published-assets
+    needs: [assemble-plan, publish]
+    if: ${{ needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download immutable rehearsal plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ao-command-release-rehearsal-plan-${{ inputs.source_commit }}
+          path: release-plan
+
+      - name: Download and verify published assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --dir public-assets
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          plan = json.loads(Path("release-plan/release-rehearsal-plan.json").read_text(encoding="utf-8"))
+          public_assets = Path("public-assets")
+          for candidate in plan["candidates"]:
+              archive = public_assets / candidate["archive"]
+              if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest() != candidate["archive_sha256"]:
+                  raise SystemExit(f"public candidate verification failed for {candidate['archive']}")
+          PY
