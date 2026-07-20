@@ -23,6 +23,11 @@ const (
 	releaseGovernance    = "blocked_pending_operator_approval"
 )
 
+var (
+	buildVersion      = "development"
+	buildSourceCommit = "unknown"
+)
+
 type Command struct {
 	Dir  string
 	Env  []string
@@ -77,6 +82,8 @@ func (a App) Run(ctx context.Context, args []string) int {
 	case "help", "--help", "-h":
 		a.printHelp()
 		return 0
+	case "version":
+		return a.version(args[1:])
 	case "status":
 		return a.status(ctx, args[1:])
 	case "stack":
@@ -126,6 +133,7 @@ func (a App) printHelp() {
 	fmt.Fprintln(a.Stdout, `ao-command is the read-only operator command surface for the AO2-first AO stack.
 
 Usage:
+  ao-command version [--json]
   ao-command status [--forge PATH] [--forge-bin PATH] [--json]
   ao-command stack --ledger PATH [--json]
   ao-command atlas status --status PATH [--json]
@@ -167,6 +175,31 @@ Commands are read-only by default. Rehearsal writes only dry-run evidence to the
 operator-provided output directory and relies on AO Forge release-preview proofs.
 AO Forge provides readiness truth, AO2 executes governed work, ao2-control-plane
 stores evidence, and AO Covenant owns allow, deny, and block decisions.`)
+}
+
+func (a App) version(args []string) int {
+	if len(args) > 1 || (len(args) == 1 && args[0] != "--json") {
+		fmt.Fprintln(a.Stderr, "ao-command version: usage: ao-command version [--json]")
+		return 2
+	}
+	summary := struct {
+		SchemaVersion string `json:"schema_version"`
+		Version       string `json:"version"`
+		SourceCommit  string `json:"source_commit"`
+		ProviderCalls bool   `json:"provider_calls"`
+	}{
+		SchemaVersion: "ao.command.version.v0.1",
+		Version:       buildVersion,
+		SourceCommit:  buildSourceCommit,
+		ProviderCalls: false,
+	}
+	if len(args) == 1 {
+		return a.writeJSON(summary)
+	}
+	fmt.Fprintf(a.Stdout, "ao_command_version=%s\n", summary.Version)
+	fmt.Fprintf(a.Stdout, "source_commit=%s\n", summary.SourceCommit)
+	fmt.Fprintln(a.Stdout, "provider_calls=false")
+	return 0
 }
 
 func (a App) mission(args []string) int {
