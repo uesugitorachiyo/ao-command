@@ -154,6 +154,7 @@ Usage:
   ao-command control-plane boundary --packet PATH [--json]
   ao-command control-plane qualification-progress --readback PATH [--json]
   ao-command control-plane status --readback PATH [--json]
+  ao-command operator status --readback PATH [--at RFC3339] [--json]
   ao-command operator workflow --readback PATH [--json]
   ao-command covenant policy --readback PATH [--json]
   ao-command controlled-loop status --readback PATH [--json]
@@ -1615,6 +1616,8 @@ func (a App) operator(args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case "status":
+		return a.operatorStatus(args[1:])
 	case "workflow":
 		return a.operatorWorkflow(args[1:])
 	default:
@@ -1624,7 +1627,7 @@ func (a App) operator(args []string) int {
 }
 
 func operatorUsage() string {
-	return "ao-command operator: usage: ao-command operator workflow --readback PATH [--json]"
+	return "ao-command operator: usage: ao-command operator status --readback PATH [--at RFC3339] [--json] | ao-command operator workflow --readback PATH [--json]"
 }
 
 func (a App) operatorWorkflow(args []string) int {

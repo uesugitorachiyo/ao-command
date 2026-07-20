@@ -1,0 +1,78 @@
+{
+  "schema": "ao.operator.status-source.v0.1",
+  "reported_status": "running",
+  "objective": "Complete the Month 4 operator experience.",
+  "correlation_id": "corr-month4-operator-001",
+  "active_repository": "ao-command",
+  "workgraph_id": "month1-6-productization",
+  "active_node_id": "m4-n01-operator-status-schema",
+  "nodes": {
+    "total": 6,
+    "completed": 1,
+    "running": 1,
+    "ready": 4,
+    "blocked": 0,
+    "remaining": 5
+  },
+  "approval": {
+    "state": "none",
+    "action_digest": "",
+    "exact_instruction": ""
+  },
+  "verification": {
+    "tests": {
+      "status": "passed",
+      "evidence": [
+        "evidence/tests.json"
+      ]
+    },
+    "ci": {
+      "status": "running",
+      "evidence": [
+        "https://github.com/uesugitorachiyo/ao-command/actions/runs/1"
+      ]
+    }
+  },
+  "worker": {
+    "state": "running",
+    "heartbeat_at": "2026-07-20T18:00:00Z",
+    "fresh_for_seconds": 300
+  },
+  "started_at": "2026-07-20T17:00:00Z",
+  "progress_percent": 16,
+  "release": {
+    "status": "candidate_only",
+    "mission_version": "0.1.0",
+    "command_version": "0.1.0",
+    "publicly_available": false,
+    "publication_attempted": false
+  },
+  "exact_blocker": "",
+  "exact_next_action": "continue the active Month 4 workgraph node",
+  "evidence": [
+    {
+      "name": "operator-tests",
+      "location": "evidence/tests.json",
+      "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "hosted-ci",
+      "location": "https://github.com/uesugitorachiyo/ao-command/actions/runs/1",
+      "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "final_report": {
+    "available": false,
+    "location": "",
+    "sha256": ""
+  },
+  "safety": {
+    "operator_mode": "read_only",
+    "safe_to_execute": false,
+    "executes_work": false,
+    "approves_work": false,
+    "mutates_repositories": false,
+    "calls_providers": false,
+    "releases_or_deploys": false
+  }
+}
