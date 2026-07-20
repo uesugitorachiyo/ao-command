@@ -101,6 +101,7 @@ jobs:
       - name: Require remote tag and release absence
         shell: bash
         env:
+          DRY_RUN: ${{ inputs.dry_run }}
           GH_TOKEN: ${{ github.token }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           TAG: ${{ inputs.tag }}
@@ -130,6 +131,10 @@ jobs:
           python3 - <<'PY'
           import os
 
+          if os.environ.get("DRY_RUN") == "true":
+              raise SystemExit(0)
+          if os.environ.get("DRY_RUN") != "false":
+              raise SystemExit("dry-run state is malformed")
           if os.environ.get("REMOTE_TAG_COMMIT"):
               raise SystemExit("remote tag already exists; release requires tag absence")
           if os.environ.get("RELEASE_EXISTS") == "true":

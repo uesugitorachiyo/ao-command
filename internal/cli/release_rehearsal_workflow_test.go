@@ -414,7 +414,7 @@ func TestAssemblePlanRejectsNegativeFixtures(t *testing.T) {
 	}
 }
 
-func TestTagStateValidatorFailsClosed(t *testing.T) {
+func TestTagStateValidatorAllowsReadOnlyRehearsalAndFailsClosedForLiveUse(t *testing.T) {
 	script := extractReleaseWorkflowScript(t, "validate-tag-state")
 	tests := []struct {
 		name    string
@@ -422,23 +422,32 @@ func TestTagStateValidatorFailsClosed(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "tag_and_release_absent",
-			env:  map[string]string{"REMOTE_TAG_COMMIT": "", "RELEASE_EXISTS": "false"},
+			name: "live_tag_and_release_absent",
+			env:  map[string]string{"DRY_RUN": "false", "REMOTE_TAG_COMMIT": "", "RELEASE_EXISTS": "false"},
+		},
+		{
+			name: "dry_run_existing_tag_and_release",
+			env:  map[string]string{"DRY_RUN": "true", "REMOTE_TAG_COMMIT": releaseSource, "RELEASE_EXISTS": "true"},
 		},
 		{
 			name:    "tag_source_drift",
-			env:     map[string]string{"REMOTE_TAG_COMMIT": strings.Repeat("9", 40), "RELEASE_EXISTS": "false"},
+			env:     map[string]string{"DRY_RUN": "false", "REMOTE_TAG_COMMIT": strings.Repeat("9", 40), "RELEASE_EXISTS": "false"},
 			wantErr: "remote tag already exists",
 		},
 		{
 			name:    "existing_exact_tag",
-			env:     map[string]string{"REMOTE_TAG_COMMIT": releaseSource, "RELEASE_EXISTS": "false"},
+			env:     map[string]string{"DRY_RUN": "false", "REMOTE_TAG_COMMIT": releaseSource, "RELEASE_EXISTS": "false"},
 			wantErr: "remote tag already exists",
 		},
 		{
 			name:    "existing_release",
-			env:     map[string]string{"REMOTE_TAG_COMMIT": "", "RELEASE_EXISTS": "true"},
+			env:     map[string]string{"DRY_RUN": "false", "REMOTE_TAG_COMMIT": "", "RELEASE_EXISTS": "true"},
 			wantErr: "remote release already exists",
+		},
+		{
+			name:    "malformed_mode",
+			env:     map[string]string{"DRY_RUN": "maybe", "REMOTE_TAG_COMMIT": "", "RELEASE_EXISTS": "false"},
+			wantErr: "dry-run state is malformed",
 		},
 	}
 	for _, test := range tests {
