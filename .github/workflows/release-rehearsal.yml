@@ -381,11 +381,16 @@ jobs:
                               package.addfile(info, io.BytesIO(data))
           PY
           rm -f "$candidate_dir/$binary"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
-          else
-            shasum -a 256 "$candidate_dir/$archive" > "$candidate_dir/SHA256SUMS"
-          fi
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["CANDIDATE_DIR"])
+          archive = os.environ["ARCHIVE"]
+          digest = hashlib.sha256((root / archive).read_bytes()).hexdigest()
+          (root / "SHA256SUMS").write_bytes(f"{digest}  {archive}\n".encode("ascii"))
+          PY
           python3 - <<'PY'
           import hashlib
           import json
