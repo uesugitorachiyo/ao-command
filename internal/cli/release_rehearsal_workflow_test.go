@@ -256,6 +256,13 @@ func TestReleaseRehearsalCandidateManifestHashIsPortable(t *testing.T) {
 	if strings.Contains(buildBody, "sha256sum approved-manifest/approved-release-manifest.json") {
 		t.Fatal("candidate manifest hashing must not require GNU sha256sum on macOS")
 	}
+	if strings.Contains(buildBody, `sha256sum "$candidate_dir/$archive"`) ||
+		strings.Contains(buildBody, `shasum -a 256 "$candidate_dir/$archive"`) {
+		t.Fatal("candidate checksum sidecar must not inherit platform-specific filename formatting")
+	}
+	if !strings.Contains(buildBody, `(root / "SHA256SUMS").write_bytes(f"{digest}  {archive}\n".encode("ascii"))`) {
+		t.Fatal("candidate checksum sidecar must use a canonical digest and archive basename record")
+	}
 }
 
 func TestBuiltBinaryVersionCommandReportsInjectedIdentity(t *testing.T) {
