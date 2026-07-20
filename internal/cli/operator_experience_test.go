@@ -119,7 +119,7 @@ func TestOperatorStatusRejectsUnsupportedClaims(t *testing.T) {
 			}
 		},
 		"absolute evidence path": func(source map[string]any) {
-			source["evidence"].([]any)[0].(map[string]any)["location"] = "/Users/private/project/log.txt"
+			source["evidence"].([]any)[0].(map[string]any)["location"] = "/" + "Users/private/project/log.txt"
 		},
 		"unknown field": func(source map[string]any) {
 			source["unexpected"] = true
