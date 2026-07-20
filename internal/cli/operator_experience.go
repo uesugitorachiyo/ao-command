@@ -9,10 +9,11 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const maxOperatorStatusBytes = 1 << 20
@@ -205,6 +206,11 @@ func readOperatorStatus(path string, at time.Time) (operatorStatusSummary, error
 	}
 	freshness := "not_applicable"
 	status := deriveOperatorStatus(source)
+	if status != source.ReportedStatus {
+		return operatorStatusSummary{}, fmt.Errorf(
+			"reported_status %q contradicts derived status %q", source.ReportedStatus, status,
+		)
+	}
 	blocker := source.ExactBlocker
 	nextAction := source.ExactNextAction
 	if source.Worker.State == "running" {
@@ -214,17 +220,14 @@ func readOperatorStatus(path string, at time.Time) (operatorStatusSummary, error
 		}
 		if at.Sub(heartbeat) > time.Duration(source.Worker.FreshForSeconds)*time.Second {
 			freshness = "stale"
-			status = "stale"
-			blocker = "worker heartbeat exceeded its freshness window"
-			nextAction = "refresh the worker heartbeat before trusting running state"
+			if status == "running" {
+				status = "stale"
+				blocker = "worker heartbeat exceeded its freshness window"
+				nextAction = "refresh the worker heartbeat before trusting running state"
+			}
 		} else {
 			freshness = "fresh"
 		}
-	}
-	if status != "stale" && status != source.ReportedStatus {
-		return operatorStatusSummary{}, fmt.Errorf(
-			"reported_status %q contradicts derived status %q", source.ReportedStatus, status,
-		)
 	}
 	evidence := append([]operatorEvidenceLink(nil), source.Evidence...)
 	sort.Slice(evidence, func(i, j int) bool { return evidence[i].Name < evidence[j].Name })
@@ -271,17 +274,24 @@ func validateOperatorStatusSource(source operatorStatusSource) error {
 	if strings.TrimSpace(source.Objective) == "" || len(source.Objective) > 1024 {
 		return errors.New("objective must be present and at most 1024 bytes")
 	}
+	if containsControlCharacter(source.Objective) {
+		return errors.New("objective must not contain control characters")
+	}
 	if !correlationIDPattern.MatchString(source.CorrelationID) {
 		return errors.New("correlation_id must match [A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 	}
-	for label, value := range map[string]string{
-		"active_repository": source.ActiveRepository,
-		"workgraph_id":      source.WorkgraphID,
-		"active_node_id":    source.ActiveNodeID,
-		"exact_next_action": source.ExactNextAction,
+	for _, field := range []struct {
+		label string
+		value string
+		limit int
+	}{
+		{"active_repository", source.ActiveRepository, 128},
+		{"workgraph_id", source.WorkgraphID, 256},
+		{"active_node_id", source.ActiveNodeID, 256},
+		{"exact_next_action", source.ExactNextAction, 2048},
 	} {
-		if strings.TrimSpace(value) == "" || len(value) > 2048 {
-			return fmt.Errorf("%s must be present and bounded", label)
+		if err := validateBoundedLine(field.label, field.value, field.limit, false); err != nil {
+			return err
 		}
 	}
 	counts := source.Nodes
@@ -326,6 +336,9 @@ func validateOperatorStatusSource(source operatorStatusSource) error {
 	if len(source.ExactBlocker) > 2048 {
 		return errors.New("exact_blocker exceeds 2048 bytes")
 	}
+	if containsControlCharacter(source.ExactBlocker) {
+		return errors.New("exact_blocker must not contain control characters")
+	}
 	if deriveOperatorStatus(source) == "blocked" && strings.TrimSpace(source.ExactBlocker) == "" {
 		return errors.New("blocked status requires exact_blocker")
 	}
@@ -336,6 +349,9 @@ func validateOperatorStatusSource(source operatorStatusSource) error {
 	for _, evidence := range source.Evidence {
 		if strings.TrimSpace(evidence.Name) == "" || len(evidence.Name) > 128 {
 			return errors.New("evidence name must be present and bounded")
+		}
+		if containsControlCharacter(evidence.Name) {
+			return errors.New("evidence name must not contain control characters")
 		}
 		if _, ok := seen[evidence.Name]; ok {
 			return fmt.Errorf("duplicate evidence name %q", evidence.Name)
@@ -377,6 +393,9 @@ func validateOperatorApproval(approval operatorApprovalStatus) error {
 		if !isSHA256Digest(approval.ActionDigest) || strings.TrimSpace(approval.ExactInstruction) == "" ||
 			len(approval.ExactInstruction) > 2048 {
 			return errors.New("waiting approval requires an exact SHA-256 digest and bounded instruction")
+		}
+		if containsControlCharacter(approval.ExactInstruction) {
+			return errors.New("approval instruction must not contain control characters")
 		}
 	default:
 		return fmt.Errorf("unsupported approval state %q", approval.State)
@@ -426,6 +445,10 @@ func validateOperatorRelease(release operatorReleaseStatus) error {
 	if release.PubliclyAvailable || release.PublicationAttempted {
 		return errors.New("operator status source must not claim public availability or publication")
 	}
+	if len(release.MissionVersion) > 128 || len(release.CommandVersion) > 128 ||
+		containsControlCharacter(release.MissionVersion) || containsControlCharacter(release.CommandVersion) {
+		return errors.New("release versions must be bounded single-line values")
+	}
 	if release.Status == "candidate_only" &&
 		(strings.TrimSpace(release.MissionVersion) == "" || strings.TrimSpace(release.CommandVersion) == "") {
 		return errors.New("candidate_only release status requires Mission and Command versions")
@@ -467,14 +490,40 @@ func isSafeEvidenceLocation(location string) bool {
 	if strings.TrimSpace(location) == "" || len(location) > 2048 {
 		return false
 	}
+	if containsControlCharacter(location) {
+		return false
+	}
+	if strings.Contains(location, `\`) {
+		location = strings.ReplaceAll(location, `\`, "/")
+	}
 	if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
 		return parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
 	}
-	if filepath.IsAbs(location) || filepath.VolumeName(location) != "" {
+	if strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") ||
+		(len(location) >= 3 && location[1] == ':' && location[2] == '/') {
 		return false
 	}
-	clean := filepath.ToSlash(filepath.Clean(location))
+	clean := path.Clean(location)
 	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func validateBoundedLine(label, value string, limit int, allowEmpty bool) error {
+	if (!allowEmpty && strings.TrimSpace(value) == "") || len(value) > limit {
+		return fmt.Errorf("%s must be present and at most %d bytes", label, limit)
+	}
+	if containsControlCharacter(value) {
+		return fmt.Errorf("%s must not contain control characters", label)
+	}
+	return nil
+}
+
+func containsControlCharacter(value string) bool {
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeStrictBoundedJSON(path string, limit int64, target any) error {
@@ -490,8 +539,13 @@ func decodeStrictBoundedJSON(path string, limit int64, target any) error {
 	if int64(len(body)) > limit {
 		return fmt.Errorf("input exceeds %d bytes", limit)
 	}
-	if err := rejectDuplicateTopLevelFields(body); err != nil {
+	if err := rejectDuplicateJSONFields(body); err != nil {
 		return err
+	}
+	if _, ok := target.(*operatorStatusSource); ok {
+		if err := validateOperatorStatusFieldPresence(body); err != nil {
+			return err
+		}
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
@@ -508,36 +562,131 @@ func decodeStrictBoundedJSON(path string, limit int64, target any) error {
 	return nil
 }
 
-func rejectDuplicateTopLevelFields(body []byte) error {
+func rejectDuplicateJSONFields(body []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
+	if err := scanStrictJSONValue(decoder); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("invalid JSON: multiple values are not allowed")
+		}
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+func scanStrictJSONValue(decoder *json.Decoder) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
-	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
-		return errors.New("invalid JSON: expected an object")
+	delimiter, isDelimiter := token.(json.Delim)
+	if !isDelimiter {
+		return nil
 	}
-	seen := make(map[string]struct{})
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("invalid JSON: %w", err)
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			token, err := decoder.Token()
+			if err != nil {
+				return fmt.Errorf("invalid JSON: %w", err)
+			}
+			field, ok := token.(string)
+			if !ok {
+				return errors.New("invalid JSON: field name must be a string")
+			}
+			if _, exists := seen[field]; exists {
+				return fmt.Errorf("invalid JSON: duplicate field %q", field)
+			}
+			seen[field] = struct{}{}
+			if err := scanStrictJSONValue(decoder); err != nil {
+				return err
+			}
 		}
-		field, ok := token.(string)
-		if !ok {
-			return errors.New("invalid JSON: field name must be a string")
+	case '[':
+		for decoder.More() {
+			if err := scanStrictJSONValue(decoder); err != nil {
+				return err
+			}
 		}
-		if _, exists := seen[field]; exists {
-			return fmt.Errorf("invalid JSON: duplicate field %q", field)
-		}
-		seen[field] = struct{}{}
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
-			return fmt.Errorf("invalid JSON: %w", err)
-		}
+	default:
+		return errors.New("invalid JSON: unexpected delimiter")
 	}
 	if _, err := decoder.Token(); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+func validateOperatorStatusFieldPresence(body []byte) error {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(body, &top); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	if err := requireRawFields("operator status source", top,
+		"schema", "reported_status", "objective", "correlation_id",
+		"active_repository", "workgraph_id", "active_node_id", "nodes",
+		"approval", "verification", "worker", "started_at", "progress_percent",
+		"release", "exact_blocker", "exact_next_action", "evidence",
+		"final_report", "safety"); err != nil {
+		return err
+	}
+	requiredObjects := map[string][]string{
+		"nodes":        {"total", "completed", "running", "ready", "blocked", "remaining"},
+		"approval":     {"state", "action_digest", "exact_instruction"},
+		"verification": {"tests", "ci"},
+		"worker":       {"state", "heartbeat_at", "fresh_for_seconds"},
+		"release":      {"status", "mission_version", "command_version", "publicly_available", "publication_attempted"},
+		"final_report": {"available", "location", "sha256"},
+		"safety":       {"operator_mode", "safe_to_execute", "executes_work", "approves_work", "mutates_repositories", "calls_providers", "releases_or_deploys"},
+	}
+	for field, required := range requiredObjects {
+		object, err := rawObject(top[field], field)
+		if err != nil {
+			return err
+		}
+		if err := requireRawFields(field, object, required...); err != nil {
+			return err
+		}
+	}
+	verification, _ := rawObject(top["verification"], "verification")
+	for _, field := range []string{"tests", "ci"} {
+		check, err := rawObject(verification[field], "verification."+field)
+		if err != nil {
+			return err
+		}
+		if err := requireRawFields("verification."+field, check, "status", "evidence"); err != nil {
+			return err
+		}
+	}
+	var evidence []map[string]json.RawMessage
+	if err := json.Unmarshal(top["evidence"], &evidence); err != nil {
+		return errors.New("evidence must be an array of objects")
+	}
+	for index, item := range evidence {
+		if err := requireRawFields(fmt.Sprintf("evidence[%d]", index), item, "name", "location", "sha256"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rawObject(raw json.RawMessage, label string) (map[string]json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return nil, fmt.Errorf("%s must be an object", label)
+	}
+	return object, nil
+}
+
+func requireRawFields(label string, object map[string]json.RawMessage, fields ...string) error {
+	for _, field := range fields {
+		if _, ok := object[field]; !ok {
+			return fmt.Errorf("%s missing required field %q", label, field)
+		}
 	}
 	return nil
 }

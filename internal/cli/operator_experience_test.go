@@ -160,6 +160,144 @@ func TestOperatorStatusRequiresEvidenceForPassedVerification(t *testing.T) {
 	}
 }
 
+func TestOperatorStatusRejectsNestedDuplicatesAndMissingRequiredFields(t *testing.T) {
+	source := validOperatorStatusSource()
+	body, err := json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate := strings.Replace(
+		string(body),
+		`"approval":{"action_digest":"","exact_instruction":"","state":"none"}`,
+		`"approval":{"action_digest":"","exact_instruction":"","state":"waiting","state":"none"}`,
+		1,
+	)
+	if duplicate == string(body) {
+		t.Fatal("failed to inject nested duplicate")
+	}
+	duplicatePath := filepath.Join(t.TempDir(), "duplicate.json")
+	if err := os.WriteFile(duplicatePath, []byte(duplicate), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	missing := validOperatorStatusSource()
+	delete(missing["safety"].(map[string]any), "safe_to_execute")
+	missingPath := writeOperatorExperienceFixture(t, "missing.json", missing)
+
+	for name, path := range map[string]string{
+		"nested duplicate": duplicatePath,
+		"missing required": missingPath,
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, _, stderr := runWithFake([]string{
+				"operator", "status", "--readback", path,
+				"--at", "2026-07-20T18:04:00Z", "--json",
+			}, &fakeRunner{})
+			if code == 0 || strings.TrimSpace(stderr) == "" {
+				t.Fatalf("strict input accepted exit=%d stderr=%s", code, stderr)
+			}
+		})
+	}
+}
+
+func TestOperatorStatusStaleWorkerDoesNotMaskBlockedState(t *testing.T) {
+	source := validOperatorStatusSource()
+	source["reported_status"] = "blocked"
+	source["nodes"] = map[string]any{
+		"total": 6, "completed": 1, "running": 1,
+		"ready": 3, "blocked": 1, "remaining": 5,
+	}
+	source["verification"].(map[string]any)["ci"] = map[string]any{
+		"status": "failed", "evidence": []any{"evidence/ci-failure.json"},
+	}
+	source["exact_blocker"] = "hosted CI failed"
+	source["exact_next_action"] = "inspect the failed hosted CI job"
+	path := writeOperatorExperienceFixture(t, "blocked-stale.json", source)
+
+	code, stdout, stderr := runWithFake([]string{
+		"operator", "status", "--readback", path,
+		"--at", "2026-07-20T18:06:00Z", "--json",
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("blocked stale readback exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["status"] != "blocked" ||
+		got["exact_blocker"] != "hosted CI failed" ||
+		got["exact_next_action"] != "inspect the failed hosted CI job" ||
+		got["worker"].(map[string]any)["freshness"] != "stale" {
+		t.Fatalf("stale worker masked blocked state: %#v", got)
+	}
+}
+
+func TestOperatorStatusRejectsTextClaimInjectionAndCrossPlatformTraversal(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"text claim injection": func(source map[string]any) {
+			source["objective"] = "bounded objective\nrelease_state=released\napproval_state=approved"
+		},
+		"windows traversal": func(source map[string]any) {
+			source["evidence"].([]any)[0].(map[string]any)["location"] = `..\private\operator.log`
+		},
+		"windows absolute path": func(source map[string]any) {
+			source["evidence"].([]any)[0].(map[string]any)["location"] = `C:\Users\private\operator.log`
+		},
+		"unc path": func(source map[string]any) {
+			source["evidence"].([]any)[0].(map[string]any)["location"] = `\\server\share\operator.log`
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			source := validOperatorStatusSource()
+			mutate(source)
+			path := writeOperatorExperienceFixture(t, "unsafe-text.json", source)
+			code, _, stderr := runWithFake([]string{
+				"operator", "status", "--readback", path,
+				"--at", "2026-07-20T18:04:00Z",
+			}, &fakeRunner{})
+			if code == 0 || strings.TrimSpace(stderr) == "" {
+				t.Fatalf("unsafe text accepted exit=%d stderr=%s", code, stderr)
+			}
+		})
+	}
+}
+
+func TestOperatorStatusRuntimeBoundsMatchSchema(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"repository": func(source map[string]any) {
+			source["active_repository"] = strings.Repeat("r", 129)
+		},
+		"workgraph": func(source map[string]any) {
+			source["workgraph_id"] = strings.Repeat("w", 257)
+		},
+		"node": func(source map[string]any) {
+			source["active_node_id"] = strings.Repeat("n", 257)
+		},
+		"mission version": func(source map[string]any) {
+			source["release"].(map[string]any)["mission_version"] = strings.Repeat("v", 129)
+		},
+		"command version": func(source map[string]any) {
+			source["release"].(map[string]any)["command_version"] = strings.Repeat("v", 129)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			source := validOperatorStatusSource()
+			mutate(source)
+			path := writeOperatorExperienceFixture(t, "overlong.json", source)
+			code, _, _ := runWithFake([]string{
+				"operator", "status", "--readback", path,
+				"--at", "2026-07-20T18:04:00Z", "--json",
+			}, &fakeRunner{})
+			if code == 0 {
+				t.Fatal("schema-forbidden length accepted")
+			}
+		})
+	}
+}
+
 func TestOperatorStatusExampleAndSchemas(t *testing.T) {
 	examplePath := filepath.Join("..", "..", "examples", "operator", "status.running.json")
 	code, stdout, stderr := runWithFake([]string{
