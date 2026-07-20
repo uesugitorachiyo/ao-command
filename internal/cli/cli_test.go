@@ -167,6 +167,9 @@ func TestMissionStatusReadsAOMissionCommandStatus(t *testing.T) {
 			t.Fatalf("mission status stdout missing %q:\n%s", want, stdout)
 		}
 	}
+	if strings.Contains(stdout, "correlation_id=") {
+		t.Fatalf("legacy mission status text must omit correlation_id:\n%s", stdout)
+	}
 
 	code, stdout, stderr = runWithFake([]string{"mission", "status", "--status", statusPath, "--json"}, &fakeRunner{})
 	if code != 0 {
@@ -178,6 +181,131 @@ func TestMissionStatusReadsAOMissionCommandStatus(t *testing.T) {
 	}
 	if got["command_schema_version"] != "ao.command.v0.1" || got["operator_mode"] != "read_only" || got["safe_to_execute"] != false {
 		t.Fatalf("unexpected mission status summary: %#v", got)
+	}
+	if _, ok := got["correlation_id"]; ok {
+		t.Fatalf("legacy mission status JSON must omit correlation_id: %#v", got)
+	}
+}
+
+func TestMissionStatusPreservesCorrelationID(t *testing.T) {
+	correlationID := "mission-demo:objective.42"
+	statusPath := writeMissionCommandStatusFixture(t, &correlationID)
+	code, stdout, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission status exit=%d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "correlation_id="+correlationID) {
+		t.Fatalf("mission status text missing correlation_id:\n%s", stdout)
+	}
+
+	code, stdout, stderr = runWithFake([]string{"mission", "status", "--status", statusPath, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("mission status JSON exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission status JSON: %v\n%s", err, stdout)
+	}
+	if got["correlation_id"] != correlationID {
+		t.Fatalf("mission status JSON correlation_id=%#v want %q", got["correlation_id"], correlationID)
+	}
+}
+
+func TestMissionStatusRejectsInvalidCorrelationID(t *testing.T) {
+	for _, correlationID := range []string{"", "-invalid", "invalid value", strings.Repeat("a", 129)} {
+		t.Run(fmt.Sprintf("%q", correlationID), func(t *testing.T) {
+			statusPath := writeMissionCommandStatusFixture(t, &correlationID)
+			code, _, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+			if code != 1 || !strings.Contains(stderr, "correlation_id") {
+				t.Fatalf("invalid correlation_id exit=%d stderr=%s", code, stderr)
+			}
+		})
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func TestMissionStatusRejectsAmbiguousContractFields(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		correlationID  *string
+		find           string
+		replacement    string
+		stderrContains string
+	}{
+		{
+			name:           "explicit null correlation_id",
+			find:           "\"operator_mode\": \"read_only\"",
+			replacement:    "\"correlation_id\": null,\n  \"operator_mode\": \"read_only\"",
+			stderrContains: "correlation_id",
+		},
+		{
+			name:           "duplicate authority field",
+			find:           "\"executes_work\": false",
+			replacement:    "\"executes_work\": true,\n  \"executes_work\": false",
+			stderrContains: "duplicate field",
+		},
+		{
+			name:           "duplicate correlation_id",
+			correlationID:  stringPtr("mission-demo:objective.42"),
+			find:           "\"correlation_id\": \"mission-demo:objective.42\"",
+			replacement:    "\"correlation_id\": \"mission-demo:objective.42\",\n  \"correlation_id\": \"mission-demo:objective.43\"",
+			stderrContains: "duplicate field",
+		},
+		{
+			name:           "case variant schema",
+			find:           "\"schema\":",
+			replacement:    "\"Schema\":",
+			stderrContains: "unknown field",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			statusPath := writeMissionCommandStatusFixture(t, test.correlationID)
+			body, err := os.ReadFile(statusPath)
+			if err != nil {
+				t.Fatalf("read mission status fixture: %v", err)
+			}
+			updated := strings.Replace(string(body), test.find, test.replacement, 1)
+			if updated == string(body) {
+				t.Fatalf("fixture mutation %q did not apply", test.name)
+			}
+			writeFile(t, statusPath, updated)
+
+			code, _, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+			if code != 1 || !strings.Contains(stderr, test.stderrContains) {
+				t.Fatalf("%s exit=%d stderr=%s", test.name, code, stderr)
+			}
+		})
+	}
+}
+
+func TestMissionStatusRejectsUnknownFields(t *testing.T) {
+	statusPath := writeMissionCommandStatusFixture(t, nil)
+	body, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read mission status fixture: %v", err)
+	}
+	writeFile(t, statusPath, strings.Replace(string(body), "\n}", ",\n  \"unexpected\": true\n}", 1))
+
+	code, _, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+	if code != 1 || !strings.Contains(stderr, "unknown field") {
+		t.Fatalf("unknown field exit=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestMissionStatusRejectsAuthorityDrift(t *testing.T) {
+	statusPath := writeMissionCommandStatusFixture(t, nil)
+	body, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read mission status fixture: %v", err)
+	}
+	writeFile(t, statusPath, strings.Replace(string(body), "\"executes_work\": false", "\"executes_work\": true", 1))
+
+	code, _, stderr := runWithFake([]string{"mission", "status", "--status", statusPath}, &fakeRunner{})
+	if code != 1 || !strings.Contains(stderr, "must not claim execution") {
+		t.Fatalf("authority drift exit=%d stderr=%s", code, stderr)
 	}
 }
 
@@ -4903,6 +5031,34 @@ func writeStackLedgerFixture(t *testing.T) string {
 	if err := os.WriteFile(path, []byte(ledger), 0o644); err != nil {
 		t.Fatalf("write stack ledger fixture: %v", err)
 	}
+	return path
+}
+
+func writeMissionCommandStatusFixture(t *testing.T, correlationID *string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mission-status.json")
+	correlationField := ""
+	if correlationID != nil {
+		encoded, err := json.Marshal(*correlationID)
+		if err != nil {
+			t.Fatalf("marshal correlation_id: %v", err)
+		}
+		correlationField = fmt.Sprintf(",\n  \"correlation_id\": %s", encoded)
+	}
+	writeFile(t, path, fmt.Sprintf(`{
+  "schema": "ao.command.mission-status.v0.1",
+  "mission_id": "mission-demo",
+  "status": "ready",
+  "current_route": "ao-atlas",
+  "current_phase": "atlas_import_required",
+  "operator_mode": "read_only",
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "exact_next_action": "AO Atlas compiles mission context before AO Foundry import"%s
+}
+`, correlationField))
 	return path
 }
 
