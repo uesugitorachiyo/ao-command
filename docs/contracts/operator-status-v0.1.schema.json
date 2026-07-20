@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/uesugitorachiyo/ao-command/blob/main/docs/contracts/operator-status-v0.1.schema.json",
+  "title": "AO Command operator status v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "command_schema_version",
+    "schema",
+    "status",
+    "objective",
+    "correlation_id",
+    "active_repository",
+    "workgraph_id",
+    "active_node_id",
+    "nodes",
+    "approval",
+    "verification",
+    "worker",
+    "observed_at",
+    "elapsed_seconds",
+    "progress_percent",
+    "release",
+    "exact_blocker",
+    "exact_next_action",
+    "evidence",
+    "final_report",
+    "operator_mode",
+    "safe_to_execute",
+    "executes_work",
+    "approves_work",
+    "mutates_repositories",
+    "calls_providers",
+    "releases_or_deploys"
+  ],
+  "properties": {
+    "command_schema_version": {
+      "const": "ao.command.v0.1"
+    },
+    "schema": {
+      "const": "ao.command.operator-status.v0.1"
+    },
+    "status": {
+      "enum": [
+        "running",
+        "stale",
+        "waiting_approval",
+        "ready",
+        "blocked",
+        "completed"
+      ]
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "correlation_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "active_repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workgraph_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "active_node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nodes": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/nodeCounts"
+    },
+    "approval": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/approval"
+    },
+    "verification": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/verification"
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "heartbeat_at",
+        "fresh_for_seconds",
+        "freshness"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "running",
+            "idle",
+            "stopped"
+          ]
+        },
+        "heartbeat_at": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "fresh_for_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "not_applicable"
+          ]
+        }
+      }
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "elapsed_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "progress_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "release": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/release"
+    },
+    "exact_blocker": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "exact_next_action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "evidence": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/evidenceList"
+    },
+    "final_report": {
+      "$ref": "operator-status-source-v0.1.schema.json#/$defs/finalReport"
+    },
+    "operator_mode": {
+      "const": "read_only"
+    },
+    "safe_to_execute": {
+      "const": false
+    },
+    "executes_work": {
+      "const": false
+    },
+    "approves_work": {
+      "const": false
+    },
+    "mutates_repositories": {
+      "const": false
+    },
+    "calls_providers": {
+      "const": false
+    },
+    "releases_or_deploys": {
+      "const": false
+    }
+  }
+}
