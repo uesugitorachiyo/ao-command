@@ -296,11 +296,11 @@ go run ./cmd/ao-command pulse status --preflight ../ao-foundry/examples/pulse-ov
 # After generating Foundry's Blueprint -> Atlas -> Pulse dry-run evidence:
 go run ./cmd/ao-command blueprint-atlas-foundry status --atlas-blueprint-import ../ao-foundry/examples/atlas/blueprint-import.low-risk-code.json --preflight ../ao-foundry/docs/evidence/pulse/blueprint-atlas-pulse-e2e-local/ready/pulse-intake-preflight.json --foundry-gate ../ao-foundry/docs/evidence/pulse/blueprint-atlas-pulse-e2e-local/ready/pulse-overnight-start-gate.json --json
 scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke
-scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.0-preview
+scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.1-preview
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"
 scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
-scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
+scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.1 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --architecture ../ao-architecture --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
@@ -327,8 +327,8 @@ The release governance dry-run contract is tracked in
 Public-safe retained evidence rules are tracked in
 `docs/operations/RETAINED-EVIDENCE.md` and
 `docs/operations/public-provenance-manifest.json`.
-The v0.1.0 operator closeout is tracked in
-`docs/release/V0.1.0-OPERATOR-CLOSEOUT.md`.
+The v0.1.1 operator closeout and release notes are tracked in
+`docs/release/V0.1.1-OPERATOR-CLOSEOUT.md`.
 
 ## License
 

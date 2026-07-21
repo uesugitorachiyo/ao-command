@@ -325,13 +325,13 @@ else
   add_check "retained_evidence_policy" "failed" "public-safe retained evidence policy and manifest must cover dry-run evidence"
 fi
 
-if grep -qE "AO Command v0.1.0 Operator Closeout" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
-  && grep -qE "Required Evidence Before Tagging" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
-  && grep -qE "readiness_percent=100" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md \
-  && grep -qE "public provenance manifest" docs/release/V0.1.0-OPERATOR-CLOSEOUT.md; then
-  add_check "operator_closeout" "passed" "v0.1.0 operator closeout documents ready scope, evidence, and remaining actions"
+if grep -qE "AO Command v0.1.1 Operator Closeout" docs/release/V0.1.1-OPERATOR-CLOSEOUT.md \
+  && grep -qE "Required Evidence Before Tagging" docs/release/V0.1.1-OPERATOR-CLOSEOUT.md \
+  && grep -qE "readiness_percent=100" docs/release/V0.1.1-OPERATOR-CLOSEOUT.md \
+  && grep -qE "public provenance manifest" docs/release/V0.1.1-OPERATOR-CLOSEOUT.md; then
+  add_check "operator_closeout" "passed" "v0.1.1 operator closeout documents ready scope, evidence, and safety boundaries"
 else
-  add_check "operator_closeout" "failed" "v0.1.0 operator closeout must document ready scope, evidence, and remaining actions"
+  add_check "operator_closeout" "failed" "v0.1.1 operator closeout must document ready scope, evidence, and safety boundaries"
 fi
 
 if [[ "$skip_gates" -eq 0 ]]; then
@@ -340,11 +340,11 @@ if [[ "$skip_gates" -eq 0 ]]; then
   run_check "go_build" "ao-command builds" go build -o bin/ao-command ./cmd/ao-command
   run_check "workflow_lint" "GitHub workflow lint passes" go run github.com/rhysd/actionlint/cmd/actionlint@latest
   run_check "integration_smoke" "AO Forge-backed ao-command smoke passes" scripts/ao-command-smoke.sh --forge "$forge" --foundry "$foundry" --out tmp/ao-command-smoke
-  run_check "release_preview_dry_run" "AO Command release preview dry-run passes" scripts/release-preview-dry-run.sh --forge "$forge" --out tmp/ao-command-release-preview --tag v0.1.0-preview
+  run_check "release_preview_dry_run" "AO Command release preview dry-run passes" scripts/release-preview-dry-run.sh --forge "$forge" --out tmp/ao-command-release-preview --tag v0.1.1-preview
   run_check "release_preview_contract_validate" "AO Command release preview audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-preview/release-preview-audit.json"
   run_check "install_verify_dry_run" "AO Command install verification dry-run passes" scripts/install-verify-dry-run.sh --forge "$forge" --out tmp/ao-command-install-verify
   run_check "install_verify_contract_validate" "AO Command install verification audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$root/tmp/ao-command-install-verify/install-verify-audit.json"
-  run_check "release_governance_dry_run" "AO Command release governance dry-run passes" scripts/release-governance-dry-run.sh --out tmp/ao-command-release-governance --tag v0.1.0 --release-preview-audit tmp/ao-command-release-preview/release-preview-audit.json --install-verify-audit tmp/ao-command-install-verify/install-verify-audit.json
+  run_check "release_governance_dry_run" "AO Command release governance dry-run passes" scripts/release-governance-dry-run.sh --out tmp/ao-command-release-governance --tag v0.1.1 --release-preview-audit tmp/ao-command-release-preview/release-preview-audit.json --install-verify-audit tmp/ao-command-install-verify/install-verify-audit.json
   run_check "release_governance_contract_validate" "AO Command release governance audit validates against its schema" go run ./cmd/ao-command evidence --forge "$forge" --schema "$root/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$root/tmp/ao-command-release-governance/release-governance-audit.json"
   run_check "active_stack_status" "AO Command reads AO Foundry active-stack handoff status without orchestration" go run ./cmd/ao-command stack --ledger "$foundry/examples/readiness/active-stack-readiness.ledger.json"
   run_check "atlas_status_readback" "AO Command reads AO Foundry Atlas status without scheduling or execution" go run ./cmd/ao-command atlas status --status "$foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json"

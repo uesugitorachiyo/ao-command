@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	releaseVersion     = "0.1.0"
-	releaseTag         = "v0.1.0"
+	releaseVersion     = "0.1.1"
+	releaseTag         = "v0.1.1"
 	releaseSource      = "1111111111111111111111111111111111111111"
 	releaseNotesDigest = "2222222222222222222222222222222222222222222222222222222222222222"
 )
@@ -382,7 +382,7 @@ func TestAssemblePlanRejectsNegativeFixtures(t *testing.T) {
 		{
 			name: "substituted_archive",
 			mutate: func(t *testing.T, fixture *releaseFixture) {
-				path := filepath.Join(fixture.candidateDirs["windows-x86_64"], "ao-command-0.1.0-windows-x86_64.zip")
+				path := filepath.Join(fixture.candidateDirs["windows-x86_64"], "ao-command-"+releaseVersion+"-windows-x86_64.zip")
 				writeTestFile(t, path, []byte("substituted"))
 			},
 			want: "candidate archive checksum mismatch",
@@ -600,7 +600,7 @@ func TestPublisherVerifierBindsCompletePlan(t *testing.T) {
 		{
 			name: "archive_digest_substitution",
 			mutate: func(t *testing.T, fixture *releaseFixture, _ map[string]any) {
-				path := filepath.Join(fixture.candidateDirs["linux-x86_64"], "ao-command-0.1.0-linux-x86_64.tar.gz")
+				path := filepath.Join(fixture.candidateDirs["linux-x86_64"], "ao-command-"+releaseVersion+"-linux-x86_64.tar.gz")
 				writeTestFile(t, path, []byte("substituted after plan assembly"))
 			},
 			want: "candidate archive checksum mismatch",
