@@ -4670,7 +4670,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	publicationChecklist := read("docs", "operations", "PUBLICATION-CHECKLIST.md")
 	publicationRecord := read("docs", "operations", "PUBLICATION-RECORD-2026-06-19.md")
 	productionReadiness := read("docs", "operations", "PRODUCTION-READINESS.md")
-	operatorCloseout := read("docs", "release", "V0.1.0-OPERATOR-CLOSEOUT.md")
+	operatorCloseout := read("docs", "release", "V0.1.1-OPERATOR-CLOSEOUT.md")
 	retainedEvidence := read("docs", "operations", "RETAINED-EVIDENCE.md")
 	publicProvenanceManifest := read("docs", "operations", "public-provenance-manifest.json")
 	productionReadinessSchema := read("docs", "contracts", "production-readiness-audit-v0.1.schema.json")
@@ -4775,11 +4775,11 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		{name: "production readiness docs RSI authority packet not publish valid", doc: productionReadiness, want: "schema_valid_for_claim_publish=false"},
 		{name: "production readiness docs RSI control-plane authority packet readback", doc: productionReadiness, want: "ao2.cp-ao2-rsi-authority-packet-readback.v1"},
 		{name: "production readiness docs retained evidence", doc: productionReadiness, want: "public-provenance-manifest.json"},
-		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.0-OPERATOR-CLOSEOUT.md"},
-		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.0 Operator Closeout"},
+		{name: "production readiness docs operator closeout", doc: productionReadiness, want: "V0.1.1-OPERATOR-CLOSEOUT.md"},
+		{name: "operator closeout title", doc: operatorCloseout, want: "AO Command v0.1.1 Operator Closeout"},
 		{name: "operator closeout read-only", doc: operatorCloseout, want: "read-only operator command surface"},
 		{name: "operator closeout required evidence", doc: operatorCloseout, want: "readiness_percent=100"},
-		{name: "operator closeout remaining actions", doc: operatorCloseout, want: "Rerun the full admin-mode readiness audit"},
+		{name: "operator closeout dry-run boundary", doc: operatorCloseout, want: "Dry runs do not create tags, releases, uploads, or deployments"},
 		{name: "retained evidence no uploads", doc: retainedEvidence, want: "Do not upload CI artifacts by default"},
 		{name: "retained evidence no secrets", doc: retainedEvidence, want: "Do not retain"},
 		{name: "provenance manifest schema", doc: publicProvenanceManifest, want: "ao.command.public-provenance-manifest.v0.1"},

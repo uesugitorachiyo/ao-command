@@ -2,7 +2,7 @@
 set -euo pipefail
 
 out="tmp/release-governance"
-tag="v0.1.0"
+tag="v0.1.1"
 release_preview_audit=""
 install_verify_audit=""
 

@@ -65,19 +65,19 @@ The audit is passing only when all gates pass:
 - retained dry-run evidence is governed by
   `docs/operations/RETAINED-EVIDENCE.md` and
   `docs/operations/public-provenance-manifest.json`;
-- v0.1.0 operator closeout is documented in
-  `docs/release/V0.1.0-OPERATOR-CLOSEOUT.md`;
+- v0.1.1 operator closeout and release notes are documented in
+  `docs/release/V0.1.1-OPERATOR-CLOSEOUT.md`;
 - tests, vet, build, workflow lint, AO Forge-backed smoke, and AO Forge
   production readiness all pass.
 
 ## Local Command
 
 ```sh
-scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.0-preview
+scripts/release-preview-dry-run.sh --forge ../ao-forge --out tmp/release-preview --tag v0.1.1-preview
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-preview-audit-v0.1.schema.json" --document "$PWD/tmp/release-preview/release-preview-audit.json"
 scripts/install-verify-dry-run.sh --forge ../ao-forge --out tmp/install-verify
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/install-verify-audit-v0.1.schema.json" --document "$PWD/tmp/install-verify/install-verify-audit.json"
-scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.0 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
+scripts/release-governance-dry-run.sh --out tmp/release-governance --tag v0.1.1 --release-preview-audit tmp/release-preview/release-preview-audit.json --install-verify-audit tmp/install-verify/install-verify-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/release-governance-audit-v0.1.schema.json" --document "$PWD/tmp/release-governance/release-governance-audit.json"
 go run ./cmd/ao-command stack --ledger ../ao-foundry/examples/readiness/active-stack-readiness.ledger.json
 go run ./cmd/ao-command atlas status --status ../ao-foundry/examples/contract-fixtures/valid/foundry-atlas-status-v0.1.json

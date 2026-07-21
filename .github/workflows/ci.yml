@@ -419,7 +419,7 @@ jobs:
 
       - name: Release preview dry-run
         run: |
-          scripts/release-preview-dry-run.sh --forge ao-forge --out tmp/release-preview --tag v0.1.0-preview
+          scripts/release-preview-dry-run.sh --forge ao-forge --out tmp/release-preview --tag v0.1.1-preview
 
       - name: Validate release preview contract
         run: |
@@ -443,7 +443,7 @@ jobs:
         run: |
           scripts/release-governance-dry-run.sh \
             --out tmp/release-governance \
-            --tag v0.1.0 \
+            --tag v0.1.1 \
             --release-preview-audit tmp/release-preview/release-preview-audit.json \
             --install-verify-audit tmp/install-verify/install-verify-audit.json
 
