@@ -4663,7 +4663,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		return strings.ReplaceAll(string(content), "\r\n", "\n")
 	}
 
-	readme := read("README.md")
+	readme := read("REFERENCE.md")
 	security := read("SECURITY.md")
 	foundry := read("docs", "design", "AO-COMMAND-FOUNDRY.md")
 	privateGuardrails := read("docs", "operations", "PRIVATE-REPO-GUARDRAILS.md")
