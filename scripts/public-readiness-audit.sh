@@ -201,8 +201,8 @@ require_no_tracked_match_in_files \
   '(gh repo edit .*--visibility|release[ -]publish|production[ -]promotion|git push --force|git reset --hard|rm -rf /)' \
   "$command_surface_files"
 
-if rg -q "operator-approved public-readiness audit" README.md \
-  && rg -q "PUBLICATION-CHECKLIST.md" README.md \
+if rg -q "operator-approved public-readiness audit" README.md REFERENCE.md \
+  && rg -q "PUBLICATION-CHECKLIST.md" README.md REFERENCE.md \
   && rg -q "public after passing the v0.1 publication audit" SECURITY.md; then
   add_check "publication_docs" "passed" "README and SECURITY document private/public boundaries"
 else

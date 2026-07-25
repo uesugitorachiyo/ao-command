@@ -248,9 +248,9 @@ require_no_tracked_match_in_files \
   '(gh repo edit .*--visibility|release[ -]publish|production[ -]promotion|git push --force|git reset --hard|rm -rf /)' \
   "$command_surface_files"
 
-if grep -qE "Production Readiness" README.md \
-  && grep -qE "PRODUCTION-READINESS.md" README.md \
-  && grep -qE "PUBLICATION-RECORD-2026-06-19.md" README.md \
+if grep -qE "Production Readiness" README.md REFERENCE.md \
+  && grep -qE "PRODUCTION-READINESS.md" README.md REFERENCE.md \
+  && grep -qE "PUBLICATION-RECORD-2026-06-19.md" README.md REFERENCE.md \
   && grep -qE "public after passing the v0.1 publication audit" SECURITY.md; then
   add_check "readiness_docs" "passed" "README and SECURITY document production/public readiness"
 else
@@ -302,7 +302,7 @@ if grep -qE "ao.command.rsi-health.v0.1" docs/contracts/rsi-health-v0.1.schema.j
   && grep -qE "ao.command.rsi-health-bundle.v0.1" docs/contracts/rsi-health-bundle-v0.1.schema.json \
   && grep -qE '"claim_levels"' docs/contracts/rsi-health-v0.1.schema.json \
   && grep -qE '"sha256"' docs/contracts/rsi-health-bundle-v0.1.schema.json \
-  && grep -qE "rsi manifest --manifest" README.md \
+  && grep -qE "rsi manifest --manifest" README.md REFERENCE.md \
   && grep -qE "rsi manifest --manifest" docs/operations/PRODUCTION-READINESS.md \
   && grep -qE "Validate RSI health contract" .github/workflows/ci.yml \
   && grep -qE "Validate RSI health bundle contract" .github/workflows/ci.yml \
