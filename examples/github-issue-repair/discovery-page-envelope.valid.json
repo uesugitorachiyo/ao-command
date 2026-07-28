@@ -1,0 +1,54 @@
+{
+  "repository": "example/repair-fixture",
+  "default_branch": "master",
+  "head_sha": "1111111111111111111111111111111111111111",
+  "pages": [
+    {
+      "page": 1,
+      "issues": [
+        {
+          "number": 101,
+          "state": "open",
+          "updated_at": "2026-07-27T21:00:00Z",
+          "title": "Sanitized deterministic repair fixture",
+          "body": "A bounded local regression fixture with no external instructions.",
+          "labels": [
+            "bug"
+          ],
+          "classification": "bug",
+          "reported_head_sha": "1111111111111111111111111111111111111111",
+          "fix_present_at_head": false,
+          "environment_accessible": true,
+          "security_sensitive": false,
+          "target_in_repository": true,
+          "no_existing_fix": true,
+          "public_reproduction_feasible": true,
+          "deterministic_local_reproduction": true,
+          "expected_behavior_source": "tests",
+          "bounded_policy_compatible": true
+        },
+        {
+          "number": 102,
+          "state": "open",
+          "updated_at": "2026-07-27T20:00:00Z",
+          "title": "Sanitized already-fixed repair fixture",
+          "body": "A bounded local exclusion fixture with no external instructions.",
+          "labels": [
+            "bug"
+          ],
+          "classification": "already_fixed",
+          "reported_head_sha": "1111111111111111111111111111111111111111",
+          "fix_present_at_head": true,
+          "environment_accessible": true,
+          "security_sensitive": false,
+          "target_in_repository": true,
+          "no_existing_fix": false,
+          "public_reproduction_feasible": true,
+          "deterministic_local_reproduction": true,
+          "expected_behavior_source": "tests",
+          "bounded_policy_compatible": true
+        }
+      ]
+    }
+  ]
+}

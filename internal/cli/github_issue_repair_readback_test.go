@@ -897,6 +897,18 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 		"AO_ARCHITECTURE_REPO: ${{ github.workspace }}/ao-architecture-parity",
 		`AO_ARCHITECTURE_PARITY_REQUIRED: "true"`,
 		`test "$(git -C "$AO_ARCHITECTURE_REPO" rev-parse HEAD)" = "b8c64860003238ab45fe7c76d7e8950f80a4043b"`,
+		"name: Checkout pinned AO2 discovery producer",
+		"repository: uesugitorachiyo/ao2",
+		"ref: 53e45313e8031071d730601a64be22b4d9b0c7fe",
+		"path: ao2-discovery-producer",
+		"persist-credentials: false",
+		`test "$(git -C ao2-discovery-producer rev-parse HEAD)" = "53e45313e8031071d730601a64be22b4d9b0c7fe"`,
+		"name: Install pinned Rust toolchain",
+		"uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable",
+		"name: Replay pinned AO2 discovery producer",
+		"examples/github-issue-repair/discovery-page-envelope.valid.json",
+		"examples/github-issue-repair/discovery-result.valid.json",
+		"name: Consume replayed AO2 discovery output",
 	} {
 		if !strings.Contains(workflow, expected) {
 			t.Fatalf("CI parity oracle wiring missing %q", expected)
@@ -910,6 +922,10 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 		"actions/setup-go": {
 			sha:     "924ae3a1cded613372ab5595356fb5720e22ba16",
 			version: "v6",
+		},
+		"dtolnay/rust-toolchain": {
+			sha:     "4cda84d5c5c54efe2404f9d843567869ab1699d4",
+			version: "stable",
 		},
 	}
 	references, err := scanWorkflowUsesDocuments(body)
@@ -941,6 +957,10 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 		"actions/download-artifact": {
 			sha:     "37930b1c2abaa49bbe596cd826c3c89aef350131",
 			version: "v7",
+		},
+		"dtolnay/rust-toolchain": {
+			sha:     "4cda84d5c5c54efe2404f9d843567869ab1699d4",
+			version: "stable",
 		},
 	}
 	workflowRoot := filepath.Clean("../../.github/workflows")
@@ -1186,18 +1206,26 @@ func TestGitHubIssueRepairReadbackRejectsOversizedInput(t *testing.T) {
 
 func TestGitHubIssueRepairProvenanceManifestReplaysFixtureDigest(t *testing.T) {
 	type manifest struct {
-		Schema                  string `json:"schema"`
-		ArchitectureRepository  string `json:"architecture_repository"`
-		ArchitectureCommit      string `json:"architecture_commit"`
-		SourceSchemaID          string `json:"source_schema_id"`
-		SourceSchemaPath        string `json:"source_schema_path"`
-		SourceSchemaSHA256      string `json:"source_schema_sha256"`
-		ConsumerFixturePath     string `json:"consumer_fixture_path"`
-		ConsumerFixtureSHA256   string `json:"consumer_fixture_sha256"`
-		OperatorMode            string `json:"operator_mode"`
-		NetworkRequired         bool   `json:"network_required"`
-		ShellRequired           bool   `json:"shell_required"`
-		GrantsMutationAuthority bool   `json:"grants_mutation_authority"`
+		Schema                         string `json:"schema"`
+		ArchitectureRepository         string `json:"architecture_repository"`
+		ArchitectureCommit             string `json:"architecture_commit"`
+		SourceSchemaID                 string `json:"source_schema_id"`
+		SourceSchemaPath               string `json:"source_schema_path"`
+		SourceSchemaSHA256             string `json:"source_schema_sha256"`
+		ConsumerFixturePath            string `json:"consumer_fixture_path"`
+		ConsumerFixtureSHA256          string `json:"consumer_fixture_sha256"`
+		ProducerRepository             string `json:"producer_repository"`
+		ProducerCommit                 string `json:"producer_commit"`
+		ProducerInputPath              string `json:"producer_input_path"`
+		ProducerInputSHA256            string `json:"producer_input_sha256"`
+		ProducerOutputPath             string `json:"producer_output_path"`
+		ProducerOutputSHA256           string `json:"producer_output_sha256"`
+		ProducerRuntimeNetworkRequired bool   `json:"producer_runtime_network_required"`
+		ProducerMutatesGitHub          bool   `json:"producer_mutates_github"`
+		OperatorMode                   string `json:"operator_mode"`
+		NetworkRequired                bool   `json:"network_required"`
+		ShellRequired                  bool   `json:"shell_required"`
+		GrantsMutationAuthority        bool   `json:"grants_mutation_authority"`
 	}
 	body, err := os.ReadFile("../../examples/github-issue-repair/provenance-manifest.json")
 	if err != nil {
@@ -1216,8 +1244,20 @@ func TestGitHubIssueRepairProvenanceManifestReplaysFixtureDigest(t *testing.T) {
 		got.SourceSchemaPath != "stack/schemas/github-issue-repair/bounded-discovery-result-v1.schema.json" ||
 		got.SourceSchemaSHA256 != githubIssueRepairSourceDigest ||
 		got.ConsumerFixturePath != "examples/github-issue-repair/discovery-result.valid.json" ||
+		got.ProducerRepository != "uesugitorachiyo/ao2" ||
+		got.ProducerCommit != "53e45313e8031071d730601a64be22b4d9b0c7fe" ||
+		got.ProducerInputPath != "examples/github-issue-repair/discovery-page-envelope.valid.json" ||
+		got.ProducerOutputPath != got.ConsumerFixturePath ||
+		got.ProducerRuntimeNetworkRequired || got.ProducerMutatesGitHub ||
 		got.OperatorMode != operatorMode || got.NetworkRequired || got.ShellRequired || got.GrantsMutationAuthority {
 		t.Fatalf("unexpected provenance manifest: %+v", got)
+	}
+	producerInput, err := os.ReadFile("../../" + got.ProducerInputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest := fmt.Sprintf("%x", sha256.Sum256(producerInput)); digest != got.ProducerInputSHA256 {
+		t.Fatalf("producer input digest=%s want=%s", digest, got.ProducerInputSHA256)
 	}
 	fixture, err := os.ReadFile(githubIssueRepairFixture)
 	if err != nil {
@@ -1225,6 +1265,10 @@ func TestGitHubIssueRepairProvenanceManifestReplaysFixtureDigest(t *testing.T) {
 	}
 	if digest := fmt.Sprintf("%x", sha256.Sum256(fixture)); digest != got.ConsumerFixtureSHA256 {
 		t.Fatalf("fixture digest=%s want=%s", digest, got.ConsumerFixtureSHA256)
+	}
+	if got.ProducerOutputSHA256 != got.ConsumerFixtureSHA256 {
+		t.Fatalf("producer output digest=%s consumer fixture digest=%s",
+			got.ProducerOutputSHA256, got.ConsumerFixtureSHA256)
 	}
 }
 

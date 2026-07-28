@@ -10,27 +10,27 @@
   "selected_limit": 1,
   "page_count": 1,
   "response_digests": [
-    "2222222222222222222222222222222222222222222222222222222222222222"
+    "31e48a03b456d942d2c1f64b0a18d5775f94f0066cf69a1a3b15272e638643c7"
   ],
   "issues": [
     {
       "number": 101,
       "state": "open",
       "updated_at": "2026-07-27T21:00:00Z",
-      "content_digest": "3333333333333333333333333333333333333333333333333333333333333333"
+      "content_digest": "75224d04fbe245464caa6c88742cea211a9d544da86f37f24d54e6f4a711597b"
     },
     {
       "number": 102,
       "state": "open",
       "updated_at": "2026-07-27T20:00:00Z",
-      "content_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+      "content_digest": "1594cb749a8edd5269f9b16c1185be698baf2998c27b0a0e9c64f2764a7adc34"
     }
   ],
   "candidates": [
     {
       "issue_number": 101,
       "rank": 1,
-      "decision_digest": "706b3dd556fb8a76e20d90569c4b39e7843f396feba95bac279de4aac9540ca5"
+      "decision_digest": "289c05a62e5c74dfc81f1dcbd3c5f95bd58559ba2eeaf705514d554fd8731f57"
     }
   ],
   "selected_issue_number": 101,
@@ -38,10 +38,13 @@
     {
       "issue_number": 102,
       "reason_codes": [
-        "already_fixed_current_head"
+        "already_fixed_current_head",
+        "existing_fix_present",
+        "current_head_fixed"
       ],
       "evidence_digests": [
-        "7777777777777777777777777777777777777777777777777777777777777777"
+        "1594cb749a8edd5269f9b16c1185be698baf2998c27b0a0e9c64f2764a7adc34",
+        "31e48a03b456d942d2c1f64b0a18d5775f94f0066cf69a1a3b15272e638643c7"
       ]
     }
   ],
