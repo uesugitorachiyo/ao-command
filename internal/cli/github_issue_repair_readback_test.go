@@ -1,15 +1,20 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const githubIssueRepairFixture = "../../examples/github-issue-repair/discovery-result.valid.json"
@@ -694,59 +699,117 @@ type workflowActionPin struct {
 type workflowUsesReference struct {
 	reference string
 	comment   string
+	line      int
 }
 
-func scanWorkflowUsesLine(line string) (workflowUsesReference, bool, error) {
-	trimmed := strings.TrimSpace(line)
-	if strings.HasPrefix(trimmed, "-") {
-		if len(trimmed) == 1 || trimmed[1] != ' ' && trimmed[1] != '\t' {
-			return workflowUsesReference{}, false, nil
+func scanWorkflowUsesDocuments(body []byte) ([]workflowUsesReference, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(body))
+	var references []workflowUsesReference
+	for document := 1; ; document++ {
+		var root yaml.Node
+		if err := decoder.Decode(&root); err != nil {
+			if errors.Is(err, io.EOF) {
+				return references, nil
+			}
+			return references, fmt.Errorf("parse workflow YAML document %d: %w", document, err)
 		}
-		trimmed = strings.TrimSpace(trimmed[1:])
+		if err := walkWorkflowYAML(&root, &references, make(map[*yaml.Node]bool)); err != nil {
+			return references, fmt.Errorf("workflow YAML document %d: %w", document, err)
+		}
 	}
-	colon := strings.IndexByte(trimmed, ':')
-	if colon < 0 || strings.TrimSpace(trimmed[:colon]) != "uses" {
-		return workflowUsesReference{}, false, nil
-	}
-	value := strings.TrimSpace(trimmed[colon+1:])
-	comment := ""
-	commentAt := -1
-	if strings.HasPrefix(value, "#") {
-		commentAt = 0
-	} else if index := strings.Index(value, " #"); index >= 0 {
-		commentAt = index + 1
-	}
-	if commentAt >= 0 {
-		comment = strings.TrimSpace(value[commentAt+1:])
-		value = strings.TrimSpace(value[:commentAt])
-	}
-	if value == "" {
-		return workflowUsesReference{}, true, fmt.Errorf("uses key has no action reference")
-	}
-	if len(strings.Fields(value)) != 1 {
-		return workflowUsesReference{}, true, fmt.Errorf("uses key has malformed action reference %q", value)
-	}
-	return workflowUsesReference{reference: value, comment: comment}, true, nil
 }
 
-func validateWorkflowActionReference(reference workflowUsesReference, allowed map[string]workflowActionPin) error {
-	parts := strings.Split(reference.reference, "@")
-	if len(parts) != 2 || len(parts[1]) != 40 {
-		return fmt.Errorf("non-40-hex action ref %q", reference.reference)
+func walkWorkflowYAML(node *yaml.Node, references *[]workflowUsesReference, active map[*yaml.Node]bool) error {
+	if node == nil {
+		return nil
 	}
-	for _, character := range parts[1] {
-		isDigit := character >= '0' && character <= '9'
-		isLowerHex := character >= 'a' && character <= 'f'
-		if !isDigit && !isLowerHex {
-			return fmt.Errorf("non-40-hex action ref %q", reference.reference)
+	if active[node] {
+		return fmt.Errorf("cyclic YAML alias at line %d", node.Line)
+	}
+	active[node] = true
+	defer delete(active, node)
+
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			if err := walkWorkflowYAML(child, references, active); err != nil {
+				return err
+			}
 		}
+	case yaml.MappingNode:
+		if len(node.Content)%2 != 0 {
+			return fmt.Errorf("mapping at line %d has an unmatched key", node.Line)
+		}
+		for index := 0; index < len(node.Content); index += 2 {
+			key, err := resolveWorkflowYAMLNode(node.Content[index])
+			if err != nil {
+				return err
+			}
+			value := node.Content[index+1]
+			if key.Kind == yaml.ScalarNode && key.Tag == "!!str" && key.Value == "uses" {
+				resolvedValue, err := resolveWorkflowYAMLNode(value)
+				if err != nil {
+					return err
+				}
+				if resolvedValue.Kind != yaml.ScalarNode || resolvedValue.Tag != "!!str" {
+					return fmt.Errorf("uses value at line %d must be a string scalar", value.Line)
+				}
+				*references = append(*references, workflowUsesReference{
+					reference: resolvedValue.Value,
+					comment: strings.TrimSpace(strings.TrimPrefix(
+						strings.TrimSpace(value.LineComment), "#")),
+					line: value.Line,
+				})
+			}
+			if err := walkWorkflowYAML(value, references, active); err != nil {
+				return err
+			}
+		}
+	case yaml.AliasNode:
+		if node.Alias == nil {
+			return fmt.Errorf("unresolved YAML alias at line %d", node.Line)
+		}
+		return walkWorkflowYAML(node.Alias, references, active)
 	}
-	expected, exists := allowed[parts[0]]
-	if !exists || parts[1] != expected.sha {
-		return fmt.Errorf("unapproved action ref %q", reference.reference)
+	return nil
+}
+
+func resolveWorkflowYAMLNode(node *yaml.Node) (*yaml.Node, error) {
+	seen := make(map[*yaml.Node]bool)
+	for node != nil && node.Kind == yaml.AliasNode {
+		if seen[node] || node.Alias == nil {
+			return nil, fmt.Errorf("invalid YAML alias at line %d", node.Line)
+		}
+		seen[node] = true
+		node = node.Alias
 	}
-	if reference.comment != expected.version {
-		return fmt.Errorf("action ref %q lacks exact comment # %s", reference.reference, expected.version)
+	if node == nil {
+		return nil, errors.New("nil YAML node")
+	}
+	return node, nil
+}
+
+func validateWorkflowActionReferences(references []workflowUsesReference, allowed map[string]workflowActionPin) error {
+	for _, reference := range references {
+		parts := strings.Split(reference.reference, "@")
+		if len(parts) != 2 || len(parts[1]) != 40 {
+			return fmt.Errorf("line %d: non-40-hex action ref %q", reference.line, reference.reference)
+		}
+		for _, character := range parts[1] {
+			isDigit := character >= '0' && character <= '9'
+			isLowerHex := character >= 'a' && character <= 'f'
+			if !isDigit && !isLowerHex {
+				return fmt.Errorf("line %d: non-40-hex action ref %q", reference.line, reference.reference)
+			}
+		}
+		expected, exists := allowed[parts[0]]
+		if !exists || parts[1] != expected.sha {
+			return fmt.Errorf("line %d: unapproved action ref %q", reference.line, reference.reference)
+		}
+		if expected.version != "" && reference.comment != expected.version {
+			return fmt.Errorf("line %d: action ref %q lacks exact comment # %s",
+				reference.line, reference.reference, expected.version)
+		}
 	}
 	return nil
 }
@@ -780,21 +843,14 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 			version: "v6",
 		},
 	}
-	usesCount := 0
-	for _, line := range strings.Split(workflow, "\n") {
-		scanned, found, err := scanWorkflowUsesLine(line)
-		if !found {
-			continue
-		}
-		usesCount++
-		if err != nil {
-			t.Fatalf("CI workflow contains malformed uses key: %v", err)
-		}
-		if err := validateWorkflowActionReference(scanned, allowed); err != nil {
-			t.Fatalf("CI workflow action reference: %v", err)
-		}
+	references, err := scanWorkflowUsesDocuments(body)
+	if err != nil {
+		t.Fatalf("CI workflow YAML: %v", err)
 	}
-	if usesCount == 0 {
+	if err := validateWorkflowActionReferences(references, allowed); err != nil {
+		t.Fatalf("CI workflow action reference: %v", err)
+	}
+	if len(references) == 0 {
 		t.Fatal("CI workflow contains no action references")
 	}
 }
@@ -834,19 +890,16 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for lineNumber, line := range strings.Split(string(body), "\n") {
-			scanned, found, err := scanWorkflowUsesLine(line)
-			if !found {
-				continue
-			}
-			usesCount++
-			if err != nil {
-				t.Fatalf("%s:%d contains malformed uses key: %v", entry.Name(), lineNumber+1, err)
-			}
-			if err := validateWorkflowActionReference(scanned, allowed); err != nil {
-				t.Fatalf("%s:%d: %v", entry.Name(), lineNumber+1, err)
-			}
-			action := strings.SplitN(scanned.reference, "@", 2)[0]
+		references, err := scanWorkflowUsesDocuments(body)
+		if err != nil {
+			t.Fatalf("%s: %v", entry.Name(), err)
+		}
+		if err := validateWorkflowActionReferences(references, allowed); err != nil {
+			t.Fatalf("%s: %v", entry.Name(), err)
+		}
+		usesCount += len(references)
+		for _, reference := range references {
+			action := strings.SplitN(reference.reference, "@", 2)[0]
 			seen[action] = true
 		}
 	}
@@ -860,70 +913,114 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 	}
 }
 
-func TestWorkflowUsesScannerHandlesBlockAndListSyntax(t *testing.T) {
+func TestWorkflowUsesScannerTraversesYAMLStructure(t *testing.T) {
 	checkoutSHA := "3d3c42e5aac5ba805825da76410c181273ba90b1"
 	allowed := map[string]workflowActionPin{
-		"actions/checkout": {sha: checkoutSHA, version: "v7"},
+		"actions/checkout": {sha: checkoutSHA},
 	}
 	tests := []struct {
-		name    string
-		line    string
-		found   bool
-		wantRef string
-		wantErr bool
+		name      string
+		document  string
+		wantCount int
+		wantErr   bool
 	}{
 		{
-			name:    "block form",
-			line:    "      uses: actions/checkout@" + checkoutSHA + " # v7",
-			found:   true,
-			wantRef: "actions/checkout@" + checkoutSHA,
+			name:      "block form",
+			document:  "step:\n  uses: actions/checkout@" + checkoutSHA + "\n",
+			wantCount: 1,
 		},
 		{
-			name:    "list form",
-			line:    "      - uses: actions/checkout@" + checkoutSHA + " # v7",
-			found:   true,
-			wantRef: "actions/checkout@" + checkoutSHA,
+			name:      "nested list form",
+			document:  "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@" + checkoutSHA + "\n",
+			wantCount: 1,
 		},
 		{
-			name:    "list form spacing and comment",
-			line:    "  -   uses :   actions/checkout@" + checkoutSHA + "    # v7",
-			found:   true,
-			wantRef: "actions/checkout@" + checkoutSHA,
+			name:      "quoted key",
+			document:  "step:\n  \"uses\": actions/checkout@" + checkoutSHA + "\n",
+			wantCount: 1,
 		},
 		{
-			name:    "mutable version",
-			line:    "      - uses: actions/checkout@v7",
-			found:   true,
-			wantRef: "actions/checkout@v7",
-			wantErr: true,
+			name:      "spacing and comment",
+			document:  "step:\n  uses : actions/checkout@" + checkoutSHA + " # v7\n",
+			wantCount: 1,
 		},
 		{
-			name:    "malformed action without ref",
-			line:    "      uses: actions/checkout",
-			found:   true,
-			wantRef: "actions/checkout",
-			wantErr: true,
+			name:      "flow map",
+			document:  "step: {uses: actions/checkout@" + checkoutSHA + "}\n",
+			wantCount: 1,
 		},
 		{
-			name:    "uses key without value",
-			line:    "      - uses: # missing",
-			found:   true,
-			wantErr: true,
+			name: "multiple documents",
+			document: "step: {run: echo first}\n---\n" +
+				"step: {uses: actions/checkout@" + checkoutSHA + "}\n",
+			wantCount: 1,
 		},
 		{
-			name:  "not a uses key",
-			line:  "      - run: go test ./...",
-			found: false,
+			name: "scalar alias value",
+			document: "action: &checkout actions/checkout@" + checkoutSHA + "\n" +
+				"step:\n  uses: *checkout\n",
+			wantCount: 1,
+		},
+		{
+			name: "scalar alias key",
+			document: "uses_key: &uses_key uses\n" +
+				"step:\n  *uses_key: actions/checkout@" + checkoutSHA + "\n",
+			wantCount: 1,
+		},
+		{
+			name: "duplicate uses keys are both scanned",
+			document: "step:\n  uses: actions/checkout@" + checkoutSHA + "\n" +
+				"  uses: actions/checkout@v7\n",
+			wantCount: 2,
+			wantErr:   true,
+		},
+		{
+			name:      "mutable version",
+			document:  "step: {uses: actions/checkout@v7}\n",
+			wantCount: 1,
+			wantErr:   true,
+		},
+		{
+			name:      "unapproved action",
+			document:  "step: {uses: other/action@" + checkoutSHA + "}\n",
+			wantCount: 1,
+			wantErr:   true,
+		},
+		{
+			name:      "malformed reference",
+			document:  "step: {uses: actions/checkout}\n",
+			wantCount: 1,
+			wantErr:   true,
+		},
+		{
+			name:     "missing reference",
+			document: "step:\n  uses:\n",
+			wantErr:  true,
+		},
+		{
+			name:     "non-string uses value",
+			document: "step: {uses: [actions/checkout@" + checkoutSHA + "]}\n",
+			wantErr:  true,
+		},
+		{
+			name:     "malformed YAML",
+			document: "step: [\n",
+			wantErr:  true,
+		},
+		{
+			name: "unrelated uses-like text",
+			document: "step:\n  run: 'echo uses: actions/checkout@v7'\n" +
+				"uses_note: uses\n",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			scanned, found, err := scanWorkflowUsesLine(test.line)
-			if found != test.found || scanned.reference != test.wantRef {
-				t.Fatalf("scan=(%+v,%t) want ref=%q found=%t", scanned, found, test.wantRef, test.found)
+			references, err := scanWorkflowUsesDocuments([]byte(test.document))
+			if err == nil {
+				err = validateWorkflowActionReferences(references, allowed)
 			}
-			if err == nil && found {
-				err = validateWorkflowActionReference(scanned, allowed)
+			if len(references) != test.wantCount {
+				t.Fatalf("references=%d want=%d (%+v)", len(references), test.wantCount, references)
 			}
 			if (err != nil) != test.wantErr {
 				t.Fatalf("error=%v wantErr=%t", err, test.wantErr)
