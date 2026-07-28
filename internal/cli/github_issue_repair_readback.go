@@ -21,7 +21,9 @@ const (
 	githubIssueRepairSourceCommit   = "b8c64860003238ab45fe7c76d7e8950f80a4043b"
 	githubIssueRepairSourceDigest   = "f53c8ab36753cc645c48f391d8538ddb0b26cd9fe72edfd149e653e9975b3547"
 	githubIssueRepairInputLimit     = int64(1 << 20)
-	githubIssueRepairNextAction     = "Continue only through downstream governance; AO Command grants no mutation authority."
+	githubIssueRepairSelectedAction = "Submit the selected candidate only to downstream governance; AO Command grants no mutation authority."
+	githubIssueRepairPendingAction  = "Review the unselected candidates before downstream governance; AO Command grants no mutation authority."
+	githubIssueRepairNoIssueAction  = "Record that discovery found no eligible issue; any future repair requires downstream governance, and AO Command grants no mutation authority."
 )
 
 var (
@@ -30,6 +32,7 @@ var (
 	githubIssueRepairSourcePattern = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues$`)
 	githubIssueRepairSHA1Pattern   = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	githubIssueRepairSHA256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	githubIssueRepairDatePattern   = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$`)
 )
 
 type githubIssueRepairDiscovery struct {
@@ -163,11 +166,15 @@ func readGitHubIssueRepairDiscovery(path string) (githubIssueRepairReadbackSumma
 	if err != nil {
 		return githubIssueRepairReadbackSummary{}, err
 	}
-	if err := validateGitHubIssueRepairPresence(body); err != nil {
+	effectiveBody, err := normalizeGitHubIssueRepairDocument(body)
+	if err != nil {
+		return githubIssueRepairReadbackSummary{}, err
+	}
+	if err := validateGitHubIssueRepairPresence(effectiveBody); err != nil {
 		return githubIssueRepairReadbackSummary{}, err
 	}
 	var discovery githubIssueRepairDiscovery
-	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder := json.NewDecoder(bytes.NewReader(effectiveBody))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&discovery); err != nil {
 		return githubIssueRepairReadbackSummary{}, fmt.Errorf("invalid JSON: %w", err)
@@ -182,10 +189,7 @@ func readGitHubIssueRepairDiscovery(path string) (githubIssueRepairReadbackSumma
 	if err := validateGitHubIssueRepairDiscovery(discovery); err != nil {
 		return githubIssueRepairReadbackSummary{}, err
 	}
-	status := "candidate_selected"
-	if discovery.SelectedIssueNumber == nil {
-		status = "no_eligible_issue"
-	}
+	status, nextAction := githubIssueRepairReadbackDisposition(discovery)
 	return githubIssueRepairReadbackSummary{
 		CommandSchemaVersion: commandSchemaVersion,
 		Schema:               githubIssueRepairReadbackSchema,
@@ -205,8 +209,39 @@ func readGitHubIssueRepairDiscovery(path string) (githubIssueRepairReadbackSumma
 		SafeToExecute:        false,
 		ApprovesWork:         false,
 		MutatesGitHub:        false,
-		ExactNextAction:      githubIssueRepairNextAction,
+		ExactNextAction:      nextAction,
 	}, nil
+}
+
+func normalizeGitHubIssueRepairDocument(body []byte) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var effective any
+	if err := decoder.Decode(&effective); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New("invalid JSON: multiple values are not allowed")
+		}
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	normalized, err := json.Marshal(effective)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return normalized, nil
+}
+
+func githubIssueRepairReadbackDisposition(discovery githubIssueRepairDiscovery) (string, string) {
+	if discovery.SelectedIssueNumber != nil {
+		return "candidate_selected", githubIssueRepairSelectedAction
+	}
+	if len(discovery.Candidates) > 0 {
+		return "candidates_not_selected", githubIssueRepairPendingAction
+	}
+	return "no_eligible_issue", githubIssueRepairNoIssueAction
 }
 
 func readGitHubIssueRepairInput(path string) ([]byte, error) {
@@ -460,6 +495,9 @@ func validateUniqueDigestsAcross(label string, digests []string, seen map[string
 }
 
 func validateGitHubIssueRepairTimestamp(label, value string) error {
+	if !githubIssueRepairDatePattern.MatchString(value) {
+		return fmt.Errorf("%s must match the pinned RFC3339 lexical form", label)
+	}
 	_, err := time.Parse(time.RFC3339, value)
 	if err != nil {
 		return fmt.Errorf("%s must be RFC3339: %w", label, err)

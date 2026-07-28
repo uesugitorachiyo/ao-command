@@ -52,13 +52,25 @@ jobs:
           repository: uesugitorachiyo/ao-architecture
           path: ao-architecture
 
+      - name: Checkout pinned AO Architecture parity oracle
+        uses: actions/checkout@v7
+        with:
+          repository: uesugitorachiyo/ao-architecture
+          ref: b8c64860003238ab45fe7c76d7e8950f80a4043b
+          path: ao-architecture-parity
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Test
-        run: go test ./... -count=1
+        env:
+          AO_ARCHITECTURE_REPO: ${{ github.workspace }}/ao-architecture-parity
+          AO_ARCHITECTURE_PARITY_REQUIRED: "true"
+        run: |
+          test "$(git -C "$AO_ARCHITECTURE_REPO" rev-parse HEAD)" = "b8c64860003238ab45fe7c76d7e8950f80a4043b"
+          go test ./... -count=1
 
       - name: Vet
         run: go vet ./...

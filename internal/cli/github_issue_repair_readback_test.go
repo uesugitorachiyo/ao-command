@@ -42,7 +42,7 @@ func TestGitHubIssueRepairReadbackStableOutput(t *testing.T) {
 		"safe_to_execute=false\n" +
 		"approves_work=false\n" +
 		"mutates_github=false\n" +
-		"exact_next_action=Continue only through downstream governance; AO Command grants no mutation authority.\n"
+		"exact_next_action=Submit the selected candidate only to downstream governance; AO Command grants no mutation authority.\n"
 	if stdout != want {
 		t.Fatalf("stdout changed\nwant:\n%s\ngot:\n%s", want, stdout)
 	}
@@ -82,7 +82,7 @@ func TestGitHubIssueRepairReadbackStableJSON(t *testing.T) {
 		"safe_to_execute":        false,
 		"approves_work":          false,
 		"mutates_github":         false,
-		"exact_next_action":      "Continue only through downstream governance; AO Command grants no mutation authority.",
+		"exact_next_action":      "Submit the selected candidate only to downstream governance; AO Command grants no mutation authority.",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("JSON mismatch\nwant: %#v\ngot:  %#v", want, got)
@@ -118,6 +118,96 @@ func TestGitHubIssueRepairReadbackNoEligibleIssue(t *testing.T) {
 	if !strings.Contains(stdout, `"status": "no_eligible_issue"`) ||
 		!strings.Contains(stdout, `"selected_issue": null`) {
 		t.Fatalf("unexpected no-candidate JSON: %s", stdout)
+	}
+}
+
+func TestGitHubIssueRepairReadbackTruthfulStatuses(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutate     func(map[string]any)
+		status     string
+		nextAction string
+	}{
+		{
+			name:   "selected",
+			mutate: func(map[string]any) {},
+			status: "candidate_selected",
+			nextAction: "Submit the selected candidate only to downstream governance; " +
+				"AO Command grants no mutation authority.",
+		},
+		{
+			name: "candidates not selected",
+			mutate: func(document map[string]any) {
+				document["selected_issue_number"] = nil
+				document["exclusion_ledger"] = []any{
+					exclusion(101, "unselected", strings.Repeat("8", 64)),
+					exclusion(102, "unselected", strings.Repeat("7", 64)),
+				}
+			},
+			status: "candidates_not_selected",
+			nextAction: "Review the unselected candidates before downstream governance; " +
+				"AO Command grants no mutation authority.",
+		},
+		{
+			name: "no eligible issue",
+			mutate: func(document map[string]any) {
+				document["candidates"] = []any{}
+				document["selected_issue_number"] = nil
+				document["exclusion_ledger"] = []any{
+					exclusion(101, "not_eligible", strings.Repeat("8", 64)),
+					exclusion(102, "already_fixed_current_head", strings.Repeat("7", 64)),
+				}
+			},
+			status: "no_eligible_issue",
+			nextAction: "Record that discovery found no eligible issue; any future repair requires downstream governance, " +
+				"and AO Command grants no mutation authority.",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := loadGitHubIssueRepairDocument(t)
+			test.mutate(document)
+			path := writeGitHubIssueRepairDocument(t, document)
+			for _, jsonOut := range []bool{false, true} {
+				args := []string{"github-issue", "repair-readback", "--discovery", path}
+				if jsonOut {
+					args = append(args, "--json")
+				}
+				fake := &fakeRunner{}
+				code, stdout, stderr := runWithFake(args, fake)
+				if code != 0 || stderr != "" {
+					t.Fatalf("json=%t exit=%d stderr=%q", jsonOut, code, stderr)
+				}
+				if jsonOut {
+					var summary map[string]any
+					if err := json.Unmarshal([]byte(stdout), &summary); err != nil {
+						t.Fatal(err)
+					}
+					if summary["status"] != test.status || summary["exact_next_action"] != test.nextAction ||
+						summary["operator_mode"] != "read_only" || summary["safe_to_execute"] != false ||
+						summary["approves_work"] != false || summary["mutates_github"] != false {
+						t.Fatalf("unexpected JSON summary: %#v", summary)
+					}
+				} else {
+					for _, expected := range []string{
+						"ao_command_github_issue_repair_readback=" + test.status + "\n",
+						"status=" + test.status + "\n",
+						"operator_mode=read_only\n",
+						"safe_to_execute=false\n",
+						"approves_work=false\n",
+						"mutates_github=false\n",
+						"exact_next_action=" + test.nextAction + "\n",
+					} {
+						if !strings.Contains(stdout, expected) {
+							t.Fatalf("text output missing %q:\n%s", expected, stdout)
+						}
+					}
+				}
+				if len(fake.calls) != 0 {
+					t.Fatalf("status readback invoked Runner: %#v", fake.calls)
+				}
+			}
+		})
 	}
 }
 
@@ -503,6 +593,9 @@ func TestGitHubIssueRepairConsumerParityWithPinnedArchitectureValidator(t *testi
 			d["exclusion_ledger"].([]any)[0].(map[string]any)["reason_codes"] = []any{}
 		}},
 		{name: "invalid date-time", mutate: func(d map[string]any) { d["completed_at"] = "yesterday" }},
+		{name: "comma fractional date-time", mutate: func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T23:00:00,5Z"
+		}},
 	}
 
 	validator := pinnedArchitectureDiscoveryValidator(t)
@@ -519,6 +612,76 @@ func TestGitHubIssueRepairConsumerParityWithPinnedArchitectureValidator(t *testi
 				t.Fatalf("acceptance mismatch: consumer_err=%v architecture_accepts=%t", consumerErr, architectureAccepts)
 			}
 		})
+	}
+}
+
+func TestGitHubIssueRepairDuplicateKeysMatchPinnedArchitecture(t *testing.T) {
+	body := readGitHubIssueRepairFixture(t)
+	tests := []struct {
+		name    string
+		body    string
+		accepts bool
+	}{
+		{
+			name: "top invalid earlier valid final",
+			body: strings.Replace(body, `"snapshot_limit": 50`,
+				`"snapshot_limit": "invalid", "snapshot_limit": 50`, 1),
+			accepts: true,
+		},
+		{
+			name: "nested invalid earlier valid final",
+			body: strings.Replace(body, `"number": 101`,
+				`"number": "invalid", "number": 101`, 1),
+			accepts: true,
+		},
+		{
+			name: "top valid earlier invalid final",
+			body: strings.Replace(body, `"snapshot_limit": 50`,
+				`"snapshot_limit": 50, "snapshot_limit": "invalid"`, 1),
+			accepts: false,
+		},
+		{
+			name: "nested valid earlier invalid final",
+			body: strings.Replace(body, `"number": 101`,
+				`"number": 101, "number": "invalid"`, 1),
+			accepts: false,
+		},
+	}
+	validator := pinnedArchitectureDiscoveryValidator(t)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "duplicate.json")
+			if err := os.WriteFile(path, []byte(test.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, consumerErr := readGitHubIssueRepairDiscovery(path)
+			architectureAccepts := validator(path)
+			if architectureAccepts != test.accepts || (consumerErr == nil) != architectureAccepts {
+				t.Fatalf("acceptance mismatch: expected=%t architecture=%t consumer_err=%v",
+					test.accepts, architectureAccepts, consumerErr)
+			}
+		})
+	}
+}
+
+func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
+	body, err := os.ReadFile("../../.github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(body)
+	for _, expected := range []string{
+		"name: Checkout pinned AO Architecture parity oracle",
+		"repository: uesugitorachiyo/ao-architecture",
+		"ref: b8c64860003238ab45fe7c76d7e8950f80a4043b",
+		"path: ao-architecture-parity",
+		"AO_ARCHITECTURE_REPO: ${{ github.workspace }}/ao-architecture-parity",
+		`AO_ARCHITECTURE_PARITY_REQUIRED: "true"`,
+		`test "$(git -C "$AO_ARCHITECTURE_REPO" rev-parse HEAD)" = "b8c64860003238ab45fe7c76d7e8950f80a4043b"`,
+	} {
+		if !strings.Contains(workflow, expected) {
+			t.Fatalf("CI parity oracle wiring missing %q", expected)
+		}
 	}
 }
 
@@ -655,8 +818,12 @@ func addThirdSnapshotIssue(document map[string]any) {
 
 func pinnedArchitectureDiscoveryValidator(t *testing.T) func(string) bool {
 	t.Helper()
+	required := os.Getenv("AO_ARCHITECTURE_PARITY_REQUIRED") == "true"
 	repository := os.Getenv("AO_ARCHITECTURE_REPO")
 	if repository == "" {
+		if required {
+			t.Fatal("AO_ARCHITECTURE_REPO is required when AO_ARCHITECTURE_PARITY_REQUIRED=true")
+		}
 		workingDirectory, err := os.Getwd()
 		if err != nil {
 			t.Fatal(err)
@@ -665,7 +832,19 @@ func pinnedArchitectureDiscoveryValidator(t *testing.T) func(string) bool {
 	}
 	commit := githubIssueRepairSourceCommit
 	if err := exec.Command("git", "-C", repository, "cat-file", "-e", commit+"^{commit}").Run(); err != nil {
+		if required {
+			t.Fatalf("required pinned AO Architecture checkout unavailable at %s: %v", repository, err)
+		}
 		t.Skipf("pinned AO Architecture checkout unavailable at %s: %v", repository, err)
+	}
+	if required {
+		head, err := exec.Command("git", "-C", repository, "rev-parse", "HEAD").Output()
+		if err != nil {
+			t.Fatalf("read required AO Architecture HEAD: %v", err)
+		}
+		if strings.TrimSpace(string(head)) != commit {
+			t.Fatalf("AO Architecture HEAD=%s want=%s", strings.TrimSpace(string(head)), commit)
+		}
 	}
 	show := func(path string) []byte {
 		t.Helper()
