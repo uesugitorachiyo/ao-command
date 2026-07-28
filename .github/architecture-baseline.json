@@ -1,0 +1,130 @@
+{
+  "schema_version": "ao-command.go-architecture-baseline.v1",
+  "source_tree": "b8a88c4b90867bc4b17a8d97cd289a914d65531c",
+  "prior_sources": {},
+  "measurements": {
+    "internal/cli/cli.go": {
+      "lines": 5062,
+      "owned_declarations": [
+        "func:atlasAuthorityLadder",
+        "func:atlasStatus",
+        "func:blueprintAtlasFoundry",
+        "func:blueprintAtlasFoundryStatus",
+        "func:complexRefactor",
+        "func:complexRefactorStatus",
+        "func:liveMutation",
+        "func:liveMutationApproval",
+        "func:liveMutationClassDecision",
+        "func:liveMutationPRRehearsal",
+        "func:liveMutationStatus",
+        "type:activeStackLedger",
+        "type:activeStackRepository",
+        "type:atlasAuthorityLadderStatus",
+        "type:atlasAuthorityLadderSummary",
+        "type:atlasBlueprintImport",
+        "type:atlasSourceRef",
+        "type:atlasStatusSummary",
+        "type:blueprintAtlasFoundryStatusSummary",
+        "type:complexRefactorContextRepack",
+        "type:complexRefactorFactoryTask",
+        "type:complexRefactorLoopDecision",
+        "type:complexRefactorRepairPlan",
+        "type:complexRefactorSource",
+        "type:complexRefactorStatusSummary",
+        "type:complexRefactorTaskCounts",
+        "type:foundryAtlasStatus",
+        "type:foundryComplexRefactorSummary",
+        "type:foundryPulseIntakePreflight",
+        "type:foundryPulseOvernightStartGate",
+        "type:foundryPulsePRLifecycle",
+        "type:liveMutationApprovalSummary",
+        "type:liveMutationArtifactSummary",
+        "type:liveMutationClassDecisionSummary",
+        "type:liveMutationPRRehearsalSummary",
+        "type:liveMutationRepoState",
+        "type:liveMutationSentinelHold",
+        "type:liveMutationStatusSummary",
+        "type:lowRiskCodeDenialAudit",
+        "type:multiRepoLiveRehearsalDenial",
+        "type:pulseGateStatusSummary",
+        "type:pulseSource"
+      ]
+    },
+    "internal/cli/complex_refactor_readback.go": {
+      "lines": 180,
+      "owned_declarations": [
+        "func:deriveComplexRefactorNextAction",
+        "func:readComplexRefactorStatus",
+        "func:validateComplexRefactorContextRepack",
+        "func:validateComplexRefactorRepairPlan",
+        "func:validateComplexRefactorSummary",
+        "func:validateComplexRefactorTaskCounts"
+      ]
+    },
+    "internal/cli/live_mutation_readback.go": {
+      "lines": 678,
+      "owned_declarations": [
+        "func:liveMutationDeniedHigherClasses",
+        "func:liveMutationHighestProvenLiveClass",
+        "func:liveMutationRequiredEvidence",
+        "func:newLowRiskCodeDenialAudit",
+        "func:newMultiRepoLiveRehearsalDenial",
+        "func:previousLiveMutationClass",
+        "func:readLiveMutationApproval",
+        "func:readLiveMutationClassDecision",
+        "func:readLiveMutationPRRehearsal",
+        "func:readLiveMutationSentinelHold",
+        "func:readLiveMutationStatus"
+      ]
+    },
+    "internal/cli/live_mutation_validation.go": {
+      "lines": 227,
+      "owned_declarations": [
+        "func:jsonEquivalent",
+        "func:liveMutationAnySlice",
+        "func:liveMutationMapBool",
+        "func:liveMutationMapInt",
+        "func:liveMutationMapString",
+        "func:liveMutationRepoStates",
+        "func:liveMutationStringSlice",
+        "func:readLiveMutationArtifact",
+        "func:validateLiveMutationArtifactBoundaries",
+        "func:validateLiveMutationMode",
+        "func:validateLiveMutationRepoStates"
+      ]
+    },
+    "internal/cli/pulse_blueprint_readback.go": {
+      "lines": 368,
+      "owned_declarations": [
+        "func:isHexSHA256",
+        "func:isPulseStatus",
+        "func:pulseSourceByName",
+        "func:readBlueprintAtlasFoundryStatus",
+        "func:readPulseGateStatus",
+        "func:validateAtlasBlueprintImportReadback",
+        "func:validateAtlasSourceRef",
+        "func:validateBlueprintAtlasFoundryBindings",
+        "func:validatePulseIntakePreflight",
+        "func:validatePulseOvernightStartGate",
+        "func:validatePulsePRLifecycle",
+        "func:validatePulseSource"
+      ]
+    },
+    "internal/cli/stack_atlas_readback.go": {
+      "lines": 194,
+      "owned_declarations": [
+        "func:readActiveStackLedger",
+        "func:readAtlasAuthorityLadderStatus",
+        "func:readAtlasStatus",
+        "func:validateAtlasAuthorityLadderStatus",
+        "func:validateFoundryAtlasStatus"
+      ]
+    }
+  },
+  "notes": [
+    "Generated after the stack-status readback source-movement commit.",
+    "The source tree remains stable when repository policy rewrites commit IDs during rebase merge.",
+    "Measured file sizes may decrease but must not increase before another explicit decomposition.",
+    "Stack, Atlas, Pulse, blueprint, complex-refactor, and live-mutation declarations are bound to their measured owner files."
+  ]
+}
