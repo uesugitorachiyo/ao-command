@@ -230,6 +230,7 @@ func TestCommandDispatchCharacterization(t *testing.T) {
 		{Name: "controlled-loop", Handler: "controlledLoop"},
 		{Name: "operator", Handler: "operator"},
 		{Name: "covenant", Handler: "covenant"},
+		{Name: "github-issue", Handler: "githubIssue"},
 		{Name: "forge", Handler: "forge"},
 		{Name: "promoter", Handler: "promoter"},
 		{Name: "rsi", Handler: "rsi"},

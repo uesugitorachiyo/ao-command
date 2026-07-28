@@ -31,6 +31,7 @@ var rootCommandRegistry = []rootCommandEntry{
 	{names: []string{"controlled-loop"}, handler: runRootControlledLoop},
 	{names: []string{"operator"}, handler: runRootOperator},
 	{names: []string{"covenant"}, handler: runRootCovenant},
+	{names: []string{"github-issue"}, handler: runRootGitHubIssue},
 	{names: []string{"forge"}, handler: runRootForge},
 	{names: []string{"promoter"}, handler: runRootPromoter},
 	{names: []string{"rsi"}, handler: runRootRSI},
@@ -107,6 +108,7 @@ Usage:
   ao-command operator status --readback PATH [--at RFC3339] [--json]
   ao-command operator workflow --readback PATH [--json]
   ao-command covenant policy --readback PATH [--json]
+  ao-command github-issue repair-readback --discovery PATH [--json]
   ao-command controlled-loop status --readback PATH [--json]
   ao-command forge timeline --readback PATH [--json]
   ao-command promoter status --readback PATH [--json]
@@ -205,6 +207,10 @@ func runRootOperator(a App, _ context.Context, args []string) int {
 
 func runRootCovenant(a App, _ context.Context, args []string) int {
 	return a.covenant(args)
+}
+
+func runRootGitHubIssue(a App, _ context.Context, args []string) int {
+	return a.githubIssue(args)
 }
 
 func runRootForge(a App, _ context.Context, args []string) int {

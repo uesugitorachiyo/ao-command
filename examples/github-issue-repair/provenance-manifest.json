@@ -1,0 +1,14 @@
+{
+  "schema": "ao.command.github-issue-repair-readback-provenance.v1",
+  "architecture_repository": "uesugitorachiyo/ao-architecture",
+  "architecture_commit": "b8c64860003238ab45fe7c76d7e8950f80a4043b",
+  "source_schema_id": "ao.architecture.autonomous-issue-repair.discovery-result.v1",
+  "source_schema_path": "stack/schemas/github-issue-repair/bounded-discovery-result-v1.schema.json",
+  "source_schema_sha256": "f53c8ab36753cc645c48f391d8538ddb0b26cd9fe72edfd149e653e9975b3547",
+  "consumer_fixture_path": "examples/github-issue-repair/discovery-result.valid.json",
+  "consumer_fixture_sha256": "b8cb6a880d138ce285c11a6fb31ba08ac2e70a9f7c298f816ec27ec8b37850df",
+  "operator_mode": "read_only",
+  "network_required": false,
+  "shell_required": false,
+  "grants_mutation_authority": false
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "ao.architecture.autonomous-issue-repair.discovery-result.v1",
+  "run_id": "repair-run-20260728",
+  "repository": "example/repair-fixture",
+  "default_branch": "master",
+  "head_sha": "1111111111111111111111111111111111111111",
+  "source_url": "https://github.com/example/repair-fixture/issues",
+  "snapshot_limit": 50,
+  "candidate_limit": 10,
+  "selected_limit": 1,
+  "page_count": 1,
+  "response_digests": [
+    "2222222222222222222222222222222222222222222222222222222222222222"
+  ],
+  "issues": [
+    {
+      "number": 101,
+      "state": "open",
+      "updated_at": "2026-07-27T21:00:00Z",
+      "content_digest": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "number": 102,
+      "state": "open",
+      "updated_at": "2026-07-27T20:00:00Z",
+      "content_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "candidates": [
+    {
+      "issue_number": 101,
+      "rank": 1,
+      "decision_digest": "706b3dd556fb8a76e20d90569c4b39e7843f396feba95bac279de4aac9540ca5"
+    }
+  ],
+  "selected_issue_number": 101,
+  "exclusion_ledger": [
+    {
+      "issue_number": 102,
+      "reason_codes": [
+        "already_fixed_current_head"
+      ],
+      "evidence_digests": [
+        "7777777777777777777777777777777777777777777777777777777777777777"
+      ]
+    }
+  ],
+  "mutation_performed": false,
+  "completed_at": "2026-07-27T23:00:00Z"
+}
