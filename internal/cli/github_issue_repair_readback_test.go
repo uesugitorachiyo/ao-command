@@ -221,7 +221,7 @@ func TestGitHubIssueRepairReadbackRejectsMalformedBoundary(t *testing.T) {
 	tests := map[string]string{
 		"unknown write field":    strings.Replace(body, `"mutation_performed": false`, `"execute": false, "mutation_performed": false`, 1),
 		"case variant field":     strings.Replace(body, `"run_id": "repair-run-20260728"`, `"run_id": "repair-run-20260728", "Run_ID": "repair-run-attacker"`, 1),
-		"missing mutation false": strings.Replace(body, `  "mutation_performed": false,`+"\n", "", 1),
+		"missing mutation false": removeGitHubIssueRepairField(t, body, "mutation_performed"),
 		"null mutation false":    strings.Replace(body, `"mutation_performed": false`, `"mutation_performed": null`, 1),
 		"malformed":              body[:len(body)-3],
 		"trailing JSON":          body + "\n{}",
@@ -1303,6 +1303,23 @@ func readGitHubIssueRepairFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return string(body)
+}
+
+func removeGitHubIssueRepairField(t *testing.T, body, field string) string {
+	t.Helper()
+	var document map[string]any
+	if err := json.Unmarshal([]byte(body), &document); err != nil {
+		t.Fatalf("decode fixture before removing %q: %v", field, err)
+	}
+	if _, ok := document[field]; !ok {
+		t.Fatalf("fixture does not contain field %q", field)
+	}
+	delete(document, field)
+	mutated, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		t.Fatalf("encode fixture after removing %q: %v", field, err)
+	}
+	return string(append(mutated, '\n'))
 }
 
 func writeGitHubIssueRepairDocument(t *testing.T, document map[string]any) string {
