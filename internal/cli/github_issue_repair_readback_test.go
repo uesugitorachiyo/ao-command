@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -123,13 +124,13 @@ func TestGitHubIssueRepairReadbackNoEligibleIssue(t *testing.T) {
 func TestGitHubIssueRepairReadbackRejectsMalformedBoundary(t *testing.T) {
 	body := readGitHubIssueRepairFixture(t)
 	tests := map[string]string{
-		"duplicate key":          strings.Replace(body, `"mutation_performed": false`, `"mutation_performed": false, "mutation_performed": false`, 1),
 		"unknown write field":    strings.Replace(body, `"mutation_performed": false`, `"execute": false, "mutation_performed": false`, 1),
 		"case variant field":     strings.Replace(body, `"run_id": "repair-run-20260728"`, `"run_id": "repair-run-20260728", "Run_ID": "repair-run-attacker"`, 1),
 		"missing mutation false": strings.Replace(body, `  "mutation_performed": false,`+"\n", "", 1),
 		"null mutation false":    strings.Replace(body, `"mutation_performed": false`, `"mutation_performed": null`, 1),
 		"malformed":              body[:len(body)-3],
 		"trailing JSON":          body + "\n{}",
+		"invalid UTF-8":          strings.Replace(body, `"master"`, "\"ma\xffster\"", 1),
 	}
 	for name, content := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -144,6 +145,22 @@ func TestGitHubIssueRepairReadbackRejectsMalformedBoundary(t *testing.T) {
 				t.Fatalf("unsafe document accepted: exit=%d stderr=%q", code, stderr)
 			}
 		})
+	}
+}
+
+func TestGitHubIssueRepairReadbackMatchesArchitectureDuplicateKeyHandling(t *testing.T) {
+	body := readGitHubIssueRepairFixture(t)
+	body = strings.Replace(body, `"mutation_performed": false`,
+		`"mutation_performed": false, "mutation_performed": false`, 1)
+	path := filepath.Join(t.TempDir(), "duplicate.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runWithFake([]string{
+		"github-issue", "repair-readback", "--discovery", path,
+	}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("Architecture-compatible duplicate rejected: exit=%d stderr=%q", code, stderr)
 	}
 }
 
@@ -172,9 +189,6 @@ func TestGitHubIssueRepairReadbackRejectsMissingOrNullRequiredFields(t *testing.
 
 func TestGitHubIssueRepairReadbackRejectsRedigestedSemanticViolations(t *testing.T) {
 	tests := map[string]func(map[string]any){
-		"repository source mismatch": func(d map[string]any) {
-			d["source_url"] = "https://github.com/other/repository/issues"
-		},
 		"snapshot over declared limit": func(d map[string]any) {
 			d["snapshot_limit"] = float64(1)
 		},
@@ -187,22 +201,11 @@ func TestGitHubIssueRepairReadbackRejectsRedigestedSemanticViolations(t *testing
 			issues := d["issues"].([]any)
 			issues[1].(map[string]any)["number"] = float64(101)
 		},
-		"duplicate issue digest": func(d map[string]any) {
-			issues := d["issues"].([]any)
-			issues[1].(map[string]any)["content_digest"] = issues[0].(map[string]any)["content_digest"]
-		},
-		"duplicate candidate digest": func(d map[string]any) {
-			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, "706b3dd556fb8a76e20d90569c4b39e7843f396feba95bac279de4aac9540ca5"))
-			d["exclusion_ledger"] = []any{}
-		},
 		"noncontiguous rank": func(d map[string]any) {
 			d["candidates"].([]any)[0].(map[string]any)["rank"] = float64(2)
 		},
 		"candidate outside snapshot": func(d map[string]any) {
 			d["candidates"].([]any)[0].(map[string]any)["issue_number"] = float64(999)
-		},
-		"selected not rank one": func(d map[string]any) {
-			d["selected_issue_number"] = float64(102)
 		},
 		"exclusion outside snapshot": func(d map[string]any) {
 			d["exclusion_ledger"].([]any)[0].(map[string]any)["issue_number"] = float64(999)
@@ -216,9 +219,6 @@ func TestGitHubIssueRepairReadbackRejectsRedigestedSemanticViolations(t *testing
 		"noncandidate excluded twice": func(d map[string]any) {
 			d["exclusion_ledger"] = append(d["exclusion_ledger"].([]any), exclusion(102, "duplicate", strings.Repeat("8", 64)))
 		},
-		"completed offset not UTC": func(d map[string]any) {
-			d["completed_at"] = "2026-07-27T16:00:00-07:00"
-		},
 		"mutation true": func(d map[string]any) {
 			d["mutation_performed"] = true
 		},
@@ -227,6 +227,9 @@ func TestGitHubIssueRepairReadbackRejectsRedigestedSemanticViolations(t *testing
 		},
 		"response digest duplicate": func(d map[string]any) {
 			d["response_digests"] = []any{strings.Repeat("2", 64), strings.Repeat("2", 64)}
+		},
+		"response page mismatch": func(d map[string]any) {
+			d["page_count"] = float64(2)
 		},
 	}
 	for name, mutate := range tests {
@@ -330,13 +333,191 @@ func TestGitHubIssueRepairReadbackRejectsSchemaConstraintViolations(t *testing.T
 		"duplicate evidence digest": func(d map[string]any) {
 			d["exclusion_ledger"].([]any)[0].(map[string]any)["evidence_digests"] = []any{strings.Repeat("7", 64), strings.Repeat("7", 64)}
 		},
-		"candidate without selection": func(d map[string]any) { d["selected_issue_number"] = nil },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
 			document := loadGitHubIssueRepairDocument(t)
 			mutate(document)
 			assertGitHubIssueRepairRejected(t, document)
+		})
+	}
+}
+
+func TestGitHubIssueRepairReadbackAcceptsAuthoritativeValidVariants(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"source URL independent of repository": func(d map[string]any) {
+			d["source_url"] = "https://github.com/other/repository/issues"
+		},
+		"RFC3339 offset": func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T16:00:00-07:00"
+		},
+		"shared issue content digest": func(d map[string]any) {
+			issues := d["issues"].([]any)
+			issues[1].(map[string]any)["content_digest"] = issues[0].(map[string]any)["content_digest"]
+		},
+		"rank two selected": func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, strings.Repeat("9", 64)))
+			d["selected_issue_number"] = float64(102)
+			d["exclusion_ledger"] = []any{exclusion(101, "unselected", strings.Repeat("8", 64))}
+		},
+		"rank two excluded": func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, strings.Repeat("9", 64)))
+		},
+		"shared candidate decision digest": func(d map[string]any) {
+			first := d["candidates"].([]any)[0].(map[string]any)["decision_digest"].(string)
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, first))
+		},
+		"nil selection with candidates": func(d map[string]any) {
+			d["selected_issue_number"] = nil
+			d["exclusion_ledger"] = []any{
+				exclusion(101, "unselected", strings.Repeat("8", 64)),
+				exclusion(102, "unselected", strings.Repeat("7", 64)),
+			}
+		},
+		"shared evidence digest across exclusions": func(d map[string]any) {
+			addThirdSnapshotIssue(d)
+			d["exclusion_ledger"] = []any{
+				exclusion(102, "unselected", strings.Repeat("7", 64)),
+				exclusion(103, "unselected", strings.Repeat("7", 64)),
+			}
+		},
+		"unicode branch character length": func(d map[string]any) {
+			d["default_branch"] = strings.Repeat("界", 255)
+		},
+		"unicode reason character length": func(d map[string]any) {
+			d["exclusion_ledger"].([]any)[0].(map[string]any)["reason_codes"] = []any{strings.Repeat("界", 128)}
+		},
+		"unbounded issue number": func(d map[string]any) {
+			huge := json.Number("9223372036854775808")
+			d["issues"].([]any)[0].(map[string]any)["number"] = huge
+			d["candidates"].([]any)[0].(map[string]any)["issue_number"] = huge
+			d["selected_issue_number"] = huge
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			document := loadGitHubIssueRepairDocument(t)
+			mutate(document)
+			path := writeGitHubIssueRepairDocument(t, document)
+			code, _, stderr := runWithFake([]string{
+				"github-issue", "repair-readback", "--discovery", path,
+			}, &fakeRunner{})
+			if code != 0 {
+				t.Fatalf("authoritative valid variant rejected: %s", stderr)
+			}
+		})
+	}
+}
+
+func TestGitHubIssueRepairConsumerParityWithPinnedArchitectureValidator(t *testing.T) {
+	corpus := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "valid"},
+		{name: "response count mismatch", mutate: func(d map[string]any) { d["page_count"] = float64(2) }},
+		{name: "issues exceed snapshot limit", mutate: func(d map[string]any) { d["snapshot_limit"] = float64(1) }},
+		{name: "candidates exceed candidate limit", mutate: func(d map[string]any) {
+			d["candidate_limit"] = float64(1)
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, strings.Repeat("9", 64)))
+		}},
+		{name: "duplicate issue number", mutate: func(d map[string]any) {
+			d["issues"].([]any)[1].(map[string]any)["number"] = float64(101)
+		}},
+		{name: "duplicate candidate number", mutate: func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(101, 2, strings.Repeat("9", 64)))
+		}},
+		{name: "candidate outside snapshot", mutate: func(d map[string]any) {
+			d["candidates"].([]any)[0].(map[string]any)["issue_number"] = float64(999)
+		}},
+		{name: "duplicate rank", mutate: func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 1, strings.Repeat("9", 64)))
+		}},
+		{name: "noncontiguous rank", mutate: func(d map[string]any) {
+			d["candidates"].([]any)[0].(map[string]any)["rank"] = float64(2)
+		}},
+		{name: "selected outside candidates", mutate: func(d map[string]any) { d["selected_issue_number"] = float64(102) }},
+		{name: "duplicate exclusion", mutate: func(d map[string]any) {
+			d["exclusion_ledger"] = append(d["exclusion_ledger"].([]any), exclusion(102, "again", strings.Repeat("8", 64)))
+		}},
+		{name: "missing unselected exclusion", mutate: func(d map[string]any) { d["exclusion_ledger"] = []any{} }},
+		{name: "nil selection missing exclusion", mutate: func(d map[string]any) {
+			d["selected_issue_number"] = nil
+		}},
+		{name: "rank two selected", mutate: func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, strings.Repeat("9", 64)))
+			d["selected_issue_number"] = float64(102)
+			d["exclusion_ledger"] = []any{exclusion(101, "unselected", strings.Repeat("8", 64))}
+		}},
+		{name: "rank two excluded", mutate: func(d map[string]any) {
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, strings.Repeat("9", 64)))
+		}},
+		{name: "nil selection excludes all", mutate: func(d map[string]any) {
+			d["selected_issue_number"] = nil
+			d["exclusion_ledger"] = []any{
+				exclusion(101, "unselected", strings.Repeat("8", 64)),
+				exclusion(102, "unselected", strings.Repeat("7", 64)),
+			}
+		}},
+		{name: "shared unpinned digests", mutate: func(d map[string]any) {
+			addThirdSnapshotIssue(d)
+			d["issues"].([]any)[1].(map[string]any)["content_digest"] =
+				d["issues"].([]any)[0].(map[string]any)["content_digest"]
+			first := d["candidates"].([]any)[0].(map[string]any)["decision_digest"].(string)
+			d["candidates"] = append(d["candidates"].([]any), candidate(102, 2, first))
+			d["exclusion_ledger"] = []any{
+				exclusion(102, "unselected", strings.Repeat("7", 64)),
+				exclusion(103, "unselected", strings.Repeat("7", 64)),
+			}
+		}},
+		{name: "offset timestamps", mutate: func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T16:00:00-07:00"
+			d["issues"].([]any)[0].(map[string]any)["updated_at"] = "2026-07-27T14:00:00-07:00"
+		}},
+		{name: "independent source URL", mutate: func(d map[string]any) {
+			d["source_url"] = "https://github.com/other/repository/issues"
+		}},
+		{name: "unbounded issue number", mutate: func(d map[string]any) {
+			huge := json.Number("9223372036854775808")
+			d["issues"].([]any)[0].(map[string]any)["number"] = huge
+			d["candidates"].([]any)[0].(map[string]any)["issue_number"] = huge
+			d["selected_issue_number"] = huge
+		}},
+		{name: "missing required field", mutate: func(d map[string]any) { delete(d, "head_sha") }},
+		{name: "unknown top field", mutate: func(d map[string]any) { d["execute"] = false }},
+		{name: "null required field", mutate: func(d map[string]any) { d["mutation_performed"] = nil }},
+		{name: "invalid run pattern", mutate: func(d map[string]any) { d["run_id"] = "short" }},
+		{name: "invalid source pattern", mutate: func(d map[string]any) { d["source_url"] = "http://example.invalid" }},
+		{name: "schema maximum", mutate: func(d map[string]any) { d["snapshot_limit"] = float64(51) }},
+		{name: "schema unique array", mutate: func(d map[string]any) {
+			d["response_digests"] = []any{strings.Repeat("2", 64), strings.Repeat("2", 64)}
+			d["page_count"] = float64(2)
+		}},
+		{name: "nested const", mutate: func(d map[string]any) {
+			d["issues"].([]any)[0].(map[string]any)["state"] = "closed"
+		}},
+		{name: "nested unknown field", mutate: func(d map[string]any) {
+			d["candidates"].([]any)[0].(map[string]any)["approval"] = false
+		}},
+		{name: "array minimum", mutate: func(d map[string]any) {
+			d["exclusion_ledger"].([]any)[0].(map[string]any)["reason_codes"] = []any{}
+		}},
+		{name: "invalid date-time", mutate: func(d map[string]any) { d["completed_at"] = "yesterday" }},
+	}
+
+	validator := pinnedArchitectureDiscoveryValidator(t)
+	for _, test := range corpus {
+		t.Run(test.name, func(t *testing.T) {
+			document := loadGitHubIssueRepairDocument(t)
+			if test.mutate != nil {
+				test.mutate(document)
+			}
+			path := writeGitHubIssueRepairDocument(t, document)
+			_, consumerErr := readGitHubIssueRepairDiscovery(path)
+			architectureAccepts := validator(path)
+			if (consumerErr == nil) != architectureAccepts {
+				t.Fatalf("acceptance mismatch: consumer_err=%v architecture_accepts=%t", consumerErr, architectureAccepts)
+			}
 		})
 	}
 }
@@ -460,5 +641,75 @@ func exclusion(issue int, reason, digest string) map[string]any {
 		"issue_number":     issue,
 		"reason_codes":     []any{reason},
 		"evidence_digests": []any{digest},
+	}
+}
+
+func addThirdSnapshotIssue(document map[string]any) {
+	document["issues"] = append(document["issues"].([]any), map[string]any{
+		"number":         103,
+		"state":          "open",
+		"updated_at":     "2026-07-27T19:00:00Z",
+		"content_digest": strings.Repeat("5", 64),
+	})
+}
+
+func pinnedArchitectureDiscoveryValidator(t *testing.T) func(string) bool {
+	t.Helper()
+	repository := os.Getenv("AO_ARCHITECTURE_REPO")
+	if repository == "" {
+		workingDirectory, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		repository = filepath.Clean(filepath.Join(workingDirectory, "..", "..", "..", "..", "public", "ao-architecture"))
+	}
+	commit := githubIssueRepairSourceCommit
+	if err := exec.Command("git", "-C", repository, "cat-file", "-e", commit+"^{commit}").Run(); err != nil {
+		t.Skipf("pinned AO Architecture checkout unavailable at %s: %v", repository, err)
+	}
+	show := func(path string) []byte {
+		t.Helper()
+		body, err := exec.Command("git", "-C", repository, "show", commit+":"+path).Output()
+		if err != nil {
+			t.Fatalf("read pinned Architecture %s: %v", path, err)
+		}
+		return body
+	}
+	root := t.TempDir()
+	scriptDirectory := filepath.Join(root, "scripts")
+	schemaDirectory := filepath.Join(root, "stack", "schemas", "github-issue-repair")
+	if err := os.MkdirAll(scriptDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(schemaDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(scriptDirectory, "github_issue_autonomous_contracts.py"),
+		show("scripts/github_issue_autonomous_contracts.py"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(schemaDirectory, "bounded-discovery-result-v1.schema.json"),
+		show("stack/schemas/github-issue-repair/bounded-discovery-result-v1.schema.json"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runner := `
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+from github_issue_autonomous_contracts import validate_contract_instance
+with open(sys.argv[2], encoding="utf-8") as source:
+    document = json.load(source)
+errors = validate_contract_instance("bounded_discovery_result", document)
+sys.exit(0 if not errors else 1)
+`
+	return func(documentPath string) bool {
+		command := exec.Command("python3", "-c", runner, scriptDirectory, documentPath)
+		return command.Run() == nil
 	}
 }

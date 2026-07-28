@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 var (
 	githubIssueRepairRunIDPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{7,127}$`)
 	githubIssueRepairRepoPattern   = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	githubIssueRepairSourcePattern = regexp.MustCompile(`^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues$`)
 	githubIssueRepairSHA1Pattern   = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	githubIssueRepairSHA256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -43,51 +46,51 @@ type githubIssueRepairDiscovery struct {
 	ResponseDigests     []string                         `json:"response_digests"`
 	Issues              []githubIssueRepairSnapshotIssue `json:"issues"`
 	Candidates          []githubIssueRepairCandidate     `json:"candidates"`
-	SelectedIssueNumber *int                             `json:"selected_issue_number"`
+	SelectedIssueNumber *json.Number                     `json:"selected_issue_number"`
 	ExclusionLedger     []githubIssueRepairExclusion     `json:"exclusion_ledger"`
 	MutationPerformed   bool                             `json:"mutation_performed"`
 	CompletedAt         string                           `json:"completed_at"`
 }
 
 type githubIssueRepairSnapshotIssue struct {
-	Number        int    `json:"number"`
-	State         string `json:"state"`
-	UpdatedAt     string `json:"updated_at"`
-	ContentDigest string `json:"content_digest"`
+	Number        json.Number `json:"number"`
+	State         string      `json:"state"`
+	UpdatedAt     string      `json:"updated_at"`
+	ContentDigest string      `json:"content_digest"`
 }
 
 type githubIssueRepairCandidate struct {
-	IssueNumber    int    `json:"issue_number"`
-	Rank           int    `json:"rank"`
-	DecisionDigest string `json:"decision_digest"`
+	IssueNumber    json.Number `json:"issue_number"`
+	Rank           int         `json:"rank"`
+	DecisionDigest string      `json:"decision_digest"`
 }
 
 type githubIssueRepairExclusion struct {
-	IssueNumber     int      `json:"issue_number"`
-	ReasonCodes     []string `json:"reason_codes"`
-	EvidenceDigests []string `json:"evidence_digests"`
+	IssueNumber     json.Number `json:"issue_number"`
+	ReasonCodes     []string    `json:"reason_codes"`
+	EvidenceDigests []string    `json:"evidence_digests"`
 }
 
 type githubIssueRepairReadbackSummary struct {
-	CommandSchemaVersion string `json:"command_schema_version"`
-	Schema               string `json:"schema"`
-	SourceSchema         string `json:"source_schema"`
-	SourceContractCommit string `json:"source_contract_commit"`
-	SourceSchemaSHA256   string `json:"source_schema_sha256"`
-	RunID                string `json:"run_id"`
-	Repository           string `json:"repository"`
-	HeadSHA              string `json:"head_sha"`
-	CompletedAt          string `json:"completed_at"`
-	SnapshotCount        int    `json:"snapshot_count"`
-	CandidateCount       int    `json:"candidate_count"`
-	ExclusionCount       int    `json:"exclusion_count"`
-	SelectedIssue        *int   `json:"selected_issue"`
-	Status               string `json:"status"`
-	OperatorMode         string `json:"operator_mode"`
-	SafeToExecute        bool   `json:"safe_to_execute"`
-	ApprovesWork         bool   `json:"approves_work"`
-	MutatesGitHub        bool   `json:"mutates_github"`
-	ExactNextAction      string `json:"exact_next_action"`
+	CommandSchemaVersion string       `json:"command_schema_version"`
+	Schema               string       `json:"schema"`
+	SourceSchema         string       `json:"source_schema"`
+	SourceContractCommit string       `json:"source_contract_commit"`
+	SourceSchemaSHA256   string       `json:"source_schema_sha256"`
+	RunID                string       `json:"run_id"`
+	Repository           string       `json:"repository"`
+	HeadSHA              string       `json:"head_sha"`
+	CompletedAt          string       `json:"completed_at"`
+	SnapshotCount        int          `json:"snapshot_count"`
+	CandidateCount       int          `json:"candidate_count"`
+	ExclusionCount       int          `json:"exclusion_count"`
+	SelectedIssue        *json.Number `json:"selected_issue"`
+	Status               string       `json:"status"`
+	OperatorMode         string       `json:"operator_mode"`
+	SafeToExecute        bool         `json:"safe_to_execute"`
+	ApprovesWork         bool         `json:"approves_work"`
+	MutatesGitHub        bool         `json:"mutates_github"`
+	ExactNextAction      string       `json:"exact_next_action"`
 }
 
 func (a App) githubIssue(args []string) int {
@@ -144,7 +147,7 @@ func (a App) githubIssueRepairReadback(args []string) int {
 	if summary.SelectedIssue == nil {
 		fmt.Fprintln(a.Stdout, "selected_issue=null")
 	} else {
-		fmt.Fprintf(a.Stdout, "selected_issue=%d\n", *summary.SelectedIssue)
+		fmt.Fprintf(a.Stdout, "selected_issue=%s\n", summary.SelectedIssue.String())
 	}
 	fmt.Fprintf(a.Stdout, "status=%s\n", summary.Status)
 	fmt.Fprintf(a.Stdout, "operator_mode=%s\n", summary.OperatorMode)
@@ -219,8 +222,8 @@ func readGitHubIssueRepairInput(path string) ([]byte, error) {
 	if int64(len(body)) > githubIssueRepairInputLimit {
 		return nil, fmt.Errorf("input exceeds %d bytes", githubIssueRepairInputLimit)
 	}
-	if err := rejectDuplicateJSONFields(body); err != nil {
-		return nil, err
+	if !utf8.Valid(body) {
+		return nil, errors.New("invalid JSON: input must be valid UTF-8")
 	}
 	return body, nil
 }
@@ -302,15 +305,15 @@ func validateGitHubIssueRepairDiscovery(discovery githubIssueRepairDiscovery) er
 	if !githubIssueRepairRepoPattern.MatchString(discovery.Repository) {
 		return errors.New("invalid repository")
 	}
-	if len(discovery.DefaultBranch) < 1 || len(discovery.DefaultBranch) > 255 {
+	if utf8.RuneCountInString(discovery.DefaultBranch) < 1 ||
+		utf8.RuneCountInString(discovery.DefaultBranch) > 255 {
 		return errors.New("invalid default_branch")
 	}
 	if !githubIssueRepairSHA1Pattern.MatchString(discovery.HeadSHA) {
 		return errors.New("invalid head_sha")
 	}
-	expectedURL := "https://github.com/" + discovery.Repository + "/issues"
-	if discovery.SourceURL != expectedURL {
-		return errors.New("source_url must exactly match repository")
+	if !githubIssueRepairSourcePattern.MatchString(discovery.SourceURL) {
+		return errors.New("invalid source_url")
 	}
 	if discovery.SnapshotLimit < 1 || discovery.SnapshotLimit > 50 ||
 		discovery.CandidateLimit < 1 || discovery.CandidateLimit > 10 ||
@@ -318,6 +321,7 @@ func validateGitHubIssueRepairDiscovery(discovery githubIssueRepairDiscovery) er
 		return errors.New("invalid discovery bounds")
 	}
 	if len(discovery.ResponseDigests) < 1 ||
+		len(discovery.ResponseDigests) != discovery.PageCount ||
 		len(discovery.Issues) > 50 || len(discovery.Issues) > discovery.SnapshotLimit ||
 		len(discovery.Candidates) > 10 || len(discovery.Candidates) > discovery.CandidateLimit ||
 		len(discovery.ExclusionLedger) > 50 {
@@ -329,89 +333,93 @@ func validateGitHubIssueRepairDiscovery(discovery githubIssueRepairDiscovery) er
 	if discovery.MutationPerformed {
 		return errors.New("discovery result must have mutation_performed=false")
 	}
-	if err := validateGitHubIssueRepairTimestamp("completed_at", discovery.CompletedAt, true); err != nil {
+	if err := validateGitHubIssueRepairTimestamp("completed_at", discovery.CompletedAt); err != nil {
 		return err
 	}
 	return validateGitHubIssueRepairCollections(discovery)
 }
 
 func validateGitHubIssueRepairCollections(discovery githubIssueRepairDiscovery) error {
-	issues := make(map[int]struct{}, len(discovery.Issues))
-	contentDigests := make(map[string]struct{}, len(discovery.Issues))
+	issues := make(map[string]struct{}, len(discovery.Issues))
 	for _, issue := range discovery.Issues {
-		if issue.Number < 1 || issue.State != "open" || !githubIssueRepairSHA256Pattern.MatchString(issue.ContentDigest) {
+		issueNumber, err := githubIssueRepairPositiveInteger(issue.Number)
+		if err != nil || issue.State != "open" || !githubIssueRepairSHA256Pattern.MatchString(issue.ContentDigest) {
 			return errors.New("invalid snapshotted issue")
 		}
-		if err := validateGitHubIssueRepairTimestamp("issue updated_at", issue.UpdatedAt, false); err != nil {
+		if err := validateGitHubIssueRepairTimestamp("issue updated_at", issue.UpdatedAt); err != nil {
 			return err
 		}
-		if _, exists := issues[issue.Number]; exists {
+		if _, exists := issues[issueNumber]; exists {
 			return errors.New("duplicate snapshotted issue number")
 		}
-		if _, exists := contentDigests[issue.ContentDigest]; exists {
-			return errors.New("duplicate snapshotted issue digest")
-		}
-		issues[issue.Number] = struct{}{}
-		contentDigests[issue.ContentDigest] = struct{}{}
+		issues[issueNumber] = struct{}{}
 	}
 
-	candidates := make(map[int]struct{}, len(discovery.Candidates))
-	decisionDigests := make(map[string]struct{}, len(discovery.Candidates))
+	candidates := make(map[string]struct{}, len(discovery.Candidates))
 	for index, candidate := range discovery.Candidates {
-		if candidate.IssueNumber < 1 || candidate.Rank != index+1 || candidate.Rank > 10 ||
+		issueNumber, err := githubIssueRepairPositiveInteger(candidate.IssueNumber)
+		if err != nil || candidate.Rank != index+1 || candidate.Rank > 10 ||
 			!githubIssueRepairSHA256Pattern.MatchString(candidate.DecisionDigest) {
 			return errors.New("invalid or noncontiguous candidate rank")
 		}
-		if _, exists := issues[candidate.IssueNumber]; !exists {
+		if _, exists := issues[issueNumber]; !exists {
 			return errors.New("candidate does not refer to a snapshotted issue")
 		}
-		if _, exists := candidates[candidate.IssueNumber]; exists {
+		if _, exists := candidates[issueNumber]; exists {
 			return errors.New("duplicate candidate issue")
 		}
-		if _, exists := decisionDigests[candidate.DecisionDigest]; exists {
-			return errors.New("duplicate candidate decision digest")
-		}
-		candidates[candidate.IssueNumber] = struct{}{}
-		decisionDigests[candidate.DecisionDigest] = struct{}{}
+		candidates[issueNumber] = struct{}{}
 	}
 
-	exclusions := make(map[int]struct{}, len(discovery.ExclusionLedger))
-	evidenceDigests := make(map[string]struct{})
+	exclusions := make(map[string]struct{}, len(discovery.ExclusionLedger))
 	for _, exclusion := range discovery.ExclusionLedger {
-		if _, exists := issues[exclusion.IssueNumber]; !exists {
-			return errors.New("exclusion does not refer to a snapshotted issue")
+		issueNumber, err := githubIssueRepairPositiveInteger(exclusion.IssueNumber)
+		if err != nil {
+			return errors.New("invalid exclusion issue number")
 		}
-		if _, exists := candidates[exclusion.IssueNumber]; exists {
-			return errors.New("candidate and exclusion sets must be disjoint")
-		}
-		if _, exists := exclusions[exclusion.IssueNumber]; exists {
+		if _, exists := exclusions[issueNumber]; exists {
 			return errors.New("snapshotted issue excluded more than once")
 		}
 		if err := validateGitHubIssueRepairReasons(exclusion.ReasonCodes); err != nil {
 			return err
 		}
-		if err := validateUniqueDigestsAcross("exclusion evidence_digests", exclusion.EvidenceDigests, evidenceDigests); err != nil {
+		if err := validateUniqueDigests("exclusion evidence_digests", exclusion.EvidenceDigests); err != nil {
 			return err
 		}
-		exclusions[exclusion.IssueNumber] = struct{}{}
+		exclusions[issueNumber] = struct{}{}
+	}
+	selectedIssue := ""
+	if discovery.SelectedIssueNumber != nil {
+		var err error
+		selectedIssue, err = githubIssueRepairPositiveInteger(*discovery.SelectedIssueNumber)
+		if err != nil {
+			return errors.New("invalid selected issue number")
+		}
+		if _, exists := candidates[selectedIssue]; !exists {
+			return errors.New("selected issue must be present in candidates")
+		}
 	}
 	for issueNumber := range issues {
-		_, candidate := candidates[issueNumber]
 		_, excluded := exclusions[issueNumber]
-		if !candidate && !excluded {
-			return errors.New("every non-candidate issue must be excluded exactly once")
+		selected := discovery.SelectedIssueNumber != nil && issueNumber == selectedIssue
+		if selected == excluded {
+			return errors.New("exclusion ledger must exactly cover unselected snapshot issues")
 		}
 	}
-	if discovery.SelectedIssueNumber == nil {
-		if len(discovery.Candidates) != 0 {
-			return errors.New("selected issue is required when candidates exist")
+	for issueNumber := range exclusions {
+		if _, exists := issues[issueNumber]; !exists {
+			return errors.New("exclusion ledger must exactly cover unselected snapshot issues")
 		}
-		return nil
-	}
-	if len(discovery.Candidates) == 0 || *discovery.SelectedIssueNumber != discovery.Candidates[0].IssueNumber {
-		return errors.New("selected issue must be the rank-1 candidate")
 	}
 	return nil
+}
+
+func githubIssueRepairPositiveInteger(value json.Number) (string, error) {
+	integer, ok := new(big.Int).SetString(value.String(), 10)
+	if !ok || integer.Sign() < 1 {
+		return "", errors.New("value must be a positive integer")
+	}
+	return integer.String(), nil
 }
 
 func validateGitHubIssueRepairReasons(reasons []string) error {
@@ -420,7 +428,7 @@ func validateGitHubIssueRepairReasons(reasons []string) error {
 	}
 	seen := make(map[string]struct{}, len(reasons))
 	for _, reason := range reasons {
-		if len(reason) < 1 || len(reason) > 128 {
+		if utf8.RuneCountInString(reason) < 1 || utf8.RuneCountInString(reason) > 128 {
 			return errors.New("invalid exclusion reason code")
 		}
 		if _, exists := seen[reason]; exists {
@@ -451,13 +459,10 @@ func validateUniqueDigestsAcross(label string, digests []string, seen map[string
 	return nil
 }
 
-func validateGitHubIssueRepairTimestamp(label, value string, requireUTC bool) error {
-	parsed, err := time.Parse(time.RFC3339, value)
+func validateGitHubIssueRepairTimestamp(label, value string) error {
+	_, err := time.Parse(time.RFC3339, value)
 	if err != nil {
 		return fmt.Errorf("%s must be RFC3339: %w", label, err)
-	}
-	if requireUTC && (!strings.HasSuffix(value, "Z") || parsed.Location() != time.UTC) {
-		return fmt.Errorf("%s must be RFC3339 UTC", label)
 	}
 	return nil
 }
