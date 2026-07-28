@@ -4935,8 +4935,8 @@ func TestWorkflowUsesCurrentNodeRuntimeActions(t *testing.T) {
 		}
 	}
 	for _, current := range []string{
-		"actions/checkout@v7",
-		"actions/setup-go@v6",
+		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+		"actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6",
 	} {
 		if !strings.Contains(workflow, current) {
 			t.Fatalf("workflow must use current action %q", current)

@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check license policy
         run: scripts/check-license-policy.sh
@@ -26,39 +26,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Checkout ao-forge integration fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
 
       - name: Checkout ao-foundry active-stack fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-foundry
           path: ao-foundry
 
       - name: Checkout ao-covenant claim-boundary fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-covenant
           path: ao-covenant
 
       - name: Checkout ao-architecture RSI manifest fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-architecture
           path: ao-architecture
 
+      - name: Checkout pinned AO Architecture parity oracle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: uesugitorachiyo/ao-architecture
+          ref: b8c64860003238ab45fe7c76d7e8950f80a4043b
+          path: ao-architecture-parity
+
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
 
       - name: Test
-        run: go test ./... -count=1
+        env:
+          AO_ARCHITECTURE_REPO: ${{ github.workspace }}/ao-architecture-parity
+          AO_ARCHITECTURE_PARITY_REQUIRED: "true"
+        run: |
+          test "$(git -C "$AO_ARCHITECTURE_REPO" rev-parse HEAD)" = "b8c64860003238ab45fe7c76d7e8950f80a4043b"
+          go test ./... -count=1
 
       - name: Vet
         run: go vet ./...
@@ -368,10 +380,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
 
@@ -386,34 +398,34 @@ jobs:
       - workflow-lint
     steps:
       - name: Checkout ao-command
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Checkout ao-forge integration fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-forge
           path: ao-forge
 
       - name: Checkout ao-foundry active-stack fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-foundry
           path: ao-foundry
 
       - name: Checkout ao-covenant claim-boundary fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-covenant
           path: ao-covenant
 
       - name: Checkout ao-architecture RSI manifest fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: uesugitorachiyo/ao-architecture
           path: ao-architecture
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
 
