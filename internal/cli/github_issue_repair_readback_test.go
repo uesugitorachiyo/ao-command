@@ -441,6 +441,10 @@ func TestGitHubIssueRepairReadbackAcceptsAuthoritativeValidVariants(t *testing.T
 		"RFC3339 offset": func(d map[string]any) {
 			d["completed_at"] = "2026-07-27T16:00:00-07:00"
 		},
+		"extreme valid offsets": func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T23:00:00+22:99"
+			d["issues"].([]any)[0].(map[string]any)["updated_at"] = "2026-07-27T23:00:00-22:99"
+		},
 		"shared issue content digest": func(d map[string]any) {
 			issues := d["issues"].([]any)
 			issues[1].(map[string]any)["content_digest"] = issues[0].(map[string]any)["content_digest"]
@@ -596,6 +600,24 @@ func TestGitHubIssueRepairConsumerParityWithPinnedArchitectureValidator(t *testi
 		{name: "comma fractional date-time", mutate: func(d map[string]any) {
 			d["completed_at"] = "2026-07-27T23:00:00,5Z"
 		}},
+		{name: "completed year zero", mutate: func(d map[string]any) {
+			d["completed_at"] = "0000-01-01T00:00:00Z"
+		}},
+		{name: "issue year zero", mutate: func(d map[string]any) {
+			d["issues"].([]any)[0].(map[string]any)["updated_at"] = "0000-01-01T00:00:00Z"
+		}},
+		{name: "completed positive offset hour 24", mutate: func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T23:00:00+24:00"
+		}},
+		{name: "issue negative offset hour 24", mutate: func(d map[string]any) {
+			d["issues"].([]any)[0].(map[string]any)["updated_at"] = "2026-07-27T23:00:00-24:00"
+		}},
+		{name: "completed positive offset minute 60", mutate: func(d map[string]any) {
+			d["completed_at"] = "2026-07-27T23:00:00+23:60"
+		}},
+		{name: "issue negative offset minute 60", mutate: func(d map[string]any) {
+			d["issues"].([]any)[0].(map[string]any)["updated_at"] = "2026-07-27T23:00:00-23:60"
+		}},
 	}
 
 	validator := pinnedArchitectureDiscoveryValidator(t)
@@ -682,6 +704,24 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 		if !strings.Contains(workflow, expected) {
 			t.Fatalf("CI parity oracle wiring missing %q", expected)
 		}
+	}
+	allowed := map[string]struct{}{
+		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": {},
+		"actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16": {},
+	}
+	usesCount := 0
+	for _, line := range strings.Split(workflow, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "uses:" {
+			continue
+		}
+		usesCount++
+		if _, exists := allowed[fields[1]]; !exists {
+			t.Fatalf("CI workflow contains mutable or unexpected action reference %q", fields[1])
+		}
+	}
+	if usesCount == 0 {
+		t.Fatal("CI workflow contains no action references")
 	}
 }
 

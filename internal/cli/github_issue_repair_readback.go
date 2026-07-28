@@ -498,7 +498,22 @@ func validateGitHubIssueRepairTimestamp(label, value string) error {
 	if !githubIssueRepairDatePattern.MatchString(value) {
 		return fmt.Errorf("%s must match the pinned RFC3339 lexical form", label)
 	}
-	_, err := time.Parse(time.RFC3339, value)
+	if value[:4] == "0000" {
+		return fmt.Errorf("%s year must be in the pinned Python datetime domain", label)
+	}
+	parseValue := value
+	if value[len(value)-1] != 'Z' {
+		offset := value[len(value)-5:]
+		hours := int(offset[0]-'0')*10 + int(offset[1]-'0')
+		minutes := int(offset[3]-'0')*10 + int(offset[4]-'0')
+		totalMinutes := hours*60 + minutes
+		if totalMinutes >= 24*60 {
+			return fmt.Errorf("%s offset must be strictly less than 24 hours", label)
+		}
+		parseValue = value[:len(value)-5] +
+			fmt.Sprintf("%02d:%02d", totalMinutes/60, totalMinutes%60)
+	}
+	_, err := time.Parse(time.RFC3339, parseValue)
 	if err != nil {
 		return fmt.Errorf("%s must be RFC3339: %w", label, err)
 	}
