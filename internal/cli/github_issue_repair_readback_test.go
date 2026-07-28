@@ -702,8 +702,45 @@ type workflowUsesReference struct {
 	line      int
 }
 
+type workflowYAMLScanLimits struct {
+	maxDocuments   int
+	maxUniqueNodes int
+}
+
+const (
+	workflowYAMLMaxDocuments   = 16
+	workflowYAMLMaxUniqueNodes = 10_000
+)
+
+type workflowYAMLScanState struct {
+	limits   workflowYAMLScanLimits
+	visited  map[*yaml.Node]bool
+	active   map[*yaml.Node]bool
+	resolved map[*yaml.Node]*yaml.Node
+	nodes    int
+}
+
 func scanWorkflowUsesDocuments(body []byte) ([]workflowUsesReference, error) {
+	return scanWorkflowUsesDocumentsWithLimits(body, workflowYAMLScanLimits{
+		maxDocuments:   workflowYAMLMaxDocuments,
+		maxUniqueNodes: workflowYAMLMaxUniqueNodes,
+	})
+}
+
+func scanWorkflowUsesDocumentsWithLimits(
+	body []byte,
+	limits workflowYAMLScanLimits,
+) ([]workflowUsesReference, error) {
+	if limits.maxDocuments <= 0 || limits.maxUniqueNodes <= 0 {
+		return nil, errors.New("workflow YAML scan limits must be positive")
+	}
 	decoder := yaml.NewDecoder(bytes.NewReader(body))
+	state := workflowYAMLScanState{
+		limits:   limits,
+		visited:  make(map[*yaml.Node]bool),
+		active:   make(map[*yaml.Node]bool),
+		resolved: make(map[*yaml.Node]*yaml.Node),
+	}
 	var references []workflowUsesReference
 	for document := 1; ; document++ {
 		var root yaml.Node
@@ -713,26 +750,45 @@ func scanWorkflowUsesDocuments(body []byte) ([]workflowUsesReference, error) {
 			}
 			return references, fmt.Errorf("parse workflow YAML document %d: %w", document, err)
 		}
-		if err := walkWorkflowYAML(&root, &references, make(map[*yaml.Node]bool)); err != nil {
+		if document > limits.maxDocuments {
+			return references, fmt.Errorf(
+				"workflow YAML document budget exceeded: maximum %d", limits.maxDocuments)
+		}
+		if err := state.walk(&root, &references); err != nil {
 			return references, fmt.Errorf("workflow YAML document %d: %w", document, err)
 		}
 	}
 }
 
-func walkWorkflowYAML(node *yaml.Node, references *[]workflowUsesReference, active map[*yaml.Node]bool) error {
+func (state *workflowYAMLScanState) walk(
+	node *yaml.Node,
+	references *[]workflowUsesReference,
+) error {
 	if node == nil {
 		return nil
 	}
-	if active[node] {
+	if state.active[node] {
 		return fmt.Errorf("cyclic YAML alias at line %d", node.Line)
 	}
-	active[node] = true
-	defer delete(active, node)
+	// A node's uses semantics depend only on its immutable YAML content.
+	if state.visited[node] {
+		return nil
+	}
+	if state.nodes >= state.limits.maxUniqueNodes {
+		return fmt.Errorf(
+			"workflow YAML unique-node budget exceeded: maximum %d",
+			state.limits.maxUniqueNodes,
+		)
+	}
+	state.visited[node] = true
+	state.nodes++
+	state.active[node] = true
+	defer delete(state.active, node)
 
 	switch node.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for _, child := range node.Content {
-			if err := walkWorkflowYAML(child, references, active); err != nil {
+			if err := state.walk(child, references); err != nil {
 				return err
 			}
 		}
@@ -741,50 +797,63 @@ func walkWorkflowYAML(node *yaml.Node, references *[]workflowUsesReference, acti
 			return fmt.Errorf("mapping at line %d has an unmatched key", node.Line)
 		}
 		for index := 0; index < len(node.Content); index += 2 {
-			key, err := resolveWorkflowYAMLNode(node.Content[index])
+			keyNode := node.Content[index]
+			valueNode := node.Content[index+1]
+			if err := state.walk(keyNode, references); err != nil {
+				return err
+			}
+			if err := state.walk(valueNode, references); err != nil {
+				return err
+			}
+			key, err := state.resolve(keyNode)
 			if err != nil {
 				return err
 			}
-			value := node.Content[index+1]
 			if key.Kind == yaml.ScalarNode && key.Tag == "!!str" && key.Value == "uses" {
-				resolvedValue, err := resolveWorkflowYAMLNode(value)
+				resolvedValue, err := state.resolve(valueNode)
 				if err != nil {
 					return err
 				}
 				if resolvedValue.Kind != yaml.ScalarNode || resolvedValue.Tag != "!!str" {
-					return fmt.Errorf("uses value at line %d must be a string scalar", value.Line)
+					return fmt.Errorf("uses value at line %d must be a string scalar", valueNode.Line)
 				}
 				*references = append(*references, workflowUsesReference{
 					reference: resolvedValue.Value,
 					comment: strings.TrimSpace(strings.TrimPrefix(
-						strings.TrimSpace(value.LineComment), "#")),
-					line: value.Line,
+						strings.TrimSpace(valueNode.LineComment), "#")),
+					line: valueNode.Line,
 				})
-			}
-			if err := walkWorkflowYAML(value, references, active); err != nil {
-				return err
 			}
 		}
 	case yaml.AliasNode:
 		if node.Alias == nil {
 			return fmt.Errorf("unresolved YAML alias at line %d", node.Line)
 		}
-		return walkWorkflowYAML(node.Alias, references, active)
+		return state.walk(node.Alias, references)
 	}
 	return nil
 }
 
-func resolveWorkflowYAMLNode(node *yaml.Node) (*yaml.Node, error) {
+func (state *workflowYAMLScanState) resolve(node *yaml.Node) (*yaml.Node, error) {
 	seen := make(map[*yaml.Node]bool)
+	var aliases []*yaml.Node
 	for node != nil && node.Kind == yaml.AliasNode {
+		if resolved, exists := state.resolved[node]; exists {
+			node = resolved
+			break
+		}
 		if seen[node] || node.Alias == nil {
 			return nil, fmt.Errorf("invalid YAML alias at line %d", node.Line)
 		}
 		seen[node] = true
+		aliases = append(aliases, node)
 		node = node.Alias
 	}
 	if node == nil {
 		return nil, errors.New("nil YAML node")
+	}
+	for _, alias := range aliases {
+		state.resolved[alias] = node
 	}
 	return node, nil
 }
@@ -1026,6 +1095,76 @@ func TestWorkflowUsesScannerTraversesYAMLStructure(t *testing.T) {
 				t.Fatalf("error=%v wantErr=%t", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestWorkflowUsesScannerMemoizesAliasDAGAndFindsLaterMutableReference(t *testing.T) {
+	var document strings.Builder
+	document.WriteString("level0: &level0 [{run: echo bounded}]\n")
+	for level := 1; level <= 24; level++ {
+		fmt.Fprintf(&document, "level%d: &level%d [*level%d, *level%d]\n",
+			level, level, level-1, level-1)
+	}
+	document.WriteString("expanded: *level24\n")
+	document.WriteString("late_step: {uses: actions/checkout@v7}\n")
+
+	references, err := scanWorkflowUsesDocumentsWithLimits(
+		[]byte(document.String()),
+		workflowYAMLScanLimits{maxDocuments: 2, maxUniqueNodes: 256},
+	)
+	if err != nil {
+		t.Fatalf("bounded alias DAG rejected before action validation: %v", err)
+	}
+	if len(references) != 1 || references[0].reference != "actions/checkout@v7" {
+		t.Fatalf("later mutable reference not found: %+v", references)
+	}
+	allowed := map[string]workflowActionPin{
+		"actions/checkout": {sha: "3d3c42e5aac5ba805825da76410c181273ba90b1"},
+	}
+	if err := validateWorkflowActionReferences(references, allowed); err == nil {
+		t.Fatal("later mutable action reference accepted")
+	}
+}
+
+func TestWorkflowUsesScannerVisitsAliasedMappingOnce(t *testing.T) {
+	sha := "3d3c42e5aac5ba805825da76410c181273ba90b1"
+	document := "shared: &shared {uses: actions/checkout@" + sha + "}\n" +
+		"steps: [*shared, *shared]\n"
+	references, err := scanWorkflowUsesDocuments([]byte(document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(references) != 1 || references[0].reference != "actions/checkout@"+sha {
+		t.Fatalf("aliased mapping was skipped or revisited: %+v", references)
+	}
+}
+
+func TestWorkflowUsesScannerRejectsResourceBudgets(t *testing.T) {
+	t.Run("document budget", func(t *testing.T) {
+		_, err := scanWorkflowUsesDocumentsWithLimits(
+			[]byte("{}\n---\n{}\n"),
+			workflowYAMLScanLimits{maxDocuments: 1, maxUniqueNodes: 32},
+		)
+		if err == nil || !strings.Contains(err.Error(), "document budget") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+
+	t.Run("unique node budget", func(t *testing.T) {
+		_, err := scanWorkflowUsesDocumentsWithLimits(
+			[]byte("steps: [{run: one}, {run: two}, {run: three}]\n"),
+			workflowYAMLScanLimits{maxDocuments: 1, maxUniqueNodes: 8},
+		)
+		if err == nil || !strings.Contains(err.Error(), "unique-node budget") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+}
+
+func TestWorkflowUsesScannerRejectsCyclicAlias(t *testing.T) {
+	_, err := scanWorkflowUsesDocuments([]byte("loop: &loop [*loop]\n"))
+	if err == nil || !strings.Contains(err.Error(), "cyclic YAML alias") {
+		t.Fatalf("error=%v", err)
 	}
 }
 
