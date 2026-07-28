@@ -686,6 +686,71 @@ func TestGitHubIssueRepairDuplicateKeysMatchPinnedArchitecture(t *testing.T) {
 	}
 }
 
+type workflowActionPin struct {
+	sha     string
+	version string
+}
+
+type workflowUsesReference struct {
+	reference string
+	comment   string
+}
+
+func scanWorkflowUsesLine(line string) (workflowUsesReference, bool, error) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "-") {
+		if len(trimmed) == 1 || trimmed[1] != ' ' && trimmed[1] != '\t' {
+			return workflowUsesReference{}, false, nil
+		}
+		trimmed = strings.TrimSpace(trimmed[1:])
+	}
+	colon := strings.IndexByte(trimmed, ':')
+	if colon < 0 || strings.TrimSpace(trimmed[:colon]) != "uses" {
+		return workflowUsesReference{}, false, nil
+	}
+	value := strings.TrimSpace(trimmed[colon+1:])
+	comment := ""
+	commentAt := -1
+	if strings.HasPrefix(value, "#") {
+		commentAt = 0
+	} else if index := strings.Index(value, " #"); index >= 0 {
+		commentAt = index + 1
+	}
+	if commentAt >= 0 {
+		comment = strings.TrimSpace(value[commentAt+1:])
+		value = strings.TrimSpace(value[:commentAt])
+	}
+	if value == "" {
+		return workflowUsesReference{}, true, fmt.Errorf("uses key has no action reference")
+	}
+	if len(strings.Fields(value)) != 1 {
+		return workflowUsesReference{}, true, fmt.Errorf("uses key has malformed action reference %q", value)
+	}
+	return workflowUsesReference{reference: value, comment: comment}, true, nil
+}
+
+func validateWorkflowActionReference(reference workflowUsesReference, allowed map[string]workflowActionPin) error {
+	parts := strings.Split(reference.reference, "@")
+	if len(parts) != 2 || len(parts[1]) != 40 {
+		return fmt.Errorf("non-40-hex action ref %q", reference.reference)
+	}
+	for _, character := range parts[1] {
+		isDigit := character >= '0' && character <= '9'
+		isLowerHex := character >= 'a' && character <= 'f'
+		if !isDigit && !isLowerHex {
+			return fmt.Errorf("non-40-hex action ref %q", reference.reference)
+		}
+	}
+	expected, exists := allowed[parts[0]]
+	if !exists || parts[1] != expected.sha {
+		return fmt.Errorf("unapproved action ref %q", reference.reference)
+	}
+	if reference.comment != expected.version {
+		return fmt.Errorf("action ref %q lacks exact comment # %s", reference.reference, expected.version)
+	}
+	return nil
+}
+
 func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 	body, err := os.ReadFile("../../.github/workflows/ci.yml")
 	if err != nil {
@@ -705,19 +770,28 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 			t.Fatalf("CI parity oracle wiring missing %q", expected)
 		}
 	}
-	allowed := map[string]struct{}{
-		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": {},
-		"actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16": {},
+	allowed := map[string]workflowActionPin{
+		"actions/checkout": {
+			sha:     "3d3c42e5aac5ba805825da76410c181273ba90b1",
+			version: "v7",
+		},
+		"actions/setup-go": {
+			sha:     "924ae3a1cded613372ab5595356fb5720e22ba16",
+			version: "v6",
+		},
 	}
 	usesCount := 0
 	for _, line := range strings.Split(workflow, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != "uses:" {
+		scanned, found, err := scanWorkflowUsesLine(line)
+		if !found {
 			continue
 		}
 		usesCount++
-		if _, exists := allowed[fields[1]]; !exists {
-			t.Fatalf("CI workflow contains mutable or unexpected action reference %q", fields[1])
+		if err != nil {
+			t.Fatalf("CI workflow contains malformed uses key: %v", err)
+		}
+		if err := validateWorkflowActionReference(scanned, allowed); err != nil {
+			t.Fatalf("CI workflow action reference: %v", err)
 		}
 	}
 	if usesCount == 0 {
@@ -726,10 +800,7 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 }
 
 func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
-	allowed := map[string]struct {
-		sha     string
-		version string
-	}{
+	allowed := map[string]workflowActionPin{
 		"actions/checkout": {
 			sha:     "3d3c42e5aac5ba805825da76410c181273ba90b1",
 			version: "v7",
@@ -764,28 +835,19 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 			t.Fatal(err)
 		}
 		for lineNumber, line := range strings.Split(string(body), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 || fields[0] != "uses:" {
+			scanned, found, err := scanWorkflowUsesLine(line)
+			if !found {
 				continue
 			}
 			usesCount++
-			parts := strings.SplitN(fields[1], "@", 2)
-			if len(parts) != 2 || len(parts[1]) != 40 {
-				t.Fatalf("%s:%d contains non-40-hex action ref %q", entry.Name(), lineNumber+1, fields[1])
+			if err != nil {
+				t.Fatalf("%s:%d contains malformed uses key: %v", entry.Name(), lineNumber+1, err)
 			}
-			for _, character := range parts[1] {
-				if character < '0' || character > '9' && character < 'a' || character > 'f' {
-					t.Fatalf("%s:%d contains non-40-hex action ref %q", entry.Name(), lineNumber+1, fields[1])
-				}
+			if err := validateWorkflowActionReference(scanned, allowed); err != nil {
+				t.Fatalf("%s:%d: %v", entry.Name(), lineNumber+1, err)
 			}
-			expected, exists := allowed[parts[0]]
-			if !exists || parts[1] != expected.sha {
-				t.Fatalf("%s:%d contains unapproved action ref %q", entry.Name(), lineNumber+1, fields[1])
-			}
-			if !strings.Contains(line, "# "+expected.version) {
-				t.Fatalf("%s:%d action ref lacks comment # %s", entry.Name(), lineNumber+1, expected.version)
-			}
-			seen[parts[0]] = true
+			action := strings.SplitN(scanned.reference, "@", 2)[0]
+			seen[action] = true
 		}
 	}
 	if usesCount == 0 {
@@ -795,6 +857,78 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 		if !seen[action] {
 			t.Fatalf("workflow action allowlist entry %q is not exercised", action)
 		}
+	}
+}
+
+func TestWorkflowUsesScannerHandlesBlockAndListSyntax(t *testing.T) {
+	checkoutSHA := "3d3c42e5aac5ba805825da76410c181273ba90b1"
+	allowed := map[string]workflowActionPin{
+		"actions/checkout": {sha: checkoutSHA, version: "v7"},
+	}
+	tests := []struct {
+		name    string
+		line    string
+		found   bool
+		wantRef string
+		wantErr bool
+	}{
+		{
+			name:    "block form",
+			line:    "      uses: actions/checkout@" + checkoutSHA + " # v7",
+			found:   true,
+			wantRef: "actions/checkout@" + checkoutSHA,
+		},
+		{
+			name:    "list form",
+			line:    "      - uses: actions/checkout@" + checkoutSHA + " # v7",
+			found:   true,
+			wantRef: "actions/checkout@" + checkoutSHA,
+		},
+		{
+			name:    "list form spacing and comment",
+			line:    "  -   uses :   actions/checkout@" + checkoutSHA + "    # v7",
+			found:   true,
+			wantRef: "actions/checkout@" + checkoutSHA,
+		},
+		{
+			name:    "mutable version",
+			line:    "      - uses: actions/checkout@v7",
+			found:   true,
+			wantRef: "actions/checkout@v7",
+			wantErr: true,
+		},
+		{
+			name:    "malformed action without ref",
+			line:    "      uses: actions/checkout",
+			found:   true,
+			wantRef: "actions/checkout",
+			wantErr: true,
+		},
+		{
+			name:    "uses key without value",
+			line:    "      - uses: # missing",
+			found:   true,
+			wantErr: true,
+		},
+		{
+			name:  "not a uses key",
+			line:  "      - run: go test ./...",
+			found: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			scanned, found, err := scanWorkflowUsesLine(test.line)
+			if found != test.found || scanned.reference != test.wantRef {
+				t.Fatalf("scan=(%+v,%t) want ref=%q found=%t", scanned, found, test.wantRef, test.found)
+			}
+			if err == nil && found {
+				err = validateWorkflowActionReference(scanned, allowed)
+			}
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error=%v wantErr=%t", err, test.wantErr)
+			}
+		})
 	}
 }
 
