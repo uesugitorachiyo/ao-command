@@ -725,6 +725,79 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 	}
 }
 
+func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
+	allowed := map[string]struct {
+		sha     string
+		version string
+	}{
+		"actions/checkout": {
+			sha:     "3d3c42e5aac5ba805825da76410c181273ba90b1",
+			version: "v7",
+		},
+		"actions/setup-go": {
+			sha:     "924ae3a1cded613372ab5595356fb5720e22ba16",
+			version: "v6",
+		},
+		"actions/upload-artifact": {
+			sha:     "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+			version: "v7",
+		},
+		"actions/download-artifact": {
+			sha:     "37930b1c2abaa49bbe596cd826c3c89aef350131",
+			version: "v7",
+		},
+	}
+	workflowRoot := filepath.Clean("../../.github/workflows")
+	entries, err := os.ReadDir(workflowRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool, len(allowed))
+	usesCount := 0
+	for _, entry := range entries {
+		extension := filepath.Ext(entry.Name())
+		if entry.IsDir() || extension != ".yml" && extension != ".yaml" {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(workflowRoot, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for lineNumber, line := range strings.Split(string(body), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || fields[0] != "uses:" {
+				continue
+			}
+			usesCount++
+			parts := strings.SplitN(fields[1], "@", 2)
+			if len(parts) != 2 || len(parts[1]) != 40 {
+				t.Fatalf("%s:%d contains non-40-hex action ref %q", entry.Name(), lineNumber+1, fields[1])
+			}
+			for _, character := range parts[1] {
+				if character < '0' || character > '9' && character < 'a' || character > 'f' {
+					t.Fatalf("%s:%d contains non-40-hex action ref %q", entry.Name(), lineNumber+1, fields[1])
+				}
+			}
+			expected, exists := allowed[parts[0]]
+			if !exists || parts[1] != expected.sha {
+				t.Fatalf("%s:%d contains unapproved action ref %q", entry.Name(), lineNumber+1, fields[1])
+			}
+			if !strings.Contains(line, "# "+expected.version) {
+				t.Fatalf("%s:%d action ref lacks comment # %s", entry.Name(), lineNumber+1, expected.version)
+			}
+			seen[parts[0]] = true
+		}
+	}
+	if usesCount == 0 {
+		t.Fatal("workflow directory contains no action references")
+	}
+	for action := range allowed {
+		if !seen[action] {
+			t.Fatalf("workflow action allowlist entry %q is not exercised", action)
+		}
+	}
+}
+
 func TestGitHubIssueRepairReadbackRejectsOversizedInput(t *testing.T) {
 	body := readGitHubIssueRepairFixture(t)
 	body = strings.Replace(body, `"run_id": "repair-run-20260728"`,

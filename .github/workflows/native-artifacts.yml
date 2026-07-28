@@ -25,10 +25,10 @@ jobs:
             binary_suffix: ".exe"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: false
@@ -60,7 +60,7 @@ jobs:
           TARGET_LABEL: ${{ matrix.target_label }}
 
       - name: Upload native artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ao-command-native-artifact-${{ matrix.target_label }}-${{ github.sha }}
           path: target/native-artifacts/${{ matrix.target_label }}
