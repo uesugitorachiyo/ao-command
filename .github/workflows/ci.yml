@@ -59,10 +59,51 @@ jobs:
           ref: b8c64860003238ab45fe7c76d7e8950f80a4043b
           path: ao-architecture-parity
 
+      - name: Checkout pinned AO2 discovery producer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: uesugitorachiyo/ao2
+          ref: 53e45313e8031071d730601a64be22b4d9b0c7fe
+          path: ao2-discovery-producer
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
+
+      - name: Replay pinned AO2 discovery producer
+        run: |
+          test "$(git -C ao2-discovery-producer rev-parse HEAD)" = "53e45313e8031071d730601a64be22b4d9b0c7fe"
+          mkdir -p tmp/github-issue-repair
+          cargo run --locked \
+            --manifest-path ao2-discovery-producer/Cargo.toml \
+            --bin ao2 -- issue discover \
+            --page-envelope examples/github-issue-repair/discovery-page-envelope.valid.json \
+            --url "https://github.com/example/repair-fixture/issues/?ignored=yes#fragment" \
+            --repository example/repair-fixture \
+            --default-branch master \
+            --head-sha 1111111111111111111111111111111111111111 \
+            --run-id repair-run-20260728 \
+            --completed-at 2026-07-27T23:00:00Z \
+            --snapshot-limit 50 \
+            --candidate-limit 10 \
+            --json > tmp/github-issue-repair/discovery-result.json
+          cmp \
+            examples/github-issue-repair/discovery-result.valid.json \
+            tmp/github-issue-repair/discovery-result.json
+
+      - name: Consume replayed AO2 discovery output
+        run: |
+          go run ./cmd/ao-command github-issue repair-readback \
+            --discovery tmp/github-issue-repair/discovery-result.json \
+            --json > tmp/github-issue-repair/readback.json
+          test "$(jq -r .status tmp/github-issue-repair/readback.json)" = "candidate_selected"
+          test "$(jq -r .operator_mode tmp/github-issue-repair/readback.json)" = "read_only"
+          test "$(jq -r .mutates_github tmp/github-issue-repair/readback.json)" = "false"
 
       - name: Test
         env:
