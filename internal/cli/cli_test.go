@@ -187,6 +187,127 @@ func TestMissionStatusReadsAOMissionCommandStatus(t *testing.T) {
 	}
 }
 
+func TestMissionStatusReadsCurrentAOMissionCommandStatus(t *testing.T) {
+	statusPath := filepath.Join(t.TempDir(), "mission-command-status.json")
+	body := `{
+  "schema": "ao.command.mission-status.v0.1",
+  "mission_id": "mission-77fb8f24908ba75e",
+  "correlation_id": "ao-stack-quality-engineering-adoption-20260802",
+  "status": "active",
+  "current_route": "ao-foundry",
+  "current_phase": "handoff_required",
+  "exact_next_action": "month1-command-readback-compatibility",
+  "read_only": true,
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "mutates_repositories": false,
+  "checkpoint_freshness_status": "fresh",
+  "checkpoint_count": 6,
+  "return_gate_status": "early_return_denied",
+  "goal_lease": {
+    "schema": "ao.mission.goal-lease.v0.3",
+    "min_nodes": 10,
+    "min_minutes": 120,
+    "max_minutes": 180,
+    "max_iterations": 1,
+    "return_only_when": "mission_done_or_true_hard_blocker_or_no_ready_work_and_no_exact_next_action",
+    "checkpoint_policy": "after_each_node_or_timed_interval",
+    "created_at_utc": "2026-08-02T18:06:04Z",
+    "updated_at_utc": "2026-08-02T21:37:28Z"
+  },
+  "atlas_recommendation": {
+    "status": "complete",
+    "total_nodes": 10,
+    "completed_nodes": 10,
+    "ready_nodes": 0,
+    "checkpoint_count": 6,
+    "elapsed_minutes": 150,
+    "min_minutes_met": true,
+    "lease_time_status": "within_window",
+    "return_gate_status": "final_response_allowed",
+    "final_response_allowed": true,
+    "rsi_remains_denied": true,
+    "exact_next_action": "none"
+  },
+  "blockers": [],
+  "generated_at_utc": "2026-08-02T21:37:28Z"
+}
+`
+	writeFile(t, statusPath, body)
+
+	code, stdout, stderr := runWithFake(
+		[]string{"mission", "status", "--status", statusPath, "--json"},
+		&fakeRunner{},
+	)
+	if code != 0 {
+		t.Fatalf("current Mission status exit=%d stderr=%s", code, stderr)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid mission status JSON: %v\n%s", err, stdout)
+	}
+	if got["operator_mode"] != "read_only" ||
+		got["mission_id"] != "mission-77fb8f24908ba75e" ||
+		got["correlation_id"] != "ao-stack-quality-engineering-adoption-20260802" {
+		t.Fatalf("current Mission status lost identity or read-only mode: %#v", got)
+	}
+
+	for _, test := range []struct {
+		name           string
+		find           string
+		replacement    string
+		stderrContains string
+	}{
+		{
+			name:           "read only disabled",
+			find:           "\"read_only\": true",
+			replacement:    "\"read_only\": false",
+			stderrContains: "read_only must be true",
+		},
+		{
+			name:           "unknown nested lease field",
+			find:           "\"min_nodes\": 10",
+			replacement:    "\"unexpected\": true,\n    \"min_nodes\": 10",
+			stderrContains: "unknown field",
+		},
+		{
+			name:           "invalid lease window",
+			find:           "\"max_minutes\": 180",
+			replacement:    "\"max_minutes\": 100",
+			stderrContains: "goal_lease bounds are invalid",
+		},
+		{
+			name:           "malformed checkpoint count",
+			find:           "\"checkpoint_count\": 6",
+			replacement:    "\"checkpoint_count\": \"six\"",
+			stderrContains: "invalid JSON",
+		},
+		{
+			name:           "invalid generated timestamp",
+			find:           "\"generated_at_utc\": \"2026-08-02T21:37:28Z\"",
+			replacement:    "\"generated_at_utc\": \"not-a-time\"",
+			stderrContains: "generated_at_utc must be RFC3339",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mission-command-status.json")
+			mutated := strings.Replace(body, test.find, test.replacement, 1)
+			if mutated == body {
+				t.Fatalf("fixture mutation did not apply")
+			}
+			writeFile(t, path, mutated)
+			code, _, stderr := runWithFake(
+				[]string{"mission", "status", "--status", path, "--json"},
+				&fakeRunner{},
+			)
+			if code != 1 || !strings.Contains(stderr, test.stderrContains) {
+				t.Fatalf("mutation exit=%d stderr=%s", code, stderr)
+			}
+		})
+	}
+}
+
 func TestMissionStatusPreservesCorrelationID(t *testing.T) {
 	correlationID := "mission-demo:objective.42"
 	statusPath := writeMissionCommandStatusFixture(t, &correlationID)

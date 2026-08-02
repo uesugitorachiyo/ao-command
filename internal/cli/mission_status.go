@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 func (a App) missionStatus(args []string) int {
@@ -64,19 +66,90 @@ type missionCommandStatusSummary struct {
 }
 
 type missionCommandStatusInput struct {
-	Schema               string
-	MissionID            string
-	Status               string
-	CurrentRoute         string
-	CurrentPhase         string
-	CorrelationID        *string
-	OperatorMode         string
-	SafeToExecute        bool
-	ExecutesWork         bool
-	ApprovesWork         bool
-	MutatesRepositories  bool
-	ExactNextAction      string
-	correlationIDPresent bool
+	Schema                     string
+	MissionID                  string
+	Status                     string
+	CurrentRoute               string
+	CurrentPhase               string
+	CorrelationID              *string
+	OperatorMode               string
+	ReadOnly                   bool
+	SafeToExecute              bool
+	ExecutesWork               bool
+	ApprovesWork               bool
+	MutatesRepositories        bool
+	ExactNextAction            string
+	CheckpointFreshnessStatus  string
+	CheckpointCount            int
+	ReturnGateStatus           string
+	GoalLease                  *missionCommandGoalLease
+	AtlasRecommendation        *missionCommandAtlasRecommendation
+	Blockers                   []string
+	GeneratedAtUTC             string
+	correlationIDPresent       bool
+	readOnlyPresent            bool
+	goalLeasePresent           bool
+	atlasRecommendationPresent bool
+}
+
+type missionCommandGoalLease struct {
+	Schema           string `json:"schema"`
+	MinNodes         int    `json:"min_nodes"`
+	MinMinutes       int    `json:"min_minutes"`
+	MaxMinutes       int    `json:"max_minutes"`
+	MaxIterations    int    `json:"max_iterations"`
+	ReturnOnlyWhen   string `json:"return_only_when"`
+	CheckpointPolicy string `json:"checkpoint_policy"`
+	CreatedAtUTC     string `json:"created_at_utc"`
+	UpdatedAtUTC     string `json:"updated_at_utc"`
+}
+
+type missionCommandAtlasRecommendation struct {
+	Status               string `json:"status"`
+	TotalNodes           int    `json:"total_nodes"`
+	CompletedNodes       int    `json:"completed_nodes"`
+	ReadyNodes           int    `json:"ready_nodes"`
+	CheckpointCount      int    `json:"checkpoint_count"`
+	ElapsedMinutes       int    `json:"elapsed_minutes"`
+	MinMinutesMet        bool   `json:"min_minutes_met"`
+	LeaseTimeStatus      string `json:"lease_time_status"`
+	ReturnGateStatus     string `json:"return_gate_status"`
+	FinalResponseAllowed bool   `json:"final_response_allowed"`
+	Blocker              string `json:"blocker,omitempty"`
+	RSIRemainsDenied     bool   `json:"rsi_remains_denied,omitempty"`
+	ExactNextAction      string `json:"exact_next_action"`
+}
+
+func (lease *missionCommandGoalLease) UnmarshalJSON(data []byte) error {
+	type goalLease missionCommandGoalLease
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode((*goalLease)(lease)); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func (recommendation *missionCommandAtlasRecommendation) UnmarshalJSON(data []byte) error {
+	type atlasRecommendation missionCommandAtlasRecommendation
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode((*atlasRecommendation)(recommendation)); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values")
+		}
+		return err
+	}
+	return nil
 }
 
 func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) {
@@ -87,14 +160,53 @@ func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) 
 	if input.Schema != "ao.command.mission-status.v0.1" {
 		return missionCommandStatusSummary{}, fmt.Errorf("schema must be ao.command.mission-status.v0.1")
 	}
-	if input.MissionID == "" || input.Status == "" || input.CurrentRoute == "" || input.OperatorMode == "" {
+	resolvedOperatorMode := input.OperatorMode
+	if resolvedOperatorMode == "" && input.readOnlyPresent && input.ReadOnly {
+		resolvedOperatorMode = operatorMode
+	}
+	if input.readOnlyPresent && !input.ReadOnly {
+		return missionCommandStatusSummary{}, fmt.Errorf("read_only must be true")
+	}
+	if input.MissionID == "" || input.Status == "" || input.CurrentRoute == "" || resolvedOperatorMode == "" {
 		return missionCommandStatusSummary{}, fmt.Errorf("mission status requires mission_id, status, current_route, and operator_mode")
 	}
-	if input.OperatorMode != operatorMode {
+	if resolvedOperatorMode != operatorMode {
 		return missionCommandStatusSummary{}, fmt.Errorf("operator_mode must be %s", operatorMode)
 	}
 	if input.SafeToExecute || input.ExecutesWork || input.ApprovesWork || input.MutatesRepositories {
 		return missionCommandStatusSummary{}, fmt.Errorf("mission status must not claim execution, approval, or repository mutation authority")
+	}
+	if input.CheckpointCount < 0 {
+		return missionCommandStatusSummary{}, fmt.Errorf("checkpoint_count must not be negative")
+	}
+	switch input.CheckpointFreshnessStatus {
+	case "", "missing", "fresh", "stale_or_missing", "not_required":
+	default:
+		return missionCommandStatusSummary{}, fmt.Errorf("checkpoint_freshness_status is invalid")
+	}
+	switch input.ReturnGateStatus {
+	case "", "early_return_denied", "final_response_allowed":
+	default:
+		return missionCommandStatusSummary{}, fmt.Errorf("return_gate_status is invalid")
+	}
+	if input.GoalLease != nil {
+		if err := validateMissionCommandGoalLease(*input.GoalLease); err != nil {
+			return missionCommandStatusSummary{}, err
+		}
+	} else if input.goalLeasePresent {
+		return missionCommandStatusSummary{}, fmt.Errorf("goal_lease must be an object")
+	}
+	if input.AtlasRecommendation != nil {
+		if err := validateMissionCommandAtlasRecommendation(*input.AtlasRecommendation); err != nil {
+			return missionCommandStatusSummary{}, err
+		}
+	} else if input.atlasRecommendationPresent {
+		return missionCommandStatusSummary{}, fmt.Errorf("atlas_recommendation must be an object")
+	}
+	if input.GeneratedAtUTC != "" {
+		if _, err := time.Parse(time.RFC3339, input.GeneratedAtUTC); err != nil {
+			return missionCommandStatusSummary{}, fmt.Errorf("generated_at_utc must be RFC3339")
+		}
 	}
 	if input.correlationIDPresent && input.CorrelationID == nil {
 		return missionCommandStatusSummary{}, fmt.Errorf("correlation_id must be a string")
@@ -114,13 +226,61 @@ func readMissionCommandStatus(path string) (missionCommandStatusSummary, error) 
 		CurrentRoute:         input.CurrentRoute,
 		CurrentPhase:         input.CurrentPhase,
 		CorrelationID:        correlationID,
-		OperatorMode:         input.OperatorMode,
+		OperatorMode:         resolvedOperatorMode,
 		SafeToExecute:        false,
 		ExecutesWork:         false,
 		ApprovesWork:         false,
 		MutatesRepositories:  false,
 		ExactNextAction:      input.ExactNextAction,
 	}, nil
+}
+
+func validateMissionCommandGoalLease(lease missionCommandGoalLease) error {
+	if lease.Schema != "ao.mission.goal-lease.v0.3" {
+		return fmt.Errorf("goal_lease schema must be ao.mission.goal-lease.v0.3")
+	}
+	if lease.MinNodes <= 0 || lease.MinMinutes < 0 || lease.MaxMinutes <= 0 ||
+		lease.MaxMinutes < lease.MinMinutes || lease.MaxIterations <= 0 {
+		return fmt.Errorf("goal_lease bounds are invalid")
+	}
+	if strings.TrimSpace(lease.ReturnOnlyWhen) == "" || strings.TrimSpace(lease.CheckpointPolicy) == "" {
+		return fmt.Errorf("goal_lease policy fields are required")
+	}
+	if _, err := time.Parse(time.RFC3339, lease.CreatedAtUTC); err != nil {
+		return fmt.Errorf("goal_lease created_at_utc must be RFC3339")
+	}
+	if _, err := time.Parse(time.RFC3339, lease.UpdatedAtUTC); err != nil {
+		return fmt.Errorf("goal_lease updated_at_utc must be RFC3339")
+	}
+	return nil
+}
+
+func validateMissionCommandAtlasRecommendation(recommendation missionCommandAtlasRecommendation) error {
+	if recommendation.Status == "" || recommendation.TotalNodes < 0 ||
+		recommendation.CompletedNodes < 0 || recommendation.ReadyNodes < 0 ||
+		recommendation.CheckpointCount < 0 || recommendation.ElapsedMinutes < 0 ||
+		recommendation.CompletedNodes+recommendation.ReadyNodes > recommendation.TotalNodes {
+		return fmt.Errorf("atlas_recommendation counts are invalid")
+	}
+	switch recommendation.ReturnGateStatus {
+	case "early_return_denied", "final_response_allowed":
+	default:
+		return fmt.Errorf("atlas_recommendation return_gate_status is invalid")
+	}
+	switch recommendation.LeaseTimeStatus {
+	case "within_window", "maximum_exceeded", "minimum_not_met":
+	default:
+		return fmt.Errorf("atlas_recommendation lease_time_status is invalid")
+	}
+	if recommendation.FinalResponseAllowed &&
+		(recommendation.ReturnGateStatus != "final_response_allowed" ||
+			recommendation.ReadyNodes != 0 || recommendation.LeaseTimeStatus != "within_window") {
+		return fmt.Errorf("atlas_recommendation final response is contradictory")
+	}
+	if strings.TrimSpace(recommendation.ExactNextAction) == "" {
+		return fmt.Errorf("atlas_recommendation exact_next_action is required")
+	}
+	return nil
 }
 
 func readStrictMissionCommandStatus(path string) (missionCommandStatusInput, error) {
@@ -172,6 +332,9 @@ func readStrictMissionCommandStatus(path string) (missionCommandStatusInput, err
 			target = &input.CorrelationID
 		case "operator_mode":
 			target = &input.OperatorMode
+		case "read_only":
+			input.readOnlyPresent = true
+			target = &input.ReadOnly
 		case "safe_to_execute":
 			target = &input.SafeToExecute
 		case "executes_work":
@@ -182,6 +345,22 @@ func readStrictMissionCommandStatus(path string) (missionCommandStatusInput, err
 			target = &input.MutatesRepositories
 		case "exact_next_action":
 			target = &input.ExactNextAction
+		case "checkpoint_freshness_status":
+			target = &input.CheckpointFreshnessStatus
+		case "checkpoint_count":
+			target = &input.CheckpointCount
+		case "return_gate_status":
+			target = &input.ReturnGateStatus
+		case "goal_lease":
+			input.goalLeasePresent = true
+			target = &input.GoalLease
+		case "atlas_recommendation":
+			input.atlasRecommendationPresent = true
+			target = &input.AtlasRecommendation
+		case "blockers":
+			target = &input.Blockers
+		case "generated_at_utc":
+			target = &input.GeneratedAtUTC
 		default:
 			return missionCommandStatusInput{}, fmt.Errorf("invalid JSON: unknown field %q", field)
 		}
