@@ -40,24 +40,24 @@ func TestNativeArtifactWorkflowContract(t *testing.T) {
 			t.Fatalf("native artifact workflow must not include %q", forbidden)
 		}
 	}
-	for _, forbiddenTrigger := range []string{"pull_request:", "push:", "schedule:"} {
-		if strings.Contains(workflow, forbiddenTrigger) {
-			t.Fatalf("native artifact uploads must not run by default, found trigger %q", forbiddenTrigger)
-		}
+	triggerStart := strings.Index(workflow, "on:\n")
+	permissionsStart := strings.Index(workflow, "\npermissions:")
+	if triggerStart < 0 || permissionsStart < 0 || triggerStart >= permissionsStart {
+		t.Fatal("native artifact workflow must declare a bounded trigger block")
 	}
-	if !strings.Contains(workflow, "workflow_dispatch:") {
-		t.Fatal("native artifact workflow must be explicitly manual")
+	triggerBlock := strings.TrimSpace(workflow[triggerStart+len("on:\n") : permissionsStart])
+	if triggerBlock != "workflow_dispatch:" {
+		t.Fatalf("native artifact workflow must be workflow_dispatch-only, got %q", triggerBlock)
 	}
 
 	nativeBuild := strings.Index(workflow, "go build -trimpath")
 	policyCheckout := strings.Index(workflow, "repository: uesugitorachiyo/ao-architecture")
-	if nativeBuild < 0 || policyCheckout < 0 || nativeBuild >= policyCheckout {
-		t.Fatal("native artifact must be built before the policy checkout modifies the source tree")
-	}
+	metadataReader := strings.Index(workflow, "scripts/read_go_binary_metadata.go")
 	builder := strings.Index(workflow, "scripts/build_go_supply_chain_candidate.py")
 	verifier := strings.Index(workflow, "scripts/verify_supply_chain_policy.py")
-	if builder < 0 || verifier < 0 || builder >= verifier {
-		t.Fatal("supply-chain builder and verifier steps are required in order")
+	if nativeBuild < 0 || policyCheckout < 0 || metadataReader < 0 || builder < 0 || verifier < 0 ||
+		!(nativeBuild < policyCheckout && policyCheckout < metadataReader && metadataReader < builder && builder < verifier) {
+		t.Fatal("native build, policy checkout, metadata reader, builder, and verifier are required in order")
 	}
 	hasExactLine := func(section, want string) bool {
 		for _, line := range strings.Split(section, "\n") {
