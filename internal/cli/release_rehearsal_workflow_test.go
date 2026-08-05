@@ -44,7 +44,6 @@ func TestReleaseRehearsalWorkflowStructure(t *testing.T) {
 		"source_commit",
 		"approved_manifest_base64",
 		"approved_manifest_digest",
-		"release_notes",
 		"dry_run",
 		"expected_plan_digest",
 		"exact_confirmation",
@@ -55,6 +54,9 @@ func TestReleaseRehearsalWorkflowStructure(t *testing.T) {
 	}
 	if len(inputs) > 10 {
 		t.Fatalf("workflow_dispatch has %d inputs; GitHub permits at most 10", len(inputs))
+	}
+	if inputs["release_notes"] != nil {
+		t.Fatal("release notes must come from the exact source commit, not workflow input")
 	}
 	dryRun := requireObject(t, inputs["dry_run"], "dry_run")
 	if dryRun["default"] != true {
@@ -130,6 +132,9 @@ func TestReleaseRehearsalWorkflowStructure(t *testing.T) {
 		"base64 --decode",
 		"approved-release-manifest.json",
 		"docs/release/V${VERSION}-OPERATOR-CLOSEOUT.md",
+		`git cat-file blob "${SOURCE_COMMIT}:${release_notes_path}" > "$release_notes_blob"`,
+		`release_notes_digest=$(sha256sum < "$release_notes_blob" | awk '{print $1}')`,
+		`cp "approved-manifest/release-notes.md" release-notes.md`,
 		"help-smoke.txt",
 		"version --json",
 		"version-readback.json",
