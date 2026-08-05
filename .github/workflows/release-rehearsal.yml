@@ -23,10 +23,6 @@ on:
         description: SHA-256 of the decoded approved release manifest bytes.
         required: true
         type: string
-      release_notes:
-        description: Exact release notes bound to the candidate.
-        required: true
-        type: string
       dry_run:
         description: Build private artifacts and a plan without public mutation.
         required: true
@@ -69,7 +65,6 @@ jobs:
           APPROVED_MANIFEST_DIGEST: ${{ inputs.approved_manifest_digest }}
           DRY_RUN: ${{ inputs.dry_run }}
           EXPECTED_PLAN_DIGEST: ${{ inputs.expected_plan_digest }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           TAG: ${{ inputs.tag }}
           VERSION: ${{ inputs.version }}
@@ -87,14 +82,17 @@ jobs:
           elif [[ -n "$EXPECTED_PLAN_DIGEST" ]]; then
             [[ "$EXPECTED_PLAN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid expected plan digest" >&2; exit 1; }
           fi
-          release_notes_digest=$(printf '%s' "$RELEASE_NOTES" | sha256sum | awk '{print $1}')
+          release_notes_path="docs/release/V${VERSION}-OPERATOR-CLOSEOUT.md"
+          release_notes_blob="approved-manifest/release-notes.md"
+          mkdir -p approved-manifest
+          git cat-file blob "${SOURCE_COMMIT}:${release_notes_path}" > "$release_notes_blob"
+          [[ -s "$release_notes_blob" ]] || { echo "repository release notes are empty" >&2; exit 1; }
+          [[ "$(wc -c < "$release_notes_blob")" -le 32768 ]] || { echo "repository release notes exceed 32768 bytes" >&2; exit 1; }
+          release_notes_digest=$(sha256sum < "$release_notes_blob" | awk '{print $1}')
           export RELEASE_NOTES_DIGEST="$release_notes_digest"
           printf 'release_notes_digest=%s\n' "$RELEASE_NOTES_DIGEST" >> "$GITHUB_OUTPUT"
-          version_source="docs/release/V${VERSION}-OPERATOR-CLOSEOUT.md"
-          [[ -f "$version_source" ]] || { echo "repository version source missing" >&2; exit 1; }
-          IFS= read -r version_heading < "$version_source"
+          IFS= read -r version_heading < "$release_notes_blob"
           [[ "$version_heading" == "# AO Command v${VERSION} Operator Closeout" ]] || { echo "repository version source mismatch" >&2; exit 1; }
-          mkdir -p approved-manifest
           printf '%s' "$APPROVED_MANIFEST_BASE64" | base64 --decode > approved-manifest/approved-release-manifest.json
           python3 scripts/release-rehearsal-verify.py manifest
 
@@ -145,7 +143,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ao-command-approved-release-manifest-${{ inputs.source_commit }}
-          path: approved-manifest/approved-release-manifest.json
+          path: |
+            approved-manifest/approved-release-manifest.json
+            approved-manifest/release-notes.md
           overwrite: false
           if-no-files-found: error
 
@@ -563,14 +563,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
+          RELEASE_NOTES_DIGEST: ${{ needs.validate-inputs.outputs.release_notes_digest }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           TAG: ${{ inputs.tag }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]] || { echo "publisher checkout source drift" >&2; exit 1; }
-          printf '%s' "$RELEASE_NOTES" > release-notes.md
+          actual_release_notes_digest=$(sha256sum < approved-manifest/release-notes.md | awk '{print $1}')
+          [[ "$actual_release_notes_digest" == "$RELEASE_NOTES_DIGEST" ]] || { echo "publisher release notes digest mismatch" >&2; exit 1; }
+          cp "approved-manifest/release-notes.md" release-notes.md
           mapfile -t archives < <(find downloaded-candidates -type f \( -name '*.tar.gz' -o -name '*.zip' \) | sort)
           [[ "${#archives[@]}" -eq 3 ]] || { echo "candidate archive inventory is incomplete" >&2; exit 1; }
           created_tag_commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
