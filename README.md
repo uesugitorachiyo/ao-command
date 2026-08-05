@@ -59,7 +59,7 @@ portfolio coordination.
 - [Branch Protection](docs/operations/BRANCH-PROTECTION.md)
 - [Retained Evidence](docs/operations/RETAINED-EVIDENCE.md)
 - [Publication Checklist](docs/operations/PUBLICATION-CHECKLIST.md)
-- [v0.1.1 Operator Closeout](docs/release/V0.1.1-OPERATOR-CLOSEOUT.md)
+- [v0.1.2 Operator Closeout](docs/release/V0.1.2-OPERATOR-CLOSEOUT.md)
 - [Full Reference](REFERENCE.md)
 
 ## Verification
