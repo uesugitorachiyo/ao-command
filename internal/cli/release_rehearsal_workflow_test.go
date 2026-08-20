@@ -916,25 +916,18 @@ func (fixture *releaseFixture) syncCandidateManifestDigest(t *testing.T) {
 
 func readReleaseWorkflow(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release-rehearsal.yml"))
+	workflow, err := readWorkflowTestFile(filepath.Join("..", "..", ".github", "workflows", "release-rehearsal.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(data)
+	return workflow
 }
 
 func parseReleaseWorkflow(t *testing.T) map[string]any {
 	t.Helper()
-	path := filepath.Join("..", "..", ".github", "workflows", "release-rehearsal.yml")
-	script := `document = YAML.safe_load(File.read(ARGV[0]), aliases: true); document["on"] = document.delete(true) if document.key?(true); puts JSON.generate(document)`
-	command := exec.Command("ruby", "-ryaml", "-rjson", "-e", script, path)
-	output, err := command.CombinedOutput()
+	document, err := parseWorkflowTestYAML(readReleaseWorkflow(t))
 	if err != nil {
-		t.Fatalf("parse workflow YAML: %v\n%s", err, output)
-	}
-	var document map[string]any
-	if err := json.Unmarshal(output, &document); err != nil {
-		t.Fatalf("decode parsed workflow: %v\n%s", err, output)
+		t.Fatalf("parse workflow YAML: %v", err)
 	}
 	return document
 }

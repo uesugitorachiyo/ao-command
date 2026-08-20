@@ -1,2 +1,5 @@
 examples/github-issue-repair/*.json text eol=lf
 examples/mission/artifacts/sha256/* -text
+*.go text eol=lf
+*.sh text eol=lf
+CLAUDE.md text eol=lf

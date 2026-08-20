@@ -8,11 +8,10 @@ import (
 )
 
 func TestNativeArtifactWorkflowContract(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "native-artifacts.yml"))
+	workflow, err := readWorkflowTestFile(filepath.Join("..", "..", ".github", "workflows", "native-artifacts.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow := string(data)
 	for _, want := range []string{
 		"ubuntu-latest",
 		"macos-latest",
