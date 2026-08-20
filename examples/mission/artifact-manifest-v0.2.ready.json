@@ -1,0 +1,19 @@
+{
+  "schema": "ao.mission.artifact-manifest.v0.2",
+  "mission_id": "mission-demo-v02",
+  "artifact_refs": [
+    {
+      "schema": "ao.mission.artifact-ref.v0.1",
+      "ref": "source evidence.json",
+      "content_ref": "artifacts/sha256/36440794d6b9ff1eb1405cf82a1e9fa63ce999d3cafe3020f281e8ea47cd0af7",
+      "digest": "sha256:36440794d6b9ff1eb1405cf82a1e9fa63ce999d3cafe3020f281e8ea47cd0af7",
+      "kind": "example"
+    }
+  ],
+  "manifest_digest": "sha256:7fd9cad972f87ed2f770606bd2b1307ae3007046ba071428d37ad4ea9d6d97c1",
+  "signature": "ao-mission-local-digest:sha256:7fd9cad972f87ed2f770606bd2b1307ae3007046ba071428d37ad4ea9d6d97c1",
+  "safe_to_execute": false,
+  "executes_work": false,
+  "approves_work": false,
+  "generated_at_utc": "2026-08-20T00:00:00Z"
+}

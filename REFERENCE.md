@@ -59,7 +59,7 @@ go run ./cmd/ao-command mission status --status examples/mission/command-status.
 go run ./cmd/ao-command mission next --decision examples/mission/route-decision.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json --route ao-atlas --query "Foundry import" --compact
-go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
+go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest-v0.2.ready.json --content-root examples/mission
 go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json
 go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json --compact
 go run ./cmd/ao-command mission readiness --bundle examples/mission/readiness-bundle.ready.json
@@ -112,8 +112,12 @@ rejects any route-history entry that claims execution, approval, or repository
 mutation authority. Compact timeline output can be narrowed with `--route`,
 `--status-filter`, and `--query` without changing read-only authority.
 
-`mission artifacts` reads AO Mission's `ao.mission.artifact-manifest.v0.1`
-artifact manifest and reports the artifact count and refs in
+`mission artifacts` reads AO Mission's current `ao.mission.artifact-manifest.v0.2`
+with an explicit trusted Mission home supplied through `--content-root`. Command
+verifies the manifest digest/signature and hashes each retained `content_ref`
+before returning its exact `ref`, `content_ref`, and `digest`. Historical
+`ao.mission.artifact-manifest.v0.1` inputs remain supported without this flag.
+The command reports the artifact count and refs in
 `operator_mode=read_only`. It rejects any manifest that claims execution,
 approval, or repository mutation authority.
 
