@@ -1,10 +1,13 @@
 package workflowpolicy
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -52,7 +55,7 @@ func TestValidateFilesRejectsCountAndTotalLimits(t *testing.T) {
 	assertViolation(t, ValidateFiles(paths), paths[len(paths)-1], "workflow total byte limit exceeded")
 }
 
-func TestValidateFilesRejectsSymlinkNonRegularAndOversizeFiles(t *testing.T) {
+func TestValidateFilesRejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	regular := filepath.Join(dir, "regular.yml")
 	if err := os.WriteFile(regular, []byte("jobs: {}\n"), 0o644); err != nil {
@@ -60,10 +63,16 @@ func TestValidateFilesRejectsSymlinkNonRegularAndOversizeFiles(t *testing.T) {
 	}
 	symlink := filepath.Join(dir, "link.yml")
 	if err := os.Symlink(regular, symlink); err != nil {
-		t.Logf("symlink creation unavailable on this host: %v", err)
-	} else {
-		assertViolation(t, ValidateFiles([]string{symlink}), symlink, "workflow must not be a symlink")
+		if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+			t.Skip("Windows symlink privilege is not held")
+		}
+		t.Fatal(err)
 	}
+	assertViolation(t, ValidateFiles([]string{symlink}), symlink, "workflow must not be a symlink")
+}
+
+func TestValidateFilesRejectsNonRegularAndOversizeFiles(t *testing.T) {
+	dir := t.TempDir()
 	assertViolation(t, ValidateFiles([]string{dir}), dir, "workflow must be a regular file")
 
 	oversize := filepath.Join(dir, "oversize.yml")
