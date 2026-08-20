@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -204,6 +209,18 @@ func TestMissionArtifactsRejectsNonStrictMissionV02JSON(t *testing.T) {
 		"wrong authority type": func(body string) string {
 			return strings.Replace(body, `"safe_to_execute": false`, `"safe_to_execute": "false"`, 1)
 		},
+		"top-level mixed-case alias": func(body string) string {
+			return strings.Replace(body, `"mission_id": "mission-v02",`, `"Mission_ID": "mission-v02",`, 1)
+		},
+		"top-level logical duplicate": func(body string) string {
+			return strings.Replace(body, `"mission_id": "mission-v02",`, `"mission_id": "mission-v02", "Mission_ID": "shadow",`, 1)
+		},
+		"nested mixed-case alias": func(body string) string {
+			return strings.Replace(body, `"content_ref": "artifacts/`, `"Content_Ref": "artifacts/`, 1)
+		},
+		"nested logical duplicate": func(body string) string {
+			return strings.Replace(body, `"digest": "sha256:`, `"Digest": "sha256:`+strings.Repeat("a", 64)+`", "digest": "sha256:`, 1)
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -215,9 +232,121 @@ func TestMissionArtifactsRejectsNonStrictMissionV02JSON(t *testing.T) {
 			if err := os.WriteFile(manifestPath, []byte(mutate(string(body))), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			assertMissionV02Rejected(t, manifestPath, contentRoot)
+			code, _, stderr := runWithFake([]string{"mission", "artifacts", "--manifest", manifestPath, "--content-root", contentRoot}, &fakeRunner{})
+			if code == 0 {
+				t.Fatalf("invalid mission v0.2 manifest accepted; stderr=%s", stderr)
+			}
+			aliases := map[string]string{
+				"top-level mixed-case alias":  "Mission_ID",
+				"top-level logical duplicate": "Mission_ID",
+				"nested mixed-case alias":     "Content_Ref",
+				"nested logical duplicate":    "Digest",
+			}
+			if alias := aliases[name]; alias != "" && !strings.Contains(stderr, alias) {
+				t.Fatalf("strict-key rejection missing %q: %s", alias, stderr)
+			}
 		})
 	}
+}
+
+func TestMissionArtifactsRejectsOversizedMissionV02Manifest(t *testing.T) {
+	manifestPath, contentRoot, _ := writeMissionV02Fixture(t, []byte("retained evidence"))
+	body, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(body, []byte(strings.Repeat(" ", (1<<20)+1-len(body)))...)
+	if err := os.WriteFile(manifestPath, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runWithFake([]string{"mission", "artifacts", "--manifest", manifestPath, "--content-root", contentRoot}, &fakeRunner{})
+	if code == 0 || !strings.Contains(stderr, "exceeds") {
+		t.Fatalf("oversized manifest not rejected by size bound: exit=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestMissionArtifactsRejectsRetainedArtifactSwapBeforeOpen(t *testing.T) {
+	manifestPath, contentRoot, ref := writeMissionV02Fixture(t, []byte("retained evidence"))
+	target := filepath.Join(contentRoot, filepath.FromSlash(ref.ContentRef))
+	previous := beforeMissionArtifactContentOpen
+	t.Cleanup(func() { beforeMissionArtifactContentOpen = previous })
+	beforeMissionArtifactContentOpen = func(path string) error {
+		if path != target {
+			t.Fatalf("swap hook path=%q want=%q", path, target)
+		}
+		replacement := path + ".replacement"
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(replacement, body, 0o600); err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		return os.Rename(replacement, path)
+	}
+	assertMissionV02Rejected(t, manifestPath, contentRoot)
+}
+
+func TestMissionArtifactsRejectsSymlinkedRetainedArtifact(t *testing.T) {
+	manifestPath, contentRoot, ref := writeMissionV02Fixture(t, []byte("retained evidence"))
+	target := filepath.Join(contentRoot, filepath.FromSlash(ref.ContentRef))
+	realTarget := target + ".real"
+	if err := os.Rename(target, realTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realTarget, target); err != nil {
+		if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+			t.Skip("Windows symlink privilege is not held")
+		}
+		t.Fatal(err)
+	}
+	assertMissionV02Rejected(t, manifestPath, contentRoot)
+}
+
+func TestDigestMissionArtifactStreamsBoundedChunks(t *testing.T) {
+	reader := &missionRepeatingByteReader{remaining: 2 << 20, value: 'x'}
+	digest, err := digestMissionArtifact(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHash := sha256.New()
+	chunk := bytes.Repeat([]byte{'x'}, 32<<10)
+	for index := 0; index < (2<<20)/len(chunk); index++ {
+		_, _ = wantHash.Write(chunk)
+	}
+	want := "sha256:" + hex.EncodeToString(wantHash.Sum(nil))
+	if digest != want || reader.reads < 2 || reader.maxBuffer > 32<<10 {
+		t.Fatalf("streaming digest=%s want=%s reads=%d max_buffer=%d", digest, want, reader.reads, reader.maxBuffer)
+	}
+}
+
+type missionRepeatingByteReader struct {
+	remaining int
+	value     byte
+	reads     int
+	maxBuffer int
+}
+
+func (reader *missionRepeatingByteReader) Read(buffer []byte) (int, error) {
+	if reader.remaining == 0 {
+		return 0, io.EOF
+	}
+	reader.reads++
+	if len(buffer) > reader.maxBuffer {
+		reader.maxBuffer = len(buffer)
+	}
+	count := len(buffer)
+	if count > reader.remaining {
+		count = reader.remaining
+	}
+	for index := 0; index < count; index++ {
+		buffer[index] = reader.value
+	}
+	reader.remaining -= count
+	return count, nil
 }
 
 func TestMissionArtifactsRejectsMissionV02PathEscapeAndMissingContentRoot(t *testing.T) {

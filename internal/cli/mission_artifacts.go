@@ -13,6 +13,10 @@ import (
 	"strings"
 )
 
+var beforeMissionArtifactContentOpen = func(string) error { return nil }
+
+const missionArtifactManifestLimit = int64(1 << 20)
+
 func (a App) missionArtifacts(args []string) int {
 	var manifestPath string
 	var contentRoot string
@@ -83,7 +87,7 @@ type missionArtifactsSummary struct {
 }
 
 func readMissionArtifactManifest(path, contentRoot string) (missionArtifactsSummary, error) {
-	body, err := os.ReadFile(path)
+	body, err := readBoundedMissionArtifactManifest(path)
 	if err != nil {
 		return missionArtifactsSummary{}, err
 	}
@@ -167,6 +171,9 @@ func readMissionArtifactManifestV02(body []byte, contentRoot string) (missionArt
 		ApprovesWork   *bool                    `json:"approves_work"`
 		GeneratedAtUTC string                   `json:"generated_at_utc,omitempty"`
 	}
+	if err := validateMissionArtifactManifestV02Fields(body); err != nil {
+		return missionArtifactsSummary{}, fmt.Errorf("invalid v0.2 manifest: %w", err)
+	}
 	if err := decodeStrictJSON(body, &input); err != nil {
 		return missionArtifactsSummary{}, fmt.Errorf("invalid v0.2 manifest: %w", err)
 	}
@@ -238,45 +245,157 @@ func verifyMissionArtifactContent(contentRoot string, ref missionArtifactRefV02)
 	if err != nil {
 		return err
 	}
+	rootHandle, err := os.OpenRoot(root)
+	if err != nil {
+		return fmt.Errorf("open content root: %w", err)
+	}
+	defer rootHandle.Close()
+	before, err := rootHandle.Lstat(ref.ContentRef)
+	if err != nil {
+		return fmt.Errorf("inspect retained artifact %s: %w", ref.Ref, err)
+	}
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("retained artifact must be a regular non-symlink file")
+	}
 	target := filepath.Join(root, filepath.FromSlash(ref.ContentRef))
-	relative, err := filepath.Rel(root, target)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-		return fmt.Errorf("artifact content_ref escapes content root")
+	if err := beforeMissionArtifactContentOpen(target); err != nil {
+		return fmt.Errorf("before retained artifact open: %w", err)
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
+	file, err := rootHandle.Open(ref.ContentRef)
 	if err != nil {
-		return fmt.Errorf("resolve content root: %w", err)
+		return fmt.Errorf("open retained artifact %s: %w", ref.Ref, err)
 	}
-	resolvedTarget, err := filepath.EvalSymlinks(target)
+	opened, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("resolve retained artifact %s: %w", ref.Ref, err)
+		_ = file.Close()
+		return fmt.Errorf("stat retained artifact %s: %w", ref.Ref, err)
 	}
-	originalInfo, err := os.Lstat(target)
+	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		_ = file.Close()
+		return fmt.Errorf("retained artifact changed while opening")
+	}
+	digest, readErr := digestMissionArtifact(file)
+	afterHandle, statErr := file.Stat()
+	closeErr := file.Close()
+	if readErr != nil {
+		return fmt.Errorf("hash retained artifact %s: %w", ref.Ref, readErr)
+	}
+	if statErr != nil {
+		return fmt.Errorf("reinspect opened retained artifact %s: %w", ref.Ref, statErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close retained artifact %s: %w", ref.Ref, closeErr)
+	}
+	after, err := rootHandle.Lstat(ref.ContentRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("reinspect retained artifact %s: %w", ref.Ref, err)
 	}
-	if !originalInfo.Mode().IsRegular() || originalInfo.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("retained artifact must be a regular non-symlink file")
+	if !after.Mode().IsRegular() || after.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, afterHandle) || !os.SameFile(opened, after) {
+		return fmt.Errorf("retained artifact changed while reading")
 	}
-	resolvedRelative, err := filepath.Rel(resolvedRoot, resolvedTarget)
-	if err != nil || resolvedRelative == ".." || strings.HasPrefix(resolvedRelative, ".."+string(filepath.Separator)) || filepath.IsAbs(resolvedRelative) {
-		return fmt.Errorf("artifact content_ref resolves outside content root")
-	}
-	info, err := os.Lstat(resolvedTarget)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("retained artifact must be a regular non-symlink file")
-	}
-	content, err := os.ReadFile(resolvedTarget)
-	if err != nil {
-		return err
-	}
-	if digestBytesSHA256(content) != ref.Digest {
+	if digest != ref.Digest {
 		return fmt.Errorf("artifact digest mismatch for %s", ref.Ref)
 	}
 	return nil
+}
+
+func readBoundedMissionArtifactManifest(path string) ([]byte, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("artifact manifest must be a regular non-symlink file")
+	}
+	if before.Size() > missionArtifactManifestLimit {
+		return nil, fmt.Errorf("artifact manifest exceeds %d bytes", missionArtifactManifestLimit)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || opened.Size() > missionArtifactManifestLimit || !os.SameFile(before, opened) {
+		_ = file.Close()
+		return nil, fmt.Errorf("artifact manifest changed while opening or exceeds %d bytes", missionArtifactManifestLimit)
+	}
+	body, readErr := io.ReadAll(io.LimitReader(file, missionArtifactManifestLimit+1))
+	afterHandle, statErr := file.Stat()
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if statErr != nil {
+		return nil, statErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if int64(len(body)) > missionArtifactManifestLimit {
+		return nil, fmt.Errorf("artifact manifest exceeds %d bytes", missionArtifactManifestLimit)
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !after.Mode().IsRegular() || after.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, afterHandle) || !os.SameFile(opened, after) {
+		return nil, fmt.Errorf("artifact manifest changed while reading")
+	}
+	return body, nil
+}
+
+func validateMissionArtifactManifestV02Fields(body []byte) error {
+	top, err := validateExactMissionArtifactObject("artifact manifest v0.2", body,
+		[]string{"schema", "mission_id", "artifact_refs", "manifest_digest", "signature", "safe_to_execute", "executes_work", "approves_work", "generated_at_utc"},
+		[]string{"schema", "mission_id", "artifact_refs", "manifest_digest", "signature", "safe_to_execute", "executes_work", "approves_work"})
+	if err != nil {
+		return err
+	}
+	rawRefs := bytes.TrimSpace(top["artifact_refs"])
+	if bytes.Equal(rawRefs, []byte("null")) {
+		return fmt.Errorf("artifact manifest v0.2 field %q must be an array", "artifact_refs")
+	}
+	var refs []json.RawMessage
+	if err := json.Unmarshal(rawRefs, &refs); err != nil {
+		return fmt.Errorf("artifact manifest v0.2 field %q must be an array: %w", "artifact_refs", err)
+	}
+	for index, rawRef := range refs {
+		if _, err := validateExactMissionArtifactObject(fmt.Sprintf("artifact manifest v0.2 artifact ref %d", index), rawRef,
+			[]string{"schema", "ref", "content_ref", "digest", "kind"},
+			[]string{"schema", "ref", "content_ref", "digest"}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExactMissionArtifactObject(label string, body []byte, allowed, required []string) (map[string]json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(body, &object); err != nil {
+		return nil, fmt.Errorf("%s must be a JSON object: %w", label, err)
+	}
+	if object == nil || bytes.Equal(bytes.TrimSpace(body), []byte("null")) {
+		return nil, fmt.Errorf("%s must be a JSON object", label)
+	}
+	allowedFields := make(map[string]struct{}, len(allowed))
+	for _, field := range allowed {
+		allowedFields[field] = struct{}{}
+	}
+	for field := range object {
+		if _, ok := allowedFields[field]; !ok {
+			return nil, fmt.Errorf("%s has unknown field %q", label, field)
+		}
+	}
+	for _, field := range required {
+		if _, ok := object[field]; !ok {
+			return nil, fmt.Errorf("%s requires field %q", label, field)
+		}
+	}
+	return object, nil
 }
 
 func canonicalSHA256Digest(digest string) bool {
@@ -291,6 +410,14 @@ func canonicalSHA256Digest(digest string) bool {
 func digestBytesSHA256(body []byte) string {
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func digestMissionArtifact(reader io.Reader) (string, error) {
+	hash := sha256.New()
+	if _, err := io.Copy(hash, reader); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func decodeStrictJSON(body []byte, target any) error {
