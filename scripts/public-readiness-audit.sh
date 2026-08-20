@@ -75,7 +75,7 @@ tracked_files() {
 max_tracked_scan_files=4096
 max_tracked_scan_file_bytes=$((1024 * 1024))
 max_tracked_scan_total_bytes=$((16 * 1024 * 1024))
-tracked_scan_excludes='^(scripts/ci-artifact-upload-policy\.rb|scripts/public-readiness-audit\.sh|scripts/production-readiness-audit\.sh|scripts/release-governance-dry-run\.sh)$'
+tracked_scan_excludes='^(internal/workflowpolicy/policy\.go|scripts/public-readiness-audit\.sh|scripts/production-readiness-audit\.sh|scripts/release-governance-dry-run\.sh)$'
 
 build_tracked_scan_files() {
   git ls-files "$@" | grep -Ev "$tracked_scan_excludes" || true
@@ -181,7 +181,7 @@ while IFS= read -r workflow_file; do
   [[ -n "$workflow_file" ]] && workflow_files+=("$workflow_file")
 done < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml')
 artifact_policy_error=""
-if ! artifact_policy_error="$(ruby scripts/ci-artifact-upload-policy.rb "${workflow_files[@]}" 2>&1)"; then
+if ! artifact_policy_error="$(go run ./cmd/ci-artifact-upload-policy "${workflow_files[@]}" 2>&1)"; then
   add_check "ci_artifact_uploads" "failed" "workflow artifact upload policy failed: $artifact_policy_error"
 else
   ancillary_upload_files="$(build_tracked_scan_files .github scripts | grep -Ev '^\.github/workflows/.*\.ya?ml$' || true)"

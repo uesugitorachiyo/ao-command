@@ -79,7 +79,7 @@ func TestProductionReadinessAuditClassifiesNativeArtifactWorkflowUploads(t *test
 	}
 	script := string(data)
 	for _, want := range []string{
-		"scripts/ci-artifact-upload-policy.rb",
+		"go run ./cmd/ci-artifact-upload-policy",
 		"ci_artifact_uploads",
 	} {
 		if !strings.Contains(script, want) {
