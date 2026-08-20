@@ -157,20 +157,20 @@ type missionArtifactRefV02 struct {
 
 func readMissionArtifactManifestV02(body []byte, contentRoot string) (missionArtifactsSummary, error) {
 	var input struct {
-		Schema         string                  `json:"schema"`
-		MissionID      string                  `json:"mission_id"`
-		ArtifactRefs   []missionArtifactRefV02 `json:"artifact_refs"`
-		ManifestDigest string                  `json:"manifest_digest"`
-		Signature      string                  `json:"signature"`
-		SafeToExecute  *bool                   `json:"safe_to_execute"`
-		ExecutesWork   *bool                   `json:"executes_work"`
-		ApprovesWork   *bool                   `json:"approves_work"`
-		GeneratedAtUTC string                  `json:"generated_at_utc,omitempty"`
+		Schema         string                   `json:"schema"`
+		MissionID      string                   `json:"mission_id"`
+		ArtifactRefs   *[]missionArtifactRefV02 `json:"artifact_refs"`
+		ManifestDigest string                   `json:"manifest_digest"`
+		Signature      string                   `json:"signature"`
+		SafeToExecute  *bool                    `json:"safe_to_execute"`
+		ExecutesWork   *bool                    `json:"executes_work"`
+		ApprovesWork   *bool                    `json:"approves_work"`
+		GeneratedAtUTC string                   `json:"generated_at_utc,omitempty"`
 	}
 	if err := decodeStrictJSON(body, &input); err != nil {
 		return missionArtifactsSummary{}, fmt.Errorf("invalid v0.2 manifest: %w", err)
 	}
-	if strings.TrimSpace(input.MissionID) == "" || len(input.ArtifactRefs) == 0 || input.SafeToExecute == nil || input.ExecutesWork == nil || input.ApprovesWork == nil {
+	if strings.TrimSpace(input.MissionID) == "" || input.ArtifactRefs == nil || input.SafeToExecute == nil || input.ExecutesWork == nil || input.ApprovesWork == nil {
 		return missionArtifactsSummary{}, fmt.Errorf("mission artifact manifest v0.2 requires mission_id, artifact_refs, and authority flags")
 	}
 	if *input.SafeToExecute || *input.ExecutesWork || *input.ApprovesWork {
@@ -183,7 +183,7 @@ func readMissionArtifactManifestV02(body []byte, contentRoot string) (missionArt
 		Schema       string                  `json:"schema"`
 		MissionID    string                  `json:"mission_id"`
 		ArtifactRefs []missionArtifactRefV02 `json:"artifact_refs"`
-	}{input.Schema, input.MissionID, input.ArtifactRefs})
+	}{input.Schema, input.MissionID, *input.ArtifactRefs})
 	if digestBytesSHA256(manifestBody) != input.ManifestDigest {
 		return missionArtifactsSummary{}, fmt.Errorf("artifact manifest digest mismatch")
 	}
@@ -194,10 +194,10 @@ func readMissionArtifactManifestV02(body []byte, contentRoot string) (missionArt
 		return missionArtifactsSummary{}, fmt.Errorf("--content-root is required for ao.mission.artifact-manifest.v0.2")
 	}
 
-	refs := make(map[string]struct{}, len(input.ArtifactRefs))
-	contents := make(map[string]struct{}, len(input.ArtifactRefs))
-	artifacts := make([]missionArtifactRef, 0, len(input.ArtifactRefs))
-	for _, ref := range input.ArtifactRefs {
+	refs := make(map[string]struct{}, len(*input.ArtifactRefs))
+	contents := make(map[string]struct{}, len(*input.ArtifactRefs))
+	artifacts := make([]missionArtifactRef, 0, len(*input.ArtifactRefs))
+	for _, ref := range *input.ArtifactRefs {
 		if ref.Schema != "ao.mission.artifact-ref.v0.1" || strings.TrimSpace(ref.Ref) == "" || !canonicalSHA256Digest(ref.Digest) {
 			return missionArtifactsSummary{}, fmt.Errorf("artifact refs require schema, ref, content_ref, and canonical digest")
 		}

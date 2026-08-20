@@ -117,7 +117,6 @@ func TestMissionArtifactsRejectsMalformedOrAmbiguousMissionV02(t *testing.T) {
 		"noncanonical digest": func(manifest *missionV02TestManifest) {
 			manifest.ArtifactRefs[0].Digest = "sha256:" + strings.Repeat("A", 64)
 		},
-		"empty refs": func(manifest *missionV02TestManifest) { manifest.ArtifactRefs = nil },
 		"duplicate ref": func(manifest *missionV02TestManifest) {
 			manifest.ArtifactRefs = append(manifest.ArtifactRefs, manifest.ArtifactRefs[0])
 		},
@@ -134,6 +133,61 @@ func TestMissionArtifactsRejectsMalformedOrAmbiguousMissionV02(t *testing.T) {
 			mutate(&manifest)
 			finalizeMissionV02TestManifest(&manifest)
 			writeMissionV02TestManifest(t, manifestPath, manifest)
+			assertMissionV02Rejected(t, manifestPath, contentRoot)
+		})
+	}
+}
+
+func TestMissionArtifactsReadsMissionV02PresentEmptyArtifactRefs(t *testing.T) {
+	manifestPath, contentRoot, _ := writeMissionV02Fixture(t, []byte("unused retained evidence"))
+	manifest := readMissionV02TestManifest(t, manifestPath)
+	manifest.ArtifactRefs = []missionV02TestRef{}
+	finalizeMissionV02TestManifest(&manifest)
+	writeMissionV02TestManifest(t, manifestPath, manifest)
+
+	code, stdout, stderr := runWithFake([]string{"mission", "artifacts", "--manifest", manifestPath, "--content-root", contentRoot, "--json"}, &fakeRunner{})
+	if code != 0 {
+		t.Fatalf("signed empty mission v0.2 manifest exit=%d stderr=%s", code, stderr)
+	}
+	var got struct {
+		ArtifactCount int                  `json:"artifact_count"`
+		Artifacts     []missionArtifactRef `json:"artifacts"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid empty mission v0.2 readback JSON: %v\n%s", err, stdout)
+	}
+	if got.ArtifactCount != 0 || len(got.Artifacts) != 0 {
+		t.Fatalf("unexpected empty mission v0.2 readback: %#v", got)
+	}
+}
+
+func TestMissionArtifactsRejectsMissingNullOrWrongTypeMissionV02ArtifactRefs(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"missing": func(document map[string]any) { delete(document, "artifact_refs") },
+		"null":    func(document map[string]any) { document["artifact_refs"] = nil },
+		"wrong type": func(document map[string]any) {
+			document["artifact_refs"] = "not-an-array"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			manifestPath, contentRoot, _ := writeMissionV02Fixture(t, []byte("retained evidence"))
+			body, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var document map[string]any
+			if err := json.Unmarshal(body, &document); err != nil {
+				t.Fatal(err)
+			}
+			mutate(document)
+			body, err = json.Marshal(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(manifestPath, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
 			assertMissionV02Rejected(t, manifestPath, contentRoot)
 		})
 	}
