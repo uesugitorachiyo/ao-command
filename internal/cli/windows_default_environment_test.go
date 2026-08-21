@@ -150,6 +150,8 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 		{"pull request paths", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "  pull_request:\n    paths: [internal/**]\n", 1)},
 		{"pull request branches", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "  pull_request:\n    branches: [main]\n", 1)},
 		{"nonempty workflow dispatch", strings.Replace(windowsDefaultEnvironmentFixture, "  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs: {}\n", 1)},
+		{"branch formatter collision", strings.Replace(windowsDefaultEnvironmentFixture, "    branches: [main, codex/**]\n", `    branches: ["main codex/**"]`+"\n", 1)},
+		{"branch wrong type", strings.Replace(windowsDefaultEnvironmentFixture, "    branches: [main, codex/**]\n", "    branches: [main, 7]\n", 1)},
 		{"setup before checkout", setupBeforeCheckout},
 		{"gates out of order", gatesOutOfOrder},
 		{"commands collapsed into arbitrary step", collapsedGates},
@@ -210,7 +212,12 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 		return fmt.Errorf("push must contain only branches")
 	}
 	branches, ok := push["branches"].([]any)
-	if !ok || fmt.Sprint(branches) != "[main codex/**]" {
+	if !ok || len(branches) != 2 {
+		return fmt.Errorf("push branches must be exactly main and codex/**")
+	}
+	mainBranch, mainOK := branches[0].(string)
+	codexBranch, codexOK := branches[1].(string)
+	if !mainOK || !codexOK || mainBranch != "main" || codexBranch != "codex/**" {
 		return fmt.Errorf("push branches must be exactly main and codex/**")
 	}
 	jobs, ok := document["jobs"].(map[string]any)
