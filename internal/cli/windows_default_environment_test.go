@@ -103,6 +103,55 @@ func TestWindowsSourceShellContract(t *testing.T) {
 	}
 }
 
+func TestWindowsSourceShellSelection(t *testing.T) {
+	tests := []struct {
+		name      string
+		available map[string]bool
+		want      []string
+		wantErr   bool
+	}{
+		{"both available", map[string]bool{"powershell.exe": true, "pwsh.exe": true}, []string{"powershell.exe", "pwsh.exe"}, false},
+		{"optional pwsh missing", map[string]bool{"powershell.exe": true}, []string{"powershell.exe"}, false},
+		{"required powershell missing", map[string]bool{"pwsh.exe": true}, nil, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := selectWindowsSourceShells(func(name string) (string, error) {
+				if test.available[name] {
+					return name, nil
+				}
+				return "", exec.ErrNotFound
+			})
+			if (err != nil) != test.wantErr {
+				t.Fatalf("selectWindowsSourceShells() error = %v, wantErr %t", err, test.wantErr)
+			}
+			if strings.Join(got, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("selectWindowsSourceShells() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func selectWindowsSourceShells(lookup func(string) (string, error)) ([]string, error) {
+	shells := make([]string, 0, 2)
+	for _, shell := range []struct {
+		name     string
+		required bool
+	}{
+		{"powershell.exe", true},
+		{"pwsh.exe", false},
+	} {
+		if _, err := lookup(shell.name); err != nil {
+			if shell.required {
+				return nil, fmt.Errorf("required supported shell %s is missing: %w", shell.name, err)
+			}
+			continue
+		}
+		shells = append(shells, shell.name)
+	}
+	return shells, nil
+}
+
 func TestWindowsSourceShellPowerShellRestoresEnvironment(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("PowerShell regression is Windows-specific")
@@ -111,11 +160,14 @@ func TestWindowsSourceShellPowerShellRestoresEnvironment(t *testing.T) {
 	block := fencedBlock(markdownSection(reference, "## Windows source-shell contract"), "powershell")
 	smoke := `$bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'`
 	roundTrip := `$bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && test -d .'`
-	shells := []string{"powershell.exe", "pwsh.exe"}
-	for _, shell := range shells {
-		if _, err := exec.LookPath(shell); err != nil {
-			t.Fatalf("required supported shell %s is missing: %v", shell, err)
-		}
+	shells, err := selectWindowsSourceShells(exec.LookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shells) == 1 {
+		t.Run("pwsh", func(t *testing.T) {
+			t.Skip("optional pwsh.exe is not installed")
+		})
 	}
 
 	for _, shell := range shells {
