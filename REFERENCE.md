@@ -324,8 +324,12 @@ $previousAoCommandRoot = $env:AO_COMMAND_ROOT
 $commandExit = 0
 try {
     $env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
-    $bashCommand = 'cd \"$(cygpath -u \"$AO_COMMAND_ROOT\")\" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
-    & $gitBash -lc $bashCommand
+    $bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
+    $bashArgument = $bashCommand
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        $bashArgument = $bashCommand.Replace('"', ([string][char]92 + '"'))
+    }
+    & $gitBash -lc $bashArgument
     $commandExit = $LASTEXITCODE
 }
 finally {

@@ -78,8 +78,10 @@ func TestWindowsSourceShellContract(t *testing.T) {
 		"if ($hadAoCommandRoot)",
 		"$env:AO_COMMAND_ROOT = $previousAoCommandRoot",
 		"Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue",
-		`$bashCommand = 'cd \"$(cygpath -u \"$AO_COMMAND_ROOT\")\" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'`,
-		"& $gitBash -lc $bashCommand",
+		`$bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'`,
+		"$bashArgument = $bashCommand",
+		"if ($PSVersionTable.PSVersion.Major -lt 7)",
+		"& $gitBash -lc $bashArgument",
 		"$commandExit = $LASTEXITCODE",
 		"if ($commandExit -ne 0) { exit $commandExit }",
 		"scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke",
@@ -87,6 +89,9 @@ func TestWindowsSourceShellContract(t *testing.T) {
 		if !strings.Contains(referenceSection, want) {
 			t.Errorf("REFERENCE.md Windows source-shell section missing %q", want)
 		}
+	}
+	if strings.Contains(referenceSection, `\"`) {
+		t.Error(`REFERENCE.md Windows source-shell section must not backslash-escape double quotes inside the PowerShell single-quoted bashCommand`)
 	}
 
 	brokenReference := strings.Replace(reference, referenceSection, "## Windows source-shell contract\n", 1)
@@ -104,55 +109,65 @@ func TestWindowsSourceShellPowerShellRestoresEnvironment(t *testing.T) {
 	}
 	reference := readTestDocument(t, filepath.Join("..", "..", "REFERENCE.md"))
 	block := fencedBlock(markdownSection(reference, "## Windows source-shell contract"), "powershell")
-	smoke := `$bashCommand = 'cd \"$(cygpath -u \"$AO_COMMAND_ROOT\")\" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'`
-	roundTrip := `$bashCommand = 'cd \"$(cygpath -u \"$AO_COMMAND_ROOT\")\" && test -d .'`
-
-	for _, test := range []struct {
-		name        string
-		setup       string
-		command     string
-		assertState string
-	}{
-		{"pre-existing value", `$env:AO_COMMAND_ROOT = 'preexisting-value'`, roundTrip, `if ($env:AO_COMMAND_ROOT -ne 'preexisting-value') { throw 'AO_COMMAND_ROOT was not restored' }`},
-		{"initially absent", `Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue`, roundTrip, `if (Test-Path Env:AO_COMMAND_ROOT) { throw 'AO_COMMAND_ROOT was not removed' }`},
-		{"thrown command", `$env:AO_COMMAND_ROOT = 'preexisting-value'`, `throw 'forced command failure'`, `if (-not $caught -or $env:AO_COMMAND_ROOT -ne 'preexisting-value') { throw 'command failure did not restore AO_COMMAND_ROOT' }`},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if block == "" || !strings.Contains(block, smoke) {
-				t.Fatal("REFERENCE.md Windows PowerShell block or smoke invocation not found")
-			}
-			body := strings.Replace(block, smoke, test.command, 1)
-			script := test.setup + "\n"
-			if test.name == "thrown command" {
-				script += "$caught = $false\ntry {\n" + body + "\n} catch { $caught = $true }\n"
-			} else {
-				script += body + "\n"
-			}
-			script += test.assertState
-			scriptPath := filepath.Join(t.TempDir(), "source-shell-regression.ps1")
-			if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
-			if output, err := command.CombinedOutput(); err != nil {
-				t.Fatalf("documented PowerShell state wrapper failed: %v\n%s", err, output)
-			}
-		})
+	smoke := `$bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'`
+	roundTrip := `$bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && test -d .'`
+	shells := []string{"powershell.exe", "pwsh.exe"}
+	for _, shell := range shells {
+		if _, err := exec.LookPath(shell); err != nil {
+			t.Fatalf("required supported shell %s is missing: %v", shell, err)
+		}
 	}
 
-	t.Run("nonzero command exit", func(t *testing.T) {
-		body := strings.Replace(block, smoke, `$bashCommand = 'exit 23'`, 1)
-		scriptPath := filepath.Join(t.TempDir(), "source-shell-exit-regression.ps1")
-		if err := os.WriteFile(scriptPath, []byte("Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue\n"+body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
-		err := command.Run()
-		exitError, ok := err.(*exec.ExitError)
-		if !ok || exitError.ExitCode() != 23 {
-			t.Fatalf("documented PowerShell wrapper exit = %v, want 23", err)
-		}
-	})
+	for _, shell := range shells {
+		t.Run(strings.TrimSuffix(shell, ".exe"), func(t *testing.T) {
+			for _, test := range []struct {
+				name        string
+				setup       string
+				command     string
+				assertState string
+			}{
+				{"pre-existing value", `$env:AO_COMMAND_ROOT = 'preexisting-value'`, roundTrip, `if ($env:AO_COMMAND_ROOT -ne 'preexisting-value') { throw 'AO_COMMAND_ROOT was not restored' }`},
+				{"initially absent", `Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue`, roundTrip, `if (Test-Path Env:AO_COMMAND_ROOT) { throw 'AO_COMMAND_ROOT was not removed' }`},
+				{"thrown command", `$env:AO_COMMAND_ROOT = 'preexisting-value'`, `throw 'forced command failure'`, `if (-not $caught -or $env:AO_COMMAND_ROOT -ne 'preexisting-value') { throw 'command failure did not restore AO_COMMAND_ROOT' }`},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					if block == "" || !strings.Contains(block, smoke) {
+						t.Fatal("REFERENCE.md Windows PowerShell block or smoke invocation not found")
+					}
+					body := strings.Replace(block, smoke, test.command, 1)
+					script := test.setup + "\n"
+					if test.name == "thrown command" {
+						script += "$caught = $false\ntry {\n" + body + "\n} catch { $caught = $true }\n"
+					} else {
+						script += body + "\n"
+					}
+					script += test.assertState
+					scriptPath := filepath.Join(t.TempDir(), "source-shell-regression.ps1")
+					if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					command := exec.Command(shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+					if output, err := command.CombinedOutput(); err != nil {
+						t.Fatalf("documented PowerShell state wrapper failed: %v\n%s", err, output)
+					}
+				})
+			}
+
+			t.Run("nonzero command exit", func(t *testing.T) {
+				body := strings.Replace(block, smoke, `$bashCommand = 'exit 23'`, 1)
+				scriptPath := filepath.Join(t.TempDir(), "source-shell-exit-regression.ps1")
+				if err := os.WriteFile(scriptPath, []byte("Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue\n"+body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				command := exec.Command(shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+				err := command.Run()
+				exitError, ok := err.(*exec.ExitError)
+				if !ok || exitError.ExitCode() != 23 {
+					t.Fatalf("documented PowerShell wrapper exit = %v, want 23", err)
+				}
+			})
+		})
+	}
 }
 
 func readTestDocument(t *testing.T, path string) string {
