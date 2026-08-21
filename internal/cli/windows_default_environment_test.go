@@ -93,23 +93,29 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 	if err := validateWindowsDefaultEnvironmentWorkflow(windowsDefaultEnvironmentFixture); err != nil {
 		t.Fatalf("valid fixture rejected: %v", err)
 	}
+	configStep := "      - name: Configure checkout conversion\n        shell: pwsh\n        working-directory: .\n        run: git config --global core.autocrlf true\n"
+	checkoutStep := "      - name: Checkout\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          path: AO Command Default Windows\n          persist-credentials: false\n"
+	withoutConfig := strings.Replace(windowsDefaultEnvironmentFixture, configStep, "", 1)
+	configAfterCheckout := strings.Replace(withoutConfig, checkoutStep, checkoutStep+configStep, 1)
 	tests := []struct {
-		name string
-		old  string
-		new  string
+		name     string
+		document string
 	}{
-		{"UTF-8 forced on", `PYTHONUTF8: "0"`, `PYTHONUTF8: "1"`},
-		{"conversion configured after checkout", "      - name: Configure checkout conversion\n        shell: pwsh\n        working-directory: .\n        run: git config --global core.autocrlf true\n", ""},
-		{"checkout path has no spaces", "AO Command Default Windows", "ao-command-default-windows"},
-		{"commands only in comments", "        run: go vet ./...", "        run: |\n          # go vet ./...\n          Write-Output skipped"},
+		{"UTF-8 forced on", strings.Replace(windowsDefaultEnvironmentFixture, `PYTHONUTF8: "0"`, `PYTHONUTF8: "1"`, 1)},
+		{"conversion configured after checkout", configAfterCheckout},
+		{"checkout path has no spaces", strings.ReplaceAll(windowsDefaultEnvironmentFixture, "AO Command Default Windows", "ao-command-default-windows")},
+		{"commands only in comments", strings.Replace(windowsDefaultEnvironmentFixture, "        run: go vet ./...", "        run: |\n          # go vet ./...\n          Write-Output skipped", 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decoy := strings.ReplaceAll(windowsDefaultEnvironmentFixture, test.old, test.new)
-			if decoy == windowsDefaultEnvironmentFixture {
+			if test.document == windowsDefaultEnvironmentFixture {
 				t.Fatal("decoy setup did not change fixture")
 			}
-			if err := validateWindowsDefaultEnvironmentWorkflow(decoy); err == nil {
+			if test.name == "conversion configured after checkout" &&
+				(strings.Count(test.document, configStep) != 1 || strings.Count(test.document, checkoutStep) != 1) {
+				t.Fatal("ordering decoy must retain exactly one checkout and configuration step")
+			}
+			if err := validateWindowsDefaultEnvironmentWorkflow(test.document); err == nil {
 				t.Fatal("invalid workflow was accepted")
 			}
 		})
