@@ -8,11 +8,10 @@ import (
 )
 
 func TestNativeArtifactWorkflowContract(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "native-artifacts.yml"))
+	workflow, err := readWorkflowTestFile(filepath.Join("..", "..", ".github", "workflows", "native-artifacts.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow := string(data)
 	for _, want := range []string{
 		"ubuntu-latest",
 		"macos-latest",
@@ -80,7 +79,7 @@ func TestProductionReadinessAuditClassifiesNativeArtifactWorkflowUploads(t *test
 	}
 	script := string(data)
 	for _, want := range []string{
-		"scripts/ci-artifact-upload-policy.rb",
+		"go run ./cmd/ci-artifact-upload-policy",
 		"ci_artifact_uploads",
 	} {
 		if !strings.Contains(script, want) {

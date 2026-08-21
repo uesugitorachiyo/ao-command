@@ -6,11 +6,99 @@ on:
   push:
     branches:
       - main
+      - codex/**
 
 permissions:
   contents: read
 
 jobs:
+  windows-default-environment:
+    name: windows-default-environment
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "0"
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: AO Command Default Windows
+    steps:
+      - name: Configure checkout conversion
+        shell: pwsh
+        working-directory: .
+        run: |
+          git config --global core.autocrlf true
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Checkout ao-command
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: AO Command Default Windows
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: AO Command Default Windows/go.mod
+          cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify default Windows checkout
+        run: |
+          if ((Get-Location).Path -notmatch ' ') { throw 'checkout path must contain spaces' }
+          $autocrlf = git config --global --get core.autocrlf
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($autocrlf -ne 'true') { throw 'core.autocrlf must be true' }
+          if ($env:PYTHONUTF8 -ne '0') { throw 'PYTHONUTF8 must be 0' }
+
+          $claude = [System.IO.File]::ReadAllBytes('CLAUDE.md')
+          if ([Convert]::ToHexString($claude) -ne '404147454E54532E6D640A') { throw 'CLAUDE.md must contain exact ASCII @AGENTS.md plus LF' }
+
+          $eol = @(git ls-files --eol -- '*.go' '*.sh' 'CLAUDE.md' 'examples/mission/artifacts/sha256/*')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $goEOL = @($eol | Where-Object { $_ -match '\.go$' })
+          $bashEOL = @($eol | Where-Object { $_ -match '\.sh$' })
+          $claudeEOL = @($eol | Where-Object { $_ -match 'CLAUDE\.md$' })
+          $digestEOL = @($eol | Where-Object { $_ -match 'examples/mission/artifacts/sha256/' })
+          if ($goEOL.Count -eq 0 -or @($goEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' }).Count -ne 0) { throw 'Go files must be w/lf with attr/text eol=lf' }
+          if ($bashEOL.Count -eq 0 -or @($bashEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' }).Count -ne 0) { throw 'Bash files must be w/lf with attr/text eol=lf' }
+          if ($claudeEOL.Count -ne 1 -or $claudeEOL[0] -notmatch 'w/lf\s+attr/text eol=lf\s+') { throw 'CLAUDE.md must be w/lf with attr/text eol=lf' }
+          if ($digestEOL.Count -eq 0 -or @($digestEOL | Where-Object { $_ -notmatch 'attr/-text\s+' }).Count -ne 0) { throw 'digest fixtures must be attr/-text' }
+
+      - name: Check formatting
+        run: |
+          $unformatted = gofmt -l .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($unformatted) {
+            $unformatted
+            exit 1
+          }
+
+      - name: Test
+        run: |
+          go test ./... -count=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Vet
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        run: |
+          go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check diff
+        run: |
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   license-policy:
     name: License policy
     runs-on: ubuntu-latest

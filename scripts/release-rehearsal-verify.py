@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -50,9 +51,19 @@ EVIDENCE_FILES = {
     "sbom.json",
     "version-readback.json",
 }
+WINDOWS_QUALIFICATION_REPORTS = {
+    "windows-qualification-powershell51.json": "Desktop",
+    "windows-qualification-pwsh7.json": "Core",
+}
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_ARCHIVE_MEMBER_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
+WINDOWS_QUALIFICATION_LIMITS = {
+    "max_archive_bytes": 32 * 1024 * 1024,
+    "max_entry_uncompressed_bytes": 16 * 1024 * 1024,
+    "max_total_uncompressed_bytes": 32 * 1024 * 1024,
+    "max_compression_ratio": 200,
+}
 
 
 def fail(message):
@@ -69,11 +80,37 @@ def require_digest(value, label):
     return value
 
 
+def strict_json_loads(data):
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def finite_float(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError("non-finite JSON number")
+        return parsed
+
+    def reject_constant(value):
+        raise ValueError(f"non-finite JSON constant: {value}")
+
+    return json.loads(
+        data,
+        object_pairs_hook=object_pairs,
+        parse_constant=reject_constant,
+        parse_float=finite_float,
+    )
+
+
 def load_json_bytes(path, label):
     try:
         data = path.read_bytes()
-        return data, json.loads(data)
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return data, strict_json_loads(data)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"{label} malformed: {error}")
 
 
@@ -95,8 +132,8 @@ def validate_manifest():
     if len(manifest_bytes) > MAX_MANIFEST_BYTES:
         fail("approved manifest exceeds bounded size")
     try:
-        manifest = json.loads(manifest_bytes)
-    except (UnicodeError, json.JSONDecodeError) as error:
+        manifest = strict_json_loads(manifest_bytes)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"approved manifest malformed: {error}")
     manifest_digest = sha256_bytes(manifest_bytes)
     if manifest_digest != os.environ["APPROVED_MANIFEST_DIGEST"]:
@@ -233,12 +270,15 @@ def validate_evidence(root, candidate, archive_contents):
     identity = EXPECTED_TARGETS[target]
 
     _, version = load_json_bytes(root / "version-readback.json", "version readback")
-    if version != {
-        "provider_calls": False,
-        "schema_version": "ao.command.version.v0.1",
-        "source_commit": bindings["source_commit"],
-        "version": bindings["version"],
-    }:
+    if (
+        not isinstance(version, dict)
+        or set(version)
+        != {"provider_calls", "schema_version", "source_commit", "version"}
+        or version["provider_calls"] is not False
+        or version["schema_version"] != "ao.command.version.v0.1"
+        or version["source_commit"] != bindings["source_commit"]
+        or version["version"] != bindings["version"]
+    ):
         fail("version readback mismatch")
 
     _, functional = load_json_bytes(root / "functional-smoke.json", "functional smoke")
@@ -309,6 +349,101 @@ def validate_evidence(root, candidate, archive_contents):
         fail("archive executable format or architecture mismatch")
 
 
+def validate_windows_qualification(root, candidate, inventory_by_name):
+    qualification = candidate["windows_qualification"]
+    target = candidate["target"]
+    if target != "windows-x86_64":
+        if qualification != {"status": "not_applicable", "reports": []}:
+            fail("non-Windows qualification mismatch")
+        return
+
+    if not isinstance(qualification, dict) or set(qualification) != {"status", "reports"}:
+        fail("Windows qualification schema mismatch")
+    reports = qualification["reports"]
+    if qualification["status"] != "passed" or not isinstance(reports, list):
+        fail("Windows qualification report inventory mismatch")
+    reports_by_name = {}
+    for report in reports:
+        if (
+            not isinstance(report, dict)
+            or set(report) != {"name", "sha256"}
+            or report["name"] in reports_by_name
+        ):
+            fail("Windows qualification report inventory mismatch")
+        reports_by_name[report["name"]] = require_digest(
+            report["sha256"], "Windows qualification report digest"
+        )
+    if set(reports_by_name) != set(WINDOWS_QUALIFICATION_REPORTS):
+        fail("Windows qualification report inventory mismatch")
+
+    expected_report_keys = {
+        "archive",
+        "archive_sha256",
+        "authority",
+        "cleanup_verified",
+        "doctor",
+        "install_path_contains_spaces",
+        "limits",
+        "powershell_edition",
+        "powershell_version",
+        "provider_calls",
+        "schema_version",
+        "source_commit",
+        "status",
+        "version",
+    }
+    expected_authority_keys = {
+        "approves_work",
+        "executes_work",
+        "mutates_repositories",
+        "releases_or_deploys",
+        "safe_to_execute",
+    }
+    expected_doctor = {
+        "replacement_diagnostic": "version_and_mission_status",
+        "status": "not_applicable",
+    }
+    for name, edition in WINDOWS_QUALIFICATION_REPORTS.items():
+        if reports_by_name[name] != inventory_by_name.get(name):
+            fail("Windows qualification report digest mismatch")
+        _, report = load_json_bytes(root / name, "Windows qualification report")
+        if not isinstance(report, dict) or set(report) != expected_report_keys:
+            fail("Windows qualification report schema mismatch")
+        authority = report["authority"]
+        if (
+            not isinstance(authority, dict)
+            or set(authority) != expected_authority_keys
+            or any(type(value) is not bool or value is not False for value in authority.values())
+        ):
+            fail("Windows qualification authority mismatch")
+        if report["doctor"] != expected_doctor:
+            fail("Windows qualification doctor mismatch")
+        limits = report["limits"]
+        if (
+            not isinstance(limits, dict)
+            or set(limits) != set(WINDOWS_QUALIFICATION_LIMITS)
+            or any(type(value) is not int for value in limits.values())
+            or limits != WINDOWS_QUALIFICATION_LIMITS
+        ):
+            fail("Windows qualification limits mismatch")
+        if (
+            report["schema_version"]
+            != "ao.command.windows-candidate-qualification.v0.1"
+            or report["status"] != "passed"
+            or report["archive"] != candidate["archive"]
+            or report["archive_sha256"] != candidate["archive_sha256"]
+            or report["source_commit"] != candidate["source_commit"]
+            or report["version"] != candidate["version"]
+            or report["powershell_edition"] != edition
+            or not isinstance(report["powershell_version"], str)
+            or not report["powershell_version"]
+            or report["install_path_contains_spaces"] is not True
+            or report["cleanup_verified"] is not True
+            or report["provider_calls"] is not False
+        ):
+            fail("Windows qualification report mismatch")
+
+
 def collect_candidates(manifest_by_target):
     root = Path("downloaded-candidates")
     summaries = sorted(root.rglob("candidate-summary.json"))
@@ -341,6 +476,7 @@ def collect_candidates(manifest_by_target):
             "tag",
             "target",
             "version",
+            "windows_qualification",
         }
         if not isinstance(candidate, dict) or set(candidate) != expected_candidate_keys:
             fail("candidate schema mismatch")
@@ -359,13 +495,13 @@ def collect_candidates(manifest_by_target):
             or candidate["approved_manifest_digest"]
             != os.environ["APPROVED_MANIFEST_DIGEST"]
             or candidate["provider_calls"] is not False
-            or candidate["smoke"]
-            != {
-                "functional": "passed",
-                "help": "passed",
-                "provider_calls": False,
-                "version": "passed",
-            }
+            or not isinstance(candidate["smoke"], dict)
+            or set(candidate["smoke"])
+            != {"functional", "help", "provider_calls", "version"}
+            or candidate["smoke"]["functional"] != "passed"
+            or candidate["smoke"]["help"] != "passed"
+            or candidate["smoke"]["provider_calls"] is not False
+            or candidate["smoke"]["version"] != "passed"
         ):
             fail("candidate bindings or smoke mismatch")
         for key in (
@@ -402,6 +538,8 @@ def collect_candidates(manifest_by_target):
                 item["sha256"], "candidate inventory digest"
             )
         expected_files = EVIDENCE_FILES | {"SHA256SUMS", archive}
+        if target == "windows-x86_64":
+            expected_files |= set(WINDOWS_QUALIFICATION_REPORTS)
         if set(inventory_by_name) != expected_files:
             fail("candidate inventory mismatch")
         actual_files = {
@@ -421,6 +559,9 @@ def collect_candidates(manifest_by_target):
             fail("SHA256SUMS exact filename or digest mismatch")
         if inventory_by_name[archive] != candidate["archive_sha256"]:
             fail("candidate archive checksum mismatch")
+        validate_windows_qualification(
+            summary_path.parent, candidate, inventory_by_name
+        )
         archive_contents = read_archive(summary_path.parent / archive, target)
         validate_evidence(summary_path.parent, candidate, archive_contents)
         candidates.append(candidate)
@@ -505,8 +646,8 @@ def verify():
     if os.environ.get("EXACT_CONFIRMATION") != expected_confirmation:
         fail("exact confirmation mismatch")
     try:
-        plan = json.loads(plan_bytes)
-    except (UnicodeError, json.JSONDecodeError) as error:
+        plan = strict_json_loads(plan_bytes)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"plan malformed: {error}")
     expected_plan_keys = {
         "approved_manifest_digest",
@@ -547,6 +688,9 @@ def verify():
 
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
+        print("usage: release-rehearsal-verify.py manifest|assemble|verify")
+        return
     if len(sys.argv) != 2 or sys.argv[1] not in {"manifest", "assemble", "verify"}:
         fail("usage: release-rehearsal-verify.py manifest|assemble|verify")
     if sys.argv[1] == "manifest":
