@@ -146,6 +146,14 @@ func TestReleaseRehearsalWorkflowStructure(t *testing.T) {
 		"ubuntu-24.04",
 		"macos-15",
 		"windows-2025",
+		"Qualify Windows candidate with Windows PowerShell 5.1",
+		"Qualify Windows candidate with PowerShell 7",
+		"shell: powershell",
+		"shell: pwsh",
+		"windows-qualification-powershell51.json",
+		"windows-qualification-pwsh7.json",
+		"scripts/qualify-windows-candidate.ps1",
+		`"windows_qualification"`,
 		"EXPECTED_RUNNER_ARCH",
 		"EXPECTED_GOOS",
 		"EXPECTED_GOARCH",
@@ -267,6 +275,21 @@ func TestReleaseRehearsalCandidateManifestHashIsPortable(t *testing.T) {
 	}
 	if !strings.Contains(buildBody, `(root / "SHA256SUMS").write_bytes(f"{digest}  {archive}\n".encode("ascii"))`) {
 		t.Fatal("candidate checksum sidecar must use a canonical digest and archive basename record")
+	}
+}
+
+func TestReleaseRehearsalVerifierHelp(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", "scripts", "release-rehearsal-verify.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("python3", path, "--help")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("verifier help failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "release-rehearsal-verify.py manifest|assemble|verify") {
+		t.Fatalf("unexpected verifier help:\n%s", output)
 	}
 }
 
@@ -409,7 +432,115 @@ func TestAssemblePlanRejectsNegativeFixtures(t *testing.T) {
 			},
 			want: "archive executable format or architecture mismatch",
 		},
+		{
+			name: "missing_windows_qualification_report",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				if err := os.Remove(filepath.Join(fixture.candidateDirs["windows-x86_64"], "windows-qualification-pwsh7.json")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "unexpected artifact inventory",
+		},
+		{
+			name: "duplicate_windows_qualification_report",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				path := filepath.Join(fixture.candidateDirs["windows-x86_64"], "candidate-summary.json")
+				summary := readJSONObject(t, path)
+				qualification := summary["windows_qualification"].(map[string]any)
+				reports := qualification["reports"].([]any)
+				qualification["reports"] = append(reports, reports[0])
+				writeJSONFile(t, path, summary)
+			},
+			want: "Windows qualification report inventory mismatch",
+		},
+		{
+			name: "extra_non_windows_qualification_report",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				writeTestFile(t, filepath.Join(fixture.candidateDirs["linux-x86_64"], "windows-qualification-pwsh7.json"), []byte("{}\n"))
+			},
+			want: "unexpected artifact inventory",
+		},
+		{
+			name: "extra_windows_qualification_report",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				writeTestFile(t, filepath.Join(fixture.candidateDirs["windows-x86_64"], "windows-qualification-extra.json"), []byte("{}\n"))
+			},
+			want: "unexpected artifact inventory",
+		},
+		{
+			name: "non_windows_qualification_claim",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				path := filepath.Join(fixture.candidateDirs["linux-x86_64"], "candidate-summary.json")
+				summary := readJSONObject(t, path)
+				summary["windows_qualification"] = map[string]any{"status": "passed", "reports": []any{}}
+				writeJSONFile(t, path, summary)
+			},
+			want: "non-Windows qualification mismatch",
+		},
+		{
+			name: "substituted_windows_qualification_report",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				writeTestFile(t, filepath.Join(fixture.candidateDirs["windows-x86_64"], "windows-qualification-pwsh7.json"), []byte("substituted"))
+			},
+			want: "candidate inventory mismatch",
+		},
 	}
+	for _, field := range []struct {
+		name  string
+		value any
+	}{
+		{name: "schema_version", value: "wrong"},
+		{name: "status", value: "failed"},
+		{name: "archive_sha256", value: strings.Repeat("0", 64)},
+		{name: "source_commit", value: strings.Repeat("9", 40)},
+		{name: "version", value: "9.9.9"},
+		{name: "powershell_edition", value: "Unknown"},
+		{name: "cleanup_verified", value: false},
+		{name: "provider_calls", value: true},
+	} {
+		field := field
+		tests = append(tests, struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "invalid_windows_qualification_" + field.name,
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReport(t, "windows-qualification-powershell51.json", func(report map[string]any) {
+					report[field.name] = field.value
+				})
+			},
+			want: "Windows qualification report mismatch",
+		})
+	}
+	tests = append(tests,
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_nonzero_authority",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReport(t, "windows-qualification-powershell51.json", func(report map[string]any) {
+					report["authority"].(map[string]any)["safe_to_execute"] = true
+				})
+			},
+			want: "Windows qualification authority mismatch",
+		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_doctor_mismatch",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReport(t, "windows-qualification-powershell51.json", func(report map[string]any) {
+					report["doctor"].(map[string]any)["status"] = "passed"
+				})
+			},
+			want: "Windows qualification doctor mismatch",
+		},
+	)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -755,6 +886,36 @@ func newReleaseFixture(t *testing.T) *releaseFixture {
 			"provenance.json":       archiveMembers["provenance.json"],
 			"SHA256SUMS":            []byte(archiveDigest + "  " + archive + "\n"),
 		}
+		windowsQualification := map[string]any{"status": "not_applicable", "reports": []any{}}
+		if target.name == "windows-x86_64" {
+			reportNames := []string{"windows-qualification-powershell51.json", "windows-qualification-pwsh7.json"}
+			reportEditions := []string{"Desktop", "Core"}
+			reports := make([]map[string]string, 0, len(reportNames))
+			for index, reportName := range reportNames {
+				report := map[string]any{
+					"archive":        archive,
+					"archive_sha256": archiveDigest,
+					"authority": map[string]any{
+						"approves_work": false, "executes_work": false, "mutates_repositories": false,
+						"releases_or_deploys": false, "safe_to_execute": false,
+					},
+					"cleanup_verified":             true,
+					"doctor":                       map[string]any{"replacement_diagnostic": "version_and_mission_status", "status": "not_applicable"},
+					"install_path_contains_spaces": true,
+					"powershell_edition":           reportEditions[index],
+					"powershell_version":           map[bool]string{true: "5.1.26100.6584", false: "7.5.2"}[index == 0],
+					"provider_calls":               false,
+					"schema_version":               "ao.command.windows-candidate-qualification.v0.1",
+					"source_commit":                releaseSource,
+					"status":                       "passed",
+					"version":                      releaseVersion,
+				}
+				reportBytes := marshalJSONBytes(t, report)
+				files[reportName] = reportBytes
+				reports = append(reports, map[string]string{"name": reportName, "sha256": digestBytes(reportBytes)})
+			}
+			windowsQualification = map[string]any{"status": "passed", "reports": reports}
+		}
 		inventory := make([]map[string]string, 0, len(files))
 		names := make([]string, 0, len(files))
 		for name := range files {
@@ -785,10 +946,11 @@ func newReleaseFixture(t *testing.T) *releaseFixture {
 				"provider_calls": false,
 				"version":        "passed",
 			},
-			"source_commit": releaseSource,
-			"tag":           releaseTag,
-			"target":        target.name,
-			"version":       releaseVersion,
+			"source_commit":         releaseSource,
+			"tag":                   releaseTag,
+			"target":                target.name,
+			"version":               releaseVersion,
+			"windows_qualification": windowsQualification,
 		}
 		writeJSONFile(t, filepath.Join(dir, "candidate-summary.json"), summary)
 		manifestCandidates = append(manifestCandidates, map[string]any{
@@ -816,6 +978,36 @@ func newReleaseFixture(t *testing.T) *releaseFixture {
 		writeJSONFile(t, path, summary)
 	}
 	return fixture
+}
+
+func (fixture *releaseFixture) mutateWindowsQualificationReport(t *testing.T, name string, mutate func(map[string]any)) {
+	t.Helper()
+	dir := fixture.candidateDirs["windows-x86_64"]
+	reportPath := filepath.Join(dir, name)
+	report := readJSONObject(t, reportPath)
+	mutate(report)
+	writeJSONFile(t, reportPath, report)
+	reportBytes, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := digestBytes(reportBytes)
+	summaryPath := filepath.Join(dir, "candidate-summary.json")
+	summary := readJSONObject(t, summaryPath)
+	for _, raw := range summary["inventory"].([]any) {
+		item := raw.(map[string]any)
+		if item["name"] == name {
+			item["sha256"] = digest
+		}
+	}
+	qualification := summary["windows_qualification"].(map[string]any)
+	for _, raw := range qualification["reports"].([]any) {
+		item := raw.(map[string]any)
+		if item["name"] == name {
+			item["sha256"] = digest
+		}
+	}
+	writeJSONFile(t, summaryPath, summary)
 }
 
 func (fixture *releaseFixture) replaceArchiveExecutable(t *testing.T, target string, executable []byte) {

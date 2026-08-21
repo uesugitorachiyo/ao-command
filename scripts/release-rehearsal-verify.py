@@ -50,6 +50,10 @@ EVIDENCE_FILES = {
     "sbom.json",
     "version-readback.json",
 }
+WINDOWS_QUALIFICATION_REPORTS = {
+    "windows-qualification-powershell51.json": "Desktop",
+    "windows-qualification-pwsh7.json": "Core",
+}
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_ARCHIVE_MEMBER_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
@@ -309,6 +313,87 @@ def validate_evidence(root, candidate, archive_contents):
         fail("archive executable format or architecture mismatch")
 
 
+def validate_windows_qualification(root, candidate, inventory_by_name):
+    qualification = candidate["windows_qualification"]
+    target = candidate["target"]
+    if target != "windows-x86_64":
+        if qualification != {"status": "not_applicable", "reports": []}:
+            fail("non-Windows qualification mismatch")
+        return
+
+    if not isinstance(qualification, dict) or set(qualification) != {"status", "reports"}:
+        fail("Windows qualification schema mismatch")
+    reports = qualification["reports"]
+    if qualification["status"] != "passed" or not isinstance(reports, list):
+        fail("Windows qualification report inventory mismatch")
+    reports_by_name = {}
+    for report in reports:
+        if (
+            not isinstance(report, dict)
+            or set(report) != {"name", "sha256"}
+            or report["name"] in reports_by_name
+        ):
+            fail("Windows qualification report inventory mismatch")
+        reports_by_name[report["name"]] = require_digest(
+            report["sha256"], "Windows qualification report digest"
+        )
+    if set(reports_by_name) != set(WINDOWS_QUALIFICATION_REPORTS):
+        fail("Windows qualification report inventory mismatch")
+
+    expected_report_keys = {
+        "archive",
+        "archive_sha256",
+        "authority",
+        "cleanup_verified",
+        "doctor",
+        "install_path_contains_spaces",
+        "powershell_edition",
+        "powershell_version",
+        "provider_calls",
+        "schema_version",
+        "source_commit",
+        "status",
+        "version",
+    }
+    expected_authority = {
+        "approves_work": False,
+        "executes_work": False,
+        "mutates_repositories": False,
+        "releases_or_deploys": False,
+        "safe_to_execute": False,
+    }
+    expected_doctor = {
+        "replacement_diagnostic": "version_and_mission_status",
+        "status": "not_applicable",
+    }
+    for name, edition in WINDOWS_QUALIFICATION_REPORTS.items():
+        if reports_by_name[name] != inventory_by_name.get(name):
+            fail("Windows qualification report digest mismatch")
+        _, report = load_json_bytes(root / name, "Windows qualification report")
+        if not isinstance(report, dict) or set(report) != expected_report_keys:
+            fail("Windows qualification report schema mismatch")
+        if report["authority"] != expected_authority:
+            fail("Windows qualification authority mismatch")
+        if report["doctor"] != expected_doctor:
+            fail("Windows qualification doctor mismatch")
+        if (
+            report["schema_version"]
+            != "ao.command.windows-candidate-qualification.v0.1"
+            or report["status"] != "passed"
+            or report["archive"] != candidate["archive"]
+            or report["archive_sha256"] != candidate["archive_sha256"]
+            or report["source_commit"] != candidate["source_commit"]
+            or report["version"] != candidate["version"]
+            or report["powershell_edition"] != edition
+            or not isinstance(report["powershell_version"], str)
+            or not report["powershell_version"]
+            or report["install_path_contains_spaces"] is not True
+            or report["cleanup_verified"] is not True
+            or report["provider_calls"] is not False
+        ):
+            fail("Windows qualification report mismatch")
+
+
 def collect_candidates(manifest_by_target):
     root = Path("downloaded-candidates")
     summaries = sorted(root.rglob("candidate-summary.json"))
@@ -341,6 +426,7 @@ def collect_candidates(manifest_by_target):
             "tag",
             "target",
             "version",
+            "windows_qualification",
         }
         if not isinstance(candidate, dict) or set(candidate) != expected_candidate_keys:
             fail("candidate schema mismatch")
@@ -402,6 +488,8 @@ def collect_candidates(manifest_by_target):
                 item["sha256"], "candidate inventory digest"
             )
         expected_files = EVIDENCE_FILES | {"SHA256SUMS", archive}
+        if target == "windows-x86_64":
+            expected_files |= set(WINDOWS_QUALIFICATION_REPORTS)
         if set(inventory_by_name) != expected_files:
             fail("candidate inventory mismatch")
         actual_files = {
@@ -421,6 +509,9 @@ def collect_candidates(manifest_by_target):
             fail("SHA256SUMS exact filename or digest mismatch")
         if inventory_by_name[archive] != candidate["archive_sha256"]:
             fail("candidate archive checksum mismatch")
+        validate_windows_qualification(
+            summary_path.parent, candidate, inventory_by_name
+        )
         archive_contents = read_archive(summary_path.parent / archive, target)
         validate_evidence(summary_path.parent, candidate, archive_contents)
         candidates.append(candidate)
@@ -547,6 +638,9 @@ def verify():
 
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
+        print("usage: release-rehearsal-verify.py manifest|assemble|verify")
+        return
     if len(sys.argv) != 2 or sys.argv[1] not in {"manifest", "assemble", "verify"}:
         fail("usage: release-rehearsal-verify.py manifest|assemble|verify")
     if sys.argv[1] == "manifest":

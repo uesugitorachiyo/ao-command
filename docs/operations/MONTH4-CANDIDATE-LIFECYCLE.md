@@ -15,11 +15,18 @@ Both runs produced Linux x86-64, macOS arm64, and Windows x86-64 candidate
 artifacts. The immutable plans and independently downloaded artifacts passed
 verification. No tag, release, public upload, or publication was attempted.
 
+The AO Command Windows candidate is an x86-64 PE executable packaged in a zip.
+`scripts/qualify-windows-candidate.ps1` qualifies that exact zip under both
+Windows PowerShell 5.1 and PowerShell 7. Its reports are external evidence
+bound to the unchanged archive digest.
+
 ## Install
 
 Download the artifact for the target operating system from the exact hosted
 run. Verify `SHA256SUMS` before extracting it. Install into a
 user-controlled directory rather than replacing an existing binary in place.
+On Windows, installation means extracting the zip into that user-controlled
+directory; it is not a system installer and does not modify `PATH`.
 Run:
 
 ```text
@@ -29,6 +36,11 @@ ao-command version --json
 
 The reported source commit must match the candidate inventory. A mismatch
 stops the rehearsal.
+
+AO Command has no `doctor` interface. The replacement diagnostic is the exact
+`version --json` identity plus provider-free `mission status` against the ready
+Mission fixture. Qualification records doctor as `not_applicable` with
+`replacement_diagnostic=version_and_mission_status`.
 
 ## Compatibility
 
@@ -47,21 +59,20 @@ and passed verification claims without evidence.
 
 ## Upgrade
 
-Keep the currently installed binary and its verified checksum. Place the new
-candidate beside it, verify its checksum and version output, then atomically
-switch the user-controlled launcher or path entry. Re-run the operator status
-fixture before removing the previous binary.
+Upgrade belongs to the separate stack Gate 4. It is not proven by the AO
+Command component qualification report.
 
 ## Rollback
 
-Restore the previous verified binary and checksum record. Re-run its version
-command and the last compatible readback fixture. Rollback does not create a
-tag, release, upload, deployment, or approval.
+Rollback also belongs to the separate stack Gate 4 and is not proven by this
+component report. Rollback does not create a tag, release, upload, deployment,
+or approval.
 
 ## Uninstall
 
-Remove only the explicitly installed candidate binary, its user-controlled
-launcher entry, and the candidate-specific checksum record. Do not remove
+Remove only the user-controlled extracted candidate directory and its
+candidate-specific checksum record. This removal is not a system uninstaller.
+Do not remove
 Mission records, AO2 evidence packs, Control Plane records, or unrelated
 configuration.
 
