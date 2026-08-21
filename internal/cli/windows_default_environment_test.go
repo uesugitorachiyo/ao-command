@@ -40,3 +40,31 @@ func TestWindowsCheckoutEOLContract(t *testing.T) {
 		t.Errorf("CLAUDE.md bytes = %q, want %q", alias, want)
 	}
 }
+
+func TestWindowsSourceShellContract(t *testing.T) {
+	root := filepath.Join("..", "..")
+	for _, name := range []string{"AGENTS.md", "REFERENCE.md"} {
+		document, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			`Git\bin\bash.exe`,
+			"Repository `.sh` gates run in Git for Windows Bash",
+			"Ruby is not required.",
+		} {
+			if !bytes.Contains(document, []byte(want)) {
+				t.Errorf("%s missing Windows source-shell contract %q", name, want)
+			}
+		}
+	}
+
+	reference, err := os.ReadFile(filepath.Join(root, "REFERENCE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke"
+	if !bytes.Contains(reference, []byte(want)) {
+		t.Errorf("REFERENCE.md missing AO Command smoke command %q", want)
+	}
+}

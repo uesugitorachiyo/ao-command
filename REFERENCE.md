@@ -311,6 +311,19 @@ go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contrac
 scripts/verify-branch-protection.sh
 ```
 
+## Windows source-shell contract
+
+Go and Python tools run directly from PowerShell. Repository `.sh` gates run in Git for Windows Bash; use it only for those gates. Ruby is not required. The AO Command binary has no Bash dependency. The supported Git for Windows installation currently supplies the `shasum` used by repository scripts; an unrelated Bash installation or a stripped `PATH` that cannot find it is an unsupported environment with a missing prerequisite.
+
+From the AO Command repository root, run the smoke gate in PowerShell with:
+
+```powershell
+$gitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
+$env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
+& $gitBash -lc 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
+Remove-Item Env:AO_COMMAND_ROOT
+```
+
 Historical private-repo operating guardrails are tracked in
 `docs/operations/PRIVATE-REPO-GUARDRAILS.md`.
 The pre-publication operator gate and publication evidence are tracked in

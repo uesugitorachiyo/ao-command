@@ -36,6 +36,19 @@ Command does not become a source of domain truth. It has no authority to approve
 - Run the documented production-readiness audit in non-admin mode for release-facing or readiness changes. Release rehearsal and publication remain conditional on separate authority.
 - For instruction changes run `python3 ../ao-architecture/scripts/verify_agent_instruction_layout.py --workspace-root .. --repository ao-command`. Always run `git diff --check`.
 
+### Windows source-shell contract
+
+Go and Python tools run directly from PowerShell. Repository `.sh` gates run in Git for Windows Bash; use it only for those gates. Ruby is not required. The AO Command binary has no Bash dependency. The supported Git for Windows installation currently supplies the `shasum` used by repository scripts; an unrelated Bash installation or a stripped `PATH` that cannot find it is an unsupported environment with a missing prerequisite.
+
+From the AO Command repository root, run the smoke gate in PowerShell with:
+
+```powershell
+$gitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
+$env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
+& $gitBash -lc 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
+Remove-Item Env:AO_COMMAND_ROOT
+```
+
 ## Evidence And Completion
 
 - Record the Command source head, producer source heads, commands and exits, and relevant input/output digests. Report skipped, unavailable, stale, or failed checks explicitly.
