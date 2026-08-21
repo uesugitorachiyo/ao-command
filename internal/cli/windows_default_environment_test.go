@@ -112,8 +112,19 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 	}
 	configStep := "      - name: Configure checkout conversion\n        shell: pwsh\n        working-directory: .\n        run: |\n          git config --global core.autocrlf true\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
 	checkoutStep := "      - name: Checkout ao-command\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          path: AO Command Default Windows\n          persist-credentials: false\n"
+	setupGoStep := "      - name: Setup Go\n        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16\n        with:\n          go-version-file: AO Command Default Windows/go.mod\n          cache: false\n"
+	testStep := "      - name: Test\n        run: |\n          go test ./... -count=1\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+	vetStep := "      - name: Vet\n        run: |\n          go vet ./...\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+	buildStep := "      - name: Build\n        run: |\n          go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+	diffStep := "      - name: Check diff\n        run: |\n          git diff --check\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
 	withoutConfig := strings.Replace(windowsDefaultEnvironmentFixture, configStep, "", 1)
 	configAfterCheckout := strings.Replace(withoutConfig, checkoutStep, checkoutStep+configStep, 1)
+	withoutSetupGo := strings.Replace(windowsDefaultEnvironmentFixture, setupGoStep, "", 1)
+	setupBeforeCheckout := strings.Replace(withoutSetupGo, checkoutStep, setupGoStep+checkoutStep, 1)
+	gatesOutOfOrder := strings.Replace(windowsDefaultEnvironmentFixture, testStep+vetStep+buildStep+diffStep, diffStep+buildStep+vetStep+testStep, 1)
+	collapsedGates := strings.Replace(windowsDefaultEnvironmentFixture, testStep+vetStep, "      - name: Arbitrary gates\n        run: |\n          go test ./... -count=1\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n          go vet ./...\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n", 1)
+	diffInBuild := strings.Replace(windowsDefaultEnvironmentFixture, buildStep+diffStep, "      - name: Build\n        run: |\n          go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n          git diff --check\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n      - name: Check diff\n        run: Write-Output skipped\n", 1)
+	duplicateTestCommand := strings.Replace(windowsDefaultEnvironmentFixture, testStep, testStep+"      - name: Extra test\n        run: |\n          go test ./... -count=1\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n", 1)
 	tests := []struct {
 		name     string
 		document string
@@ -134,6 +145,17 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 		{"workflow dispatch omitted", strings.Replace(windowsDefaultEnvironmentFixture, "  workflow_dispatch:\n", "", 1)},
 		{"pull request omitted", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "", 1)},
 		{"extra trigger", strings.Replace(windowsDefaultEnvironmentFixture, "  push:\n", "  schedule:\n    - cron: '0 0 * * *'\n  push:\n", 1)},
+		{"push paths", strings.Replace(windowsDefaultEnvironmentFixture, "    branches: [main, codex/**]\n", "    branches: [main, codex/**]\n    paths: [internal/**]\n", 1)},
+		{"push paths ignore", strings.Replace(windowsDefaultEnvironmentFixture, "    branches: [main, codex/**]\n", "    branches: [main, codex/**]\n    paths-ignore: [docs/**]\n", 1)},
+		{"pull request paths", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "  pull_request:\n    paths: [internal/**]\n", 1)},
+		{"pull request branches", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "  pull_request:\n    branches: [main]\n", 1)},
+		{"nonempty workflow dispatch", strings.Replace(windowsDefaultEnvironmentFixture, "  workflow_dispatch:\n", "  workflow_dispatch:\n    inputs: {}\n", 1)},
+		{"setup before checkout", setupBeforeCheckout},
+		{"gates out of order", gatesOutOfOrder},
+		{"commands collapsed into arbitrary step", collapsedGates},
+		{"required step renamed", strings.Replace(windowsDefaultEnvironmentFixture, "      - name: Setup Python\n", "      - name: Python toolchain\n", 1)},
+		{"correct diff command in wrong step", diffInBuild},
+		{"duplicate test command in extra step", duplicateTestCommand},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -176,9 +198,16 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 			return fmt.Errorf("required trigger %q is missing", trigger)
 		}
 	}
+	for _, trigger := range []string{"workflow_dispatch", "pull_request"} {
+		value := on[trigger]
+		mapping, isMapping := value.(map[string]any)
+		if value != nil && (!isMapping || len(mapping) != 0) {
+			return fmt.Errorf("trigger %q must be null or an empty mapping", trigger)
+		}
+	}
 	push, ok := on["push"].(map[string]any)
-	if !ok {
-		return fmt.Errorf("push must be a mapping")
+	if !ok || len(push) != 1 {
+		return fmt.Errorf("push must contain only branches")
 	}
 	branches, ok := push["branches"].([]any)
 	if !ok || fmt.Sprint(branches) != "[main codex/**]" {
@@ -232,6 +261,46 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 			lines:  executableWorkflowLines(run),
 		})
 	}
+	requiredNames := []string{
+		"Configure checkout conversion",
+		"Checkout ao-command",
+		"Setup Go",
+		"Setup Python",
+		"Verify default Windows checkout",
+		"Check formatting",
+		"Test",
+		"Vet",
+		"Build",
+		"Check diff",
+	}
+	actionSteps := map[string]bool{
+		"Checkout ao-command": true,
+		"Setup Go":            true,
+		"Setup Python":        true,
+	}
+	requiredSteps := make(map[string]windowsWorkflowStep, len(requiredNames))
+	previousIndex := -1
+	for _, name := range requiredNames {
+		matches := make([]windowsWorkflowStep, 0, 1)
+		for _, step := range parsedSteps {
+			if step.name == name {
+				matches = append(matches, step)
+			}
+		}
+		if len(matches) != 1 || matches[0].index <= previousIndex {
+			return fmt.Errorf("required Windows step %q must appear exactly once in order", name)
+		}
+		step := matches[0]
+		if actionSteps[name] {
+			if step.action == "" || len(step.lines) != 0 {
+				return fmt.Errorf("required Windows step %q must be an action step", name)
+			}
+		} else if step.action != "" || len(step.lines) == 0 {
+			return fmt.Errorf("required Windows step %q must be a run step", name)
+		}
+		requiredSteps[name] = step
+		previousIndex = step.index
+	}
 	findAction := func(prefix, exact string) (windowsWorkflowStep, error) {
 		matches := make([]windowsWorkflowStep, 0, 1)
 		for _, step := range parsedSteps {
@@ -256,17 +325,17 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 	if err != nil {
 		return err
 	}
-	configCommand := "git config --global core.autocrlf true"
-	configSteps := make([]windowsWorkflowStep, 0, 1)
-	for _, step := range parsedSteps {
-		if lineIndex(step.lines, configCommand) >= 0 {
-			configSteps = append(configSteps, step)
-		}
+	if checkout.index != requiredSteps["Checkout ao-command"].index ||
+		setupGo.index != requiredSteps["Setup Go"].index ||
+		setupPython.index != requiredSteps["Setup Python"].index {
+		return fmt.Errorf("pinned setup actions must be bound to their required named steps")
 	}
-	if len(configSteps) != 1 || configSteps[0].index >= checkout.index || !equalWorkflowLines(configSteps[0].lines, []string{configCommand, workflowExitGuard}) {
+	configCommand := "git config --global core.autocrlf true"
+	configStep := requiredSteps["Configure checkout conversion"]
+	if workflowLineCount(parsedSteps, configCommand) != 1 || !equalWorkflowLines(configStep.lines, []string{configCommand, workflowExitGuard}) {
 		return fmt.Errorf("one exact core.autocrlf command must run before checkout with immediate exit handling")
 	}
-	rawConfigStep, _ := steps[configSteps[0].index].(map[string]any)
+	rawConfigStep, _ := steps[configStep.index].(map[string]any)
 	if rawConfigStep["working-directory"] != "." {
 		return fmt.Errorf("core.autocrlf must be configured from the workspace root")
 	}
@@ -302,8 +371,8 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 		"if ($claudeEOL.Count -ne 1 -or $claudeEOL[0] -notmatch 'w/lf\\s+attr/text eol=lf\\s+') { throw 'CLAUDE.md must be w/lf with attr/text eol=lf' }",
 		"if ($digestEOL.Count -eq 0 -or @($digestEOL | Where-Object { $_ -notmatch 'attr/-text\\s+' }).Count -ne 0) { throw 'digest fixtures must be attr/-text' }",
 	}
-	if err := requireUniqueWorkflowStep(parsedSteps, "Verify default Windows checkout", verification); err != nil {
-		return err
+	if !equalWorkflowLines(requiredSteps["Verify default Windows checkout"].lines, verification) {
+		return fmt.Errorf("Windows job must contain the exact verification commands")
 	}
 	formatting := []string{
 		"$unformatted = gofmt -l .",
@@ -313,16 +382,16 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 		"exit 1",
 		"}",
 	}
-	if err := requireUniqueWorkflowStep(parsedSteps, "Check formatting", formatting); err != nil {
-		return err
+	if workflowLineCount(parsedSteps, "$unformatted = gofmt -l .") != 1 || !equalWorkflowLines(requiredSteps["Check formatting"].lines, formatting) {
+		return fmt.Errorf("Windows job must contain the exact formatting commands")
 	}
-	for _, command := range []string{
-		"go test ./... -count=1",
-		"go vet ./...",
-		"go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command",
-		"git diff --check",
+	for name, command := range map[string]string{
+		"Test":       "go test ./... -count=1",
+		"Vet":        "go vet ./...",
+		"Build":      "go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command",
+		"Check diff": "git diff --check",
 	} {
-		if err := requireGuardedWorkflowCommand(parsedSteps, command); err != nil {
+		if err := requireGuardedWorkflowCommand(parsedSteps, requiredSteps[name], command); err != nil {
 			return err
 		}
 	}
@@ -343,47 +412,25 @@ func executableWorkflowLines(script string) []string {
 	return executable
 }
 
-func lineIndex(lines []string, want string) int {
-	for index, line := range lines {
-		if line == want {
-			return index
-		}
-	}
-	return -1
-}
-
 func equalWorkflowLines(got, want []string) bool {
 	return strings.Join(got, "\n") == strings.Join(want, "\n")
 }
 
-func requireUniqueWorkflowStep(steps []windowsWorkflowStep, name string, lines []string) error {
-	matches := make([]windowsWorkflowStep, 0, 1)
+func workflowLineCount(steps []windowsWorkflowStep, want string) int {
+	count := 0
 	for _, step := range steps {
-		if step.name == name {
-			matches = append(matches, step)
+		for _, line := range step.lines {
+			if line == want {
+				count++
+			}
 		}
 	}
-	if len(matches) != 1 || !equalWorkflowLines(matches[0].lines, lines) {
-		return fmt.Errorf("Windows job must contain one exact %q step", name)
-	}
-	return nil
+	return count
 }
 
-func requireGuardedWorkflowCommand(steps []windowsWorkflowStep, command string) error {
-	matches := 0
-	for _, step := range steps {
-		for index, line := range step.lines {
-			if line != command {
-				continue
-			}
-			matches++
-			if index+1 >= len(step.lines) || step.lines[index+1] != workflowExitGuard {
-				return fmt.Errorf("command %q must have an immediate exit guard", command)
-			}
-		}
-	}
-	if matches != 1 {
-		return fmt.Errorf("Windows job must contain one exact executable command %q", command)
+func requireGuardedWorkflowCommand(steps []windowsWorkflowStep, step windowsWorkflowStep, command string) error {
+	if workflowLineCount(steps, command) != 1 || !equalWorkflowLines(step.lines, []string{command, workflowExitGuard}) {
+		return fmt.Errorf("step %q must contain exact command %q with an immediate exit guard", step.name, command)
 	}
 	return nil
 }
