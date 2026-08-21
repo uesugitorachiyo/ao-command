@@ -14,6 +14,8 @@ import (
 
 const windowsDefaultEnvironmentFixture = `
 on:
+  workflow_dispatch:
+  pull_request:
   push:
     branches: [main, codex/**]
 jobs:
@@ -32,8 +34,10 @@ jobs:
       - name: Configure checkout conversion
         shell: pwsh
         working-directory: .
-        run: git config --global core.autocrlf true
-      - name: Checkout
+        run: |
+          git config --global core.autocrlf true
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Checkout ao-command
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: AO Command Default Windows
@@ -47,36 +51,49 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.12"
-      - name: Verify defaults
+      - name: Verify default Windows checkout
         run: |
           if ((Get-Location).Path -notmatch ' ') { throw 'checkout path must contain spaces' }
-          if ((git config --global --get core.autocrlf) -ne 'true') { throw 'core.autocrlf must be true' }
+          $autocrlf = git config --global --get core.autocrlf
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($autocrlf -ne 'true') { throw 'core.autocrlf must be true' }
           if ($env:PYTHONUTF8 -ne '0') { throw 'PYTHONUTF8 must be 0' }
           $claude = [System.IO.File]::ReadAllBytes('CLAUDE.md')
-          if ([Convert]::ToHexString($claude) -ne '404147454E54532E6D640A') { throw 'CLAUDE.md bytes differ' }
-          $eol = git ls-files --eol
+          if ([Convert]::ToHexString($claude) -ne '404147454E54532E6D640A') { throw 'CLAUDE.md must contain exact ASCII @AGENTS.md plus LF' }
+          $eol = @(git ls-files --eol -- '*.go' '*.sh' 'CLAUDE.md' 'examples/mission/artifacts/sha256/*')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $goEOL = @($eol | Where-Object { $_ -match '\.go$' })
           $bashEOL = @($eol | Where-Object { $_ -match '\.sh$' })
           $claudeEOL = @($eol | Where-Object { $_ -match 'CLAUDE\.md$' })
           $digestEOL = @($eol | Where-Object { $_ -match 'examples/mission/artifacts/sha256/' })
-          if (@($goEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' })) { throw 'Go files must be w/lf' }
-          if (@($bashEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' })) { throw 'Bash files must be w/lf' }
-          if (@($claudeEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' })) { throw 'CLAUDE.md must be w/lf' }
-          if (@($digestEOL | Where-Object { $_ -notmatch 'attr/-text\s+' })) { throw 'digest fixtures must be attr/-text' }
-      - name: Format
+          if ($goEOL.Count -eq 0 -or @($goEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' }).Count -ne 0) { throw 'Go files must be w/lf with attr/text eol=lf' }
+          if ($bashEOL.Count -eq 0 -or @($bashEOL | Where-Object { $_ -notmatch 'w/lf\s+attr/text eol=lf\s+' }).Count -ne 0) { throw 'Bash files must be w/lf with attr/text eol=lf' }
+          if ($claudeEOL.Count -ne 1 -or $claudeEOL[0] -notmatch 'w/lf\s+attr/text eol=lf\s+') { throw 'CLAUDE.md must be w/lf with attr/text eol=lf' }
+          if ($digestEOL.Count -eq 0 -or @($digestEOL | Where-Object { $_ -notmatch 'attr/-text\s+' }).Count -ne 0) { throw 'digest fixtures must be attr/-text' }
+      - name: Check formatting
         run: |
           $unformatted = gofmt -l .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($unformatted) { $unformatted; exit 1 }
+          if ($unformatted) {
+            $unformatted
+            exit 1
+          }
       - name: Test
-        run: go test ./... -count=1
+        run: |
+          go test ./... -count=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Vet
-        run: go vet ./...
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build
-        run: go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command
-      - name: Diff check
-        run: git diff --check
+        run: |
+          go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check diff
+        run: |
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 `
 
 func TestWindowsDefaultEnvironmentWorkflow(t *testing.T) {
@@ -93,8 +110,8 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 	if err := validateWindowsDefaultEnvironmentWorkflow(windowsDefaultEnvironmentFixture); err != nil {
 		t.Fatalf("valid fixture rejected: %v", err)
 	}
-	configStep := "      - name: Configure checkout conversion\n        shell: pwsh\n        working-directory: .\n        run: git config --global core.autocrlf true\n"
-	checkoutStep := "      - name: Checkout\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          path: AO Command Default Windows\n          persist-credentials: false\n"
+	configStep := "      - name: Configure checkout conversion\n        shell: pwsh\n        working-directory: .\n        run: |\n          git config --global core.autocrlf true\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+	checkoutStep := "      - name: Checkout ao-command\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          path: AO Command Default Windows\n          persist-credentials: false\n"
 	withoutConfig := strings.Replace(windowsDefaultEnvironmentFixture, configStep, "", 1)
 	configAfterCheckout := strings.Replace(withoutConfig, checkoutStep, checkoutStep+configStep, 1)
 	tests := []struct {
@@ -104,7 +121,19 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 		{"UTF-8 forced on", strings.Replace(windowsDefaultEnvironmentFixture, `PYTHONUTF8: "0"`, `PYTHONUTF8: "1"`, 1)},
 		{"conversion configured after checkout", configAfterCheckout},
 		{"checkout path has no spaces", strings.ReplaceAll(windowsDefaultEnvironmentFixture, "AO Command Default Windows", "ao-command-default-windows")},
-		{"commands only in comments", strings.Replace(windowsDefaultEnvironmentFixture, "        run: go vet ./...", "        run: |\n          # go vet ./...\n          Write-Output skipped", 1)},
+		{"commands only in comments", strings.Replace(windowsDefaultEnvironmentFixture, "          go vet ./...", "          # go vet ./...\n          Write-Output skipped", 1)},
+		{"quoted config command", strings.Replace(windowsDefaultEnvironmentFixture, "          git config --global core.autocrlf true", "          Write-Output 'git config --global core.autocrlf true'", 1)},
+		{"quoted vet command", strings.Replace(windowsDefaultEnvironmentFixture, "          go vet ./...", "          Write-Output 'go vet ./...'", 1)},
+		{"quoted test command", strings.Replace(windowsDefaultEnvironmentFixture, "          go test ./... -count=1", "          Write-Output 'go test ./... -count=1'", 1)},
+		{"quoted build command", strings.Replace(windowsDefaultEnvironmentFixture, "          go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command", "          Write-Output \"go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command\"", 1)},
+		{"quoted diff command", strings.Replace(windowsDefaultEnvironmentFixture, "          git diff --check", "          Write-Output 'git diff --check'", 1)},
+		{"duplicate checkout", strings.Replace(windowsDefaultEnvironmentFixture, checkoutStep, checkoutStep+checkoutStep, 1)},
+		{"duplicate config", strings.Replace(windowsDefaultEnvironmentFixture, configStep, configStep+configStep, 1)},
+		{"test exit guard removed", strings.Replace(windowsDefaultEnvironmentFixture, "          go test ./... -count=1\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", "          go test ./... -count=1", 1)},
+		{"vet exit guard misplaced", strings.Replace(windowsDefaultEnvironmentFixture, "          go vet ./...\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", "          go vet ./...\n          Write-Output delayed\n          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", 1)},
+		{"workflow dispatch omitted", strings.Replace(windowsDefaultEnvironmentFixture, "  workflow_dispatch:\n", "", 1)},
+		{"pull request omitted", strings.Replace(windowsDefaultEnvironmentFixture, "  pull_request:\n", "", 1)},
+		{"extra trigger", strings.Replace(windowsDefaultEnvironmentFixture, "  push:\n", "  schedule:\n    - cron: '0 0 * * *'\n  push:\n", 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -122,6 +151,14 @@ func TestWindowsDefaultEnvironmentWorkflowRejectsDecoys(t *testing.T) {
 	}
 }
 
+type windowsWorkflowStep struct {
+	index  int
+	name   string
+	action string
+	with   map[string]any
+	lines  []string
+}
+
 func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 	document, err := parseWorkflowTestYAML(text)
 	if err != nil {
@@ -130,6 +167,14 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 	on, ok := document["on"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("on must be a mapping")
+	}
+	if len(on) != 3 {
+		return fmt.Errorf("triggers must be exactly workflow_dispatch, pull_request, and push")
+	}
+	for _, trigger := range []string{"workflow_dispatch", "pull_request", "push"} {
+		if _, ok := on[trigger]; !ok {
+			return fmt.Errorf("required trigger %q is missing", trigger)
+		}
 	}
 	push, ok := on["push"].(map[string]any)
 	if !ok {
@@ -170,75 +215,123 @@ func validateWindowsDefaultEnvironmentWorkflow(text string) error {
 	if !ok {
 		return fmt.Errorf("Windows job steps are missing")
 	}
-	checkoutIndex := -1
-	configIndex := -1
-	runs := make([]string, 0, len(steps))
-	uses := map[string]map[string]any{}
+	parsedSteps := make([]windowsWorkflowStep, 0, len(steps))
 	for index, rawStep := range steps {
-		step, _ := rawStep.(map[string]any)
-		if action, _ := step["uses"].(string); action != "" {
-			with, _ := step["with"].(map[string]any)
-			uses[action] = with
-			if strings.HasPrefix(action, "actions/checkout@") {
-				checkoutIndex = index
+		step, ok := rawStep.(map[string]any)
+		if !ok {
+			return fmt.Errorf("Windows job step %d must be a mapping", index)
+		}
+		action, _ := step["uses"].(string)
+		with, _ := step["with"].(map[string]any)
+		run, _ := step["run"].(string)
+		parsedSteps = append(parsedSteps, windowsWorkflowStep{
+			index:  index,
+			name:   fmt.Sprint(step["name"]),
+			action: action,
+			with:   with,
+			lines:  executableWorkflowLines(run),
+		})
+	}
+	findAction := func(prefix, exact string) (windowsWorkflowStep, error) {
+		matches := make([]windowsWorkflowStep, 0, 1)
+		for _, step := range parsedSteps {
+			if strings.HasPrefix(step.action, prefix+"@") {
+				matches = append(matches, step)
 			}
 		}
-		if run, _ := step["run"].(string); run != "" {
-			executable := executableWorkflowLines(run)
-			runs = append(runs, executable)
-			if strings.Contains(executable, "git config --global core.autocrlf true") {
-				configIndex = index
-				if step["working-directory"] != "." {
-					return fmt.Errorf("core.autocrlf must be configured before checkout from the workspace root")
-				}
-			}
+		if len(matches) != 1 || matches[0].action != exact {
+			return windowsWorkflowStep{}, fmt.Errorf("Windows job must contain one exact %s action", exact)
+		}
+		return matches[0], nil
+	}
+	checkout, err := findAction("actions/checkout", "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1")
+	if err != nil {
+		return err
+	}
+	setupGo, err := findAction("actions/setup-go", "actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16")
+	if err != nil {
+		return err
+	}
+	setupPython, err := findAction("actions/setup-python", "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405")
+	if err != nil {
+		return err
+	}
+	configCommand := "git config --global core.autocrlf true"
+	configSteps := make([]windowsWorkflowStep, 0, 1)
+	for _, step := range parsedSteps {
+		if lineIndex(step.lines, configCommand) >= 0 {
+			configSteps = append(configSteps, step)
 		}
 	}
-	checkout := uses["actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"]
-	if checkoutIndex < 0 || configIndex < 0 || configIndex >= checkoutIndex || checkout["path"] != workingDirectory || checkout["persist-credentials"] != false {
+	if len(configSteps) != 1 || configSteps[0].index >= checkout.index || !equalWorkflowLines(configSteps[0].lines, []string{configCommand, workflowExitGuard}) {
+		return fmt.Errorf("one exact core.autocrlf command must run before checkout with immediate exit handling")
+	}
+	rawConfigStep, _ := steps[configSteps[0].index].(map[string]any)
+	if rawConfigStep["working-directory"] != "." {
+		return fmt.Errorf("core.autocrlf must be configured from the workspace root")
+	}
+	if checkout.with["path"] != workingDirectory || checkout.with["persist-credentials"] != false {
 		return fmt.Errorf("pinned credential-free checkout must follow global core.autocrlf configuration and use the spaced path")
 	}
-	setupGo := uses["actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16"]
-	if setupGo["go-version-file"] != workingDirectory+"/go.mod" || setupGo["cache"] != false {
+	if setupGo.with["go-version-file"] != workingDirectory+"/go.mod" || setupGo.with["cache"] != false {
 		return fmt.Errorf("pinned setup-go must use the spaced go.mod path with cache disabled")
 	}
-	setupPython := uses["actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405"]
-	if setupPython["python-version"] != "3.12" {
+	if setupPython.with["python-version"] != "3.12" {
 		return fmt.Errorf("pinned setup-python must select Python 3.12")
 	}
 	body, _ := json.Marshal(job)
 	if strings.Contains(string(body), "secrets.") || strings.Contains(string(body), "upload-artifact") || strings.Contains(string(body), "contents\":\"write") {
 		return fmt.Errorf("Windows job must not use secrets, uploads, or write permissions")
 	}
-	commands := strings.Join(runs, "\n")
-	for _, want := range []string{
-		"(Get-Location).Path -notmatch ' '",
-		"git config --global --get core.autocrlf",
-		"$env:PYTHONUTF8 -ne '0'",
-		"[System.IO.File]::ReadAllBytes('CLAUDE.md')",
-		"404147454E54532E6D640A",
-		"git ls-files --eol",
-		"$_ -match '\\.go$'",
-		"$_ -match '\\.sh$'",
-		"$_ -match 'CLAUDE\\.md$'",
-		"$_ -match 'examples/mission/artifacts/sha256/'",
-		"$_ -notmatch 'w/lf\\s+attr/text eol=lf\\s+'",
-		"$_ -notmatch 'attr/-text\\s+'",
+	verification := []string{
+		"if ((Get-Location).Path -notmatch ' ') { throw 'checkout path must contain spaces' }",
+		"$autocrlf = git config --global --get core.autocrlf",
+		workflowExitGuard,
+		"if ($autocrlf -ne 'true') { throw 'core.autocrlf must be true' }",
+		"if ($env:PYTHONUTF8 -ne '0') { throw 'PYTHONUTF8 must be 0' }",
+		"$claude = [System.IO.File]::ReadAllBytes('CLAUDE.md')",
+		"if ([Convert]::ToHexString($claude) -ne '404147454E54532E6D640A') { throw 'CLAUDE.md must contain exact ASCII @AGENTS.md plus LF' }",
+		"$eol = @(git ls-files --eol -- '*.go' '*.sh' 'CLAUDE.md' 'examples/mission/artifacts/sha256/*')",
+		workflowExitGuard,
+		"$goEOL = @($eol | Where-Object { $_ -match '\\.go$' })",
+		"$bashEOL = @($eol | Where-Object { $_ -match '\\.sh$' })",
+		"$claudeEOL = @($eol | Where-Object { $_ -match 'CLAUDE\\.md$' })",
+		"$digestEOL = @($eol | Where-Object { $_ -match 'examples/mission/artifacts/sha256/' })",
+		"if ($goEOL.Count -eq 0 -or @($goEOL | Where-Object { $_ -notmatch 'w/lf\\s+attr/text eol=lf\\s+' }).Count -ne 0) { throw 'Go files must be w/lf with attr/text eol=lf' }",
+		"if ($bashEOL.Count -eq 0 -or @($bashEOL | Where-Object { $_ -notmatch 'w/lf\\s+attr/text eol=lf\\s+' }).Count -ne 0) { throw 'Bash files must be w/lf with attr/text eol=lf' }",
+		"if ($claudeEOL.Count -ne 1 -or $claudeEOL[0] -notmatch 'w/lf\\s+attr/text eol=lf\\s+') { throw 'CLAUDE.md must be w/lf with attr/text eol=lf' }",
+		"if ($digestEOL.Count -eq 0 -or @($digestEOL | Where-Object { $_ -notmatch 'attr/-text\\s+' }).Count -ne 0) { throw 'digest fixtures must be attr/-text' }",
+	}
+	if err := requireUniqueWorkflowStep(parsedSteps, "Verify default Windows checkout", verification); err != nil {
+		return err
+	}
+	formatting := []string{
 		"$unformatted = gofmt -l .",
-		"if ($unformatted)",
+		workflowExitGuard,
+		"if ($unformatted) {",
+		"$unformatted",
+		"exit 1",
+		"}",
+	}
+	if err := requireUniqueWorkflowStep(parsedSteps, "Check formatting", formatting); err != nil {
+		return err
+	}
+	for _, command := range []string{
 		"go test ./... -count=1",
 		"go vet ./...",
 		"go build -o (Join-Path $env:RUNNER_TEMP 'ao-command.exe') ./cmd/ao-command",
 		"git diff --check",
 	} {
-		if !strings.Contains(commands, want) {
-			return fmt.Errorf("Windows job executable commands missing %q", want)
+		if err := requireGuardedWorkflowCommand(parsedSteps, command); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func executableWorkflowLines(script string) string {
+const workflowExitGuard = "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+
+func executableWorkflowLines(script string) []string {
 	lines := strings.Split(strings.ReplaceAll(script, "\r\n", "\n"), "\n")
 	executable := lines[:0]
 	for _, line := range lines {
@@ -247,7 +340,52 @@ func executableWorkflowLines(script string) string {
 			executable = append(executable, trimmed)
 		}
 	}
-	return strings.Join(executable, "\n")
+	return executable
+}
+
+func lineIndex(lines []string, want string) int {
+	for index, line := range lines {
+		if line == want {
+			return index
+		}
+	}
+	return -1
+}
+
+func equalWorkflowLines(got, want []string) bool {
+	return strings.Join(got, "\n") == strings.Join(want, "\n")
+}
+
+func requireUniqueWorkflowStep(steps []windowsWorkflowStep, name string, lines []string) error {
+	matches := make([]windowsWorkflowStep, 0, 1)
+	for _, step := range steps {
+		if step.name == name {
+			matches = append(matches, step)
+		}
+	}
+	if len(matches) != 1 || !equalWorkflowLines(matches[0].lines, lines) {
+		return fmt.Errorf("Windows job must contain one exact %q step", name)
+	}
+	return nil
+}
+
+func requireGuardedWorkflowCommand(steps []windowsWorkflowStep, command string) error {
+	matches := 0
+	for _, step := range steps {
+		for index, line := range step.lines {
+			if line != command {
+				continue
+			}
+			matches++
+			if index+1 >= len(step.lines) || step.lines[index+1] != workflowExitGuard {
+				return fmt.Errorf("command %q must have an immediate exit guard", command)
+			}
+		}
+	}
+	if matches != 1 {
+		return fmt.Errorf("Windows job must contain one exact executable command %q", command)
+	}
+	return nil
 }
 
 func TestWindowsCheckoutEOLContract(t *testing.T) {
