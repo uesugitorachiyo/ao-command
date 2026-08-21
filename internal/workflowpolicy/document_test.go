@@ -30,6 +30,31 @@ func TestValidateBytesRejectsMalformedAliasAndNonMappingDocuments(t *testing.T) 
 	}
 }
 
+func TestValidateBytesRejectsNonStringMappingKeysDeterministically(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "root", body: "1: value\n"},
+		{name: "nested", body: "jobs:\n  unsafe:\n    1: extra\n    permissions: write-all\n"},
+		{
+			name: "colliding jobs keys",
+			body: "name: collision\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  1:\n    permissions: write-all\n  \"\\0int:1\":\n    steps: []\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for range 20 {
+				err := ValidateBytes("workflow.yml", []byte(test.body))
+				violation, ok := err.(Violation)
+				if !ok || violation.Path != "workflow.yml" || violation.Message != "malformed workflow: mapping keys must be strings" {
+					t.Fatalf("violation = %#v, want stable non-string-key rejection", err)
+				}
+			}
+		})
+	}
+}
+
 func TestValidateBytesRejectsOversizeDocument(t *testing.T) {
 	err := ValidateBytes("workflow.yml", []byte(strings.Repeat("#", maxFileBytes+1)))
 	assertViolation(t, err, "workflow.yml", "workflow file size limit exceeded")

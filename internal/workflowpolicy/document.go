@@ -115,6 +115,9 @@ func validateDocument(path string, body []byte) error {
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
 		return Violation{Path: path, Message: "malformed workflow: root must be a mapping"}
 	}
+	if !mappingKeysAreStrings(document.Content[0]) {
+		return Violation{Path: path, Message: "malformed workflow: mapping keys must be strings"}
+	}
 	var workflow map[string]any
 	if err := document.Content[0].Decode(&workflow); err != nil {
 		return Violation{Path: path, Message: "malformed workflow: " + err.Error()}
@@ -123,6 +126,27 @@ func validateDocument(path string, body []byte) error {
 		return Violation{Path: path, Message: err.Error()}
 	}
 	return nil
+}
+
+func mappingKeysAreStrings(node *yaml.Node) bool {
+	if node == nil {
+		return true
+	}
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || !mappingKeysAreStrings(node.Content[i+1]) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, child := range node.Content {
+		if !mappingKeysAreStrings(child) {
+			return false
+		}
+	}
+	return true
 }
 
 func hasAlias(node *yaml.Node) bool {

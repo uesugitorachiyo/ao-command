@@ -84,7 +84,7 @@ func TestValidateBytesRejectsDefaultMixedAndWritableWorkflows(t *testing.T) {
 	}
 }
 
-func TestValidateBytesDoesNotSkipJobsOrStepsWithNonStringKeys(t *testing.T) {
+func TestValidateBytesRejectsJobsOrStepsWithNonStringKeys(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -93,17 +93,17 @@ func TestValidateBytesDoesNotSkipJobsOrStepsWithNonStringKeys(t *testing.T) {
 		{
 			name: "write permissions",
 			body: "name: unsafe\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  unsafe:\n    1: extra\n    permissions: write-all\n",
-			want: "job unsafe has forbidden write permissions",
+			want: "malformed workflow: mapping keys must be strings",
 		},
 		{
 			name: "artifact upload",
 			body: "name: unsafe\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  unsafe:\n    1: extra\n    permissions: write-all\n    steps:\n      - 2: extra\n        uses: actions/upload-artifact@v4\n",
-			want: "job unsafe artifact uploads require contents: read and no writes",
+			want: "malformed workflow: mapping keys must be strings",
 		},
 		{
 			name: "public release command",
 			body: "name: unsafe\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  unsafe:\n    1: extra\n    steps:\n      - 2: extra\n        run: gh release create v1\n",
-			want: "job unsafe public release command requires protected publisher",
+			want: "malformed workflow: mapping keys must be strings",
 		},
 	}
 	for _, test := range tests {

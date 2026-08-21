@@ -121,12 +121,6 @@ func containsPublicReleaseCommand(value any) bool {
 				return true
 			}
 		}
-	case map[any]any:
-		for key, child := range value {
-			if containsPublicReleaseCommand(key) || containsPublicReleaseCommand(child) {
-				return true
-			}
-		}
 	}
 	return false
 }
@@ -215,22 +209,8 @@ func protectedPublisher(name string, job, jobs map[string]any) bool {
 }
 
 func stringMap(value any) (map[string]any, bool) {
-	if result, ok := value.(map[string]any); ok {
-		return result, true
-	}
-	values, ok := value.(map[any]any)
-	if !ok {
-		return nil, false
-	}
-	result := make(map[string]any, len(values))
-	for key, value := range values {
-		text, ok := key.(string)
-		if !ok {
-			text = fmt.Sprintf("\x00%T:%#v", key, key)
-		}
-		result[text] = value
-	}
-	return result, true
+	result, ok := value.(map[string]any)
+	return result, ok
 }
 
 func sortedKeys(values map[string]any) []string {
