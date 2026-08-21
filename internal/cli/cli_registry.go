@@ -97,7 +97,7 @@ Usage:
   ao-command mission next --decision PATH [--json]
   ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json]
   ao-command mission timeline --readback PATH [--json]
-  ao-command mission artifacts --manifest PATH [--json]
+  ao-command mission artifacts --manifest PATH [--content-root MISSION_HOME] [--json]
   ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json]
   ao-command mission readiness --bundle PATH [--json]
   ao-command mission gateway --readback PATH [--json]
@@ -149,7 +149,7 @@ func (a App) mission(args []string) int {
 }
 
 func missionUsage() string {
-	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json] | ao-command mission timeline --readback PATH [--json] | ao-command mission artifacts --manifest PATH [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
+	return "ao-command mission: usage: ao-command mission aggregate --status PATH --atlas-metadata PATH --foundry-smoke PATH [--json] | ao-command mission approvals --inbox PATH [--ticket-id ID] [--json] | ao-command mission status --status PATH [--json] | ao-command mission next --decision PATH [--json] | ao-command mission history --history PATH [--route ROUTE] [--status-filter STATUS] [--query TEXT] [--pilot-readiness] [--compact] [--json] | ao-command mission timeline --readback PATH [--json] | ao-command mission artifacts --manifest PATH [--content-root MISSION_HOME] [--json] | ao-command mission dashboard --dashboard PATH [--compact] [--terminal-card] [--json] | ao-command mission readiness --bundle PATH [--json] | ao-command mission gateway --readback PATH [--json] | ao-command mission evidence --readback PATH [--json]"
 }
 
 func runRootHelp(a App, _ context.Context, _ []string) int {

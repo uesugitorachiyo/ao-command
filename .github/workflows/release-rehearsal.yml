@@ -427,8 +427,73 @@ jobs:
               "tag": os.environ["TAG"],
               "target": os.environ["TARGET_LABEL"],
               "version": os.environ["VERSION"],
+              "windows_qualification": {"status": "not_applicable", "reports": []},
           }
           (root / "candidate-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Qualify Windows candidate with Windows PowerShell 5.1
+        if: matrix.expected_goos == 'windows'
+        shell: powershell
+        env:
+          ARCHIVE: ao-command-${{ inputs.version }}-${{ matrix.target_label }}.${{ matrix.archive_extension }}
+          CANDIDATE_DIR: target/release-rehearsal/${{ matrix.target_label }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & scripts/qualify-windows-candidate.ps1 `
+            -CandidateDirectory $env:CANDIDATE_DIR `
+            -Archive $env:ARCHIVE `
+            -ExpectedSourceCommit $env:SOURCE_COMMIT `
+            -ExpectedVersion $env:VERSION `
+            -Output (Join-Path $env:CANDIDATE_DIR 'windows-qualification-powershell51.json')
+
+      - name: Qualify Windows candidate with PowerShell 7
+        if: matrix.expected_goos == 'windows'
+        shell: pwsh
+        env:
+          ARCHIVE: ao-command-${{ inputs.version }}-${{ matrix.target_label }}.${{ matrix.archive_extension }}
+          CANDIDATE_DIR: target/release-rehearsal/${{ matrix.target_label }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & scripts/qualify-windows-candidate.ps1 `
+            -CandidateDirectory $env:CANDIDATE_DIR `
+            -Archive $env:ARCHIVE `
+            -ExpectedSourceCommit $env:SOURCE_COMMIT `
+            -ExpectedVersion $env:VERSION `
+            -Output (Join-Path $env:CANDIDATE_DIR 'windows-qualification-pwsh7.json')
+
+      - name: Bind Windows qualification evidence to candidate summary
+        shell: bash
+        env:
+          CANDIDATE_DIR: target/release-rehearsal/${{ matrix.target_label }}
+          EXPECTED_GOOS: ${{ matrix.expected_goos }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["CANDIDATE_DIR"])
+          summary_path = root / "candidate-summary.json"
+          summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          reports = []
+          if os.environ["EXPECTED_GOOS"] == "windows":
+              for name in (
+                  "windows-qualification-powershell51.json",
+                  "windows-qualification-pwsh7.json",
+              ):
+                  digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+                  reports.append({"name": name, "sha256": digest})
+                  summary["inventory"].append({"name": name, "sha256": digest})
+              summary["inventory"].sort(key=lambda item: item["name"])
+              summary["windows_qualification"] = {"status": "passed", "reports": reports}
+          summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
 
       - name: Upload immutable private candidate

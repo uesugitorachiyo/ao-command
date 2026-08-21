@@ -59,7 +59,7 @@ go run ./cmd/ao-command mission status --status examples/mission/command-status.
 go run ./cmd/ao-command mission next --decision examples/mission/route-decision.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json
 go run ./cmd/ao-command mission history --history examples/mission/route-history.ready.json --route ao-atlas --query "Foundry import" --compact
-go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest.ready.json
+go run ./cmd/ao-command mission artifacts --manifest examples/mission/artifact-manifest-v0.2.ready.json --content-root examples/mission
 go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json
 go run ./cmd/ao-command mission dashboard --dashboard examples/mission/dashboard.ready.json --compact
 go run ./cmd/ao-command mission readiness --bundle examples/mission/readiness-bundle.ready.json
@@ -112,8 +112,12 @@ rejects any route-history entry that claims execution, approval, or repository
 mutation authority. Compact timeline output can be narrowed with `--route`,
 `--status-filter`, and `--query` without changing read-only authority.
 
-`mission artifacts` reads AO Mission's `ao.mission.artifact-manifest.v0.1`
-artifact manifest and reports the artifact count and refs in
+`mission artifacts` reads AO Mission's current `ao.mission.artifact-manifest.v0.2`
+with an explicit trusted Mission home supplied through `--content-root`. Command
+verifies the manifest digest/signature and hashes each retained `content_ref`
+before returning its exact `ref`, `content_ref`, and `digest`. Historical
+`ao.mission.artifact-manifest.v0.1` inputs remain supported without this flag.
+The command reports the artifact count and refs in
 `operator_mode=read_only`. It rejects any manifest that claims execution,
 approval, or repository mutation authority.
 
@@ -305,6 +309,38 @@ go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contrac
 scripts/production-readiness-audit.sh --repo uesugitorachiyo/ao-command --forge ../ao-forge --foundry ../ao-foundry --covenant ../ao-covenant --architecture ../ao-architecture --out tmp/production-readiness-audit.json
 go run ./cmd/ao-command evidence --forge ../ao-forge --schema "$PWD/docs/contracts/production-readiness-audit-v0.1.schema.json" --document "$PWD/tmp/production-readiness-audit.json"
 scripts/verify-branch-protection.sh
+```
+
+## Windows source-shell contract
+
+Go and Python tools run directly from PowerShell. Repository `.sh` gates run in Git for Windows Bash; use it only for those gates. Ruby is not required. The AO Command binary has no Bash dependency. The supported Git for Windows installation currently supplies the `shasum` used by repository scripts; an unrelated Bash installation or a stripped `PATH` that cannot find it is an unsupported environment with a missing prerequisite.
+
+From the AO Command repository root, run the smoke gate in PowerShell with:
+
+```powershell
+$gitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
+$hadAoCommandRoot = Test-Path Env:AO_COMMAND_ROOT
+$previousAoCommandRoot = $env:AO_COMMAND_ROOT
+$commandExit = 0
+try {
+    $env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
+    $bashCommand = 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
+    $bashArgument = $bashCommand
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        $bashArgument = $bashCommand.Replace('"', ([string][char]92 + '"'))
+    }
+    & $gitBash -lc $bashArgument
+    $commandExit = $LASTEXITCODE
+}
+finally {
+    if ($hadAoCommandRoot) {
+        $env:AO_COMMAND_ROOT = $previousAoCommandRoot
+    }
+    else {
+        Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue
+    }
+}
+if ($commandExit -ne 0) { exit $commandExit }
 ```
 
 Historical private-repo operating guardrails are tracked in

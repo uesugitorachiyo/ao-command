@@ -923,6 +923,10 @@ func TestGitHubIssueRepairParityIsMandatoryInHostedCI(t *testing.T) {
 			sha:     "924ae3a1cded613372ab5595356fb5720e22ba16",
 			version: "v6",
 		},
+		"actions/setup-python": {
+			sha:     "a309ff8b426b58ec0e2a45f0f869d46889d02405",
+			version: "v6",
+		},
 		"dtolnay/rust-toolchain": {
 			sha:     "4cda84d5c5c54efe2404f9d843567869ab1699d4",
 			version: "stable",
@@ -948,6 +952,10 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 		},
 		"actions/setup-go": {
 			sha:     "924ae3a1cded613372ab5595356fb5720e22ba16",
+			version: "v6",
+		},
+		"actions/setup-python": {
+			sha:     "a309ff8b426b58ec0e2a45f0f869d46889d02405",
 			version: "v6",
 		},
 		"actions/upload-artifact": {
@@ -1004,8 +1012,10 @@ func TestWorkflowActionReferencesArePinnedRepoWide(t *testing.T) {
 
 func TestWorkflowUsesScannerTraversesYAMLStructure(t *testing.T) {
 	checkoutSHA := "3d3c42e5aac5ba805825da76410c181273ba90b1"
+	setupPythonSHA := "a309ff8b426b58ec0e2a45f0f869d46889d02405"
 	allowed := map[string]workflowActionPin{
-		"actions/checkout": {sha: checkoutSHA},
+		"actions/checkout":     {sha: checkoutSHA},
+		"actions/setup-python": {sha: setupPythonSHA},
 	}
 	tests := []struct {
 		name      string
@@ -1066,6 +1076,12 @@ func TestWorkflowUsesScannerTraversesYAMLStructure(t *testing.T) {
 		{
 			name:      "mutable version",
 			document:  "step: {uses: actions/checkout@v7}\n",
+			wantCount: 1,
+			wantErr:   true,
+		},
+		{
+			name:      "different setup-python SHA",
+			document:  "step: {uses: actions/setup-python@0000000000000000000000000000000000000000}\n",
 			wantCount: 1,
 			wantErr:   true,
 		},
