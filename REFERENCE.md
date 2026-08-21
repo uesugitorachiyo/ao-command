@@ -319,9 +319,24 @@ From the AO Command repository root, run the smoke gate in PowerShell with:
 
 ```powershell
 $gitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
-$env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
-& $gitBash -lc 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
-Remove-Item Env:AO_COMMAND_ROOT
+$hadAoCommandRoot = Test-Path Env:AO_COMMAND_ROOT
+$previousAoCommandRoot = $env:AO_COMMAND_ROOT
+$commandExit = 0
+try {
+    $env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
+    $bashCommand = 'cd \"$(cygpath -u \"$AO_COMMAND_ROOT\")\" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
+    & $gitBash -lc $bashCommand
+    $commandExit = $LASTEXITCODE
+}
+finally {
+    if ($hadAoCommandRoot) {
+        $env:AO_COMMAND_ROOT = $previousAoCommandRoot
+    }
+    else {
+        Remove-Item Env:AO_COMMAND_ROOT -ErrorAction SilentlyContinue
+    }
+}
+if ($commandExit -ne 0) { exit $commandExit }
 ```
 
 Historical private-repo operating guardrails are tracked in

@@ -38,16 +38,7 @@ Command does not become a source of domain truth. It has no authority to approve
 
 ### Windows source-shell contract
 
-Go and Python tools run directly from PowerShell. Repository `.sh` gates run in Git for Windows Bash; use it only for those gates. Ruby is not required. The AO Command binary has no Bash dependency. The supported Git for Windows installation currently supplies the `shasum` used by repository scripts; an unrelated Bash installation or a stripped `PATH` that cannot find it is an unsupported environment with a missing prerequisite.
-
-From the AO Command repository root, run the smoke gate in PowerShell with:
-
-```powershell
-$gitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
-$env:AO_COMMAND_ROOT = (Resolve-Path '.').Path
-& $gitBash -lc 'cd "$(cygpath -u "$AO_COMMAND_ROOT")" && scripts/ao-command-smoke.sh --forge ../ao-forge --foundry ../ao-foundry --out tmp/ao-command-smoke'
-Remove-Item Env:AO_COMMAND_ROOT
-```
+Go and Python tools run directly from PowerShell. Repository `.sh` gates run in Git for Windows Bash at `Git\bin\bash.exe`; use it only for those gates. Ruby is not required. The AO Command binary has no Bash dependency. See [REFERENCE.md](REFERENCE.md#windows-source-shell-contract) for the supported environment boundary and state-preserving PowerShell smoke command.
 
 ## Evidence And Completion
 
