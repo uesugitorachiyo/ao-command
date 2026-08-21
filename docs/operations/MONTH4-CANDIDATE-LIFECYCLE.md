@@ -20,6 +20,11 @@ The AO Command Windows candidate is an x86-64 PE executable packaged in a zip.
 Windows PowerShell 5.1 and PowerShell 7. Its reports are external evidence
 bound to the unchanged archive digest.
 
+Qualification rejects archives larger than 32 MiB, members larger than 16 MiB,
+more than 32 MiB total expanded content, or a member compression ratio above
+200:1. These exact limits are recorded in each qualification report. Extraction
+uses bounded entry streams and creates each destination file without overwrite.
+
 ## Install
 
 Download the artifact for the target operating system from the exact hosted

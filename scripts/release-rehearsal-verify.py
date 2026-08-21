@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -57,6 +58,12 @@ WINDOWS_QUALIFICATION_REPORTS = {
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_ARCHIVE_MEMBER_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
+WINDOWS_QUALIFICATION_LIMITS = {
+    "max_archive_bytes": 32 * 1024 * 1024,
+    "max_entry_uncompressed_bytes": 16 * 1024 * 1024,
+    "max_total_uncompressed_bytes": 32 * 1024 * 1024,
+    "max_compression_ratio": 200,
+}
 
 
 def fail(message):
@@ -73,11 +80,37 @@ def require_digest(value, label):
     return value
 
 
+def strict_json_loads(data):
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    def finite_float(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError("non-finite JSON number")
+        return parsed
+
+    def reject_constant(value):
+        raise ValueError(f"non-finite JSON constant: {value}")
+
+    return json.loads(
+        data,
+        object_pairs_hook=object_pairs,
+        parse_constant=reject_constant,
+        parse_float=finite_float,
+    )
+
+
 def load_json_bytes(path, label):
     try:
         data = path.read_bytes()
-        return data, json.loads(data)
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return data, strict_json_loads(data)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"{label} malformed: {error}")
 
 
@@ -99,8 +132,8 @@ def validate_manifest():
     if len(manifest_bytes) > MAX_MANIFEST_BYTES:
         fail("approved manifest exceeds bounded size")
     try:
-        manifest = json.loads(manifest_bytes)
-    except (UnicodeError, json.JSONDecodeError) as error:
+        manifest = strict_json_loads(manifest_bytes)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"approved manifest malformed: {error}")
     manifest_digest = sha256_bytes(manifest_bytes)
     if manifest_digest != os.environ["APPROVED_MANIFEST_DIGEST"]:
@@ -237,12 +270,15 @@ def validate_evidence(root, candidate, archive_contents):
     identity = EXPECTED_TARGETS[target]
 
     _, version = load_json_bytes(root / "version-readback.json", "version readback")
-    if version != {
-        "provider_calls": False,
-        "schema_version": "ao.command.version.v0.1",
-        "source_commit": bindings["source_commit"],
-        "version": bindings["version"],
-    }:
+    if (
+        not isinstance(version, dict)
+        or set(version)
+        != {"provider_calls", "schema_version", "source_commit", "version"}
+        or version["provider_calls"] is not False
+        or version["schema_version"] != "ao.command.version.v0.1"
+        or version["source_commit"] != bindings["source_commit"]
+        or version["version"] != bindings["version"]
+    ):
         fail("version readback mismatch")
 
     _, functional = load_json_bytes(root / "functional-smoke.json", "functional smoke")
@@ -347,6 +383,7 @@ def validate_windows_qualification(root, candidate, inventory_by_name):
         "cleanup_verified",
         "doctor",
         "install_path_contains_spaces",
+        "limits",
         "powershell_edition",
         "powershell_version",
         "provider_calls",
@@ -355,12 +392,12 @@ def validate_windows_qualification(root, candidate, inventory_by_name):
         "status",
         "version",
     }
-    expected_authority = {
-        "approves_work": False,
-        "executes_work": False,
-        "mutates_repositories": False,
-        "releases_or_deploys": False,
-        "safe_to_execute": False,
+    expected_authority_keys = {
+        "approves_work",
+        "executes_work",
+        "mutates_repositories",
+        "releases_or_deploys",
+        "safe_to_execute",
     }
     expected_doctor = {
         "replacement_diagnostic": "version_and_mission_status",
@@ -372,10 +409,23 @@ def validate_windows_qualification(root, candidate, inventory_by_name):
         _, report = load_json_bytes(root / name, "Windows qualification report")
         if not isinstance(report, dict) or set(report) != expected_report_keys:
             fail("Windows qualification report schema mismatch")
-        if report["authority"] != expected_authority:
+        authority = report["authority"]
+        if (
+            not isinstance(authority, dict)
+            or set(authority) != expected_authority_keys
+            or any(type(value) is not bool or value is not False for value in authority.values())
+        ):
             fail("Windows qualification authority mismatch")
         if report["doctor"] != expected_doctor:
             fail("Windows qualification doctor mismatch")
+        limits = report["limits"]
+        if (
+            not isinstance(limits, dict)
+            or set(limits) != set(WINDOWS_QUALIFICATION_LIMITS)
+            or any(type(value) is not int for value in limits.values())
+            or limits != WINDOWS_QUALIFICATION_LIMITS
+        ):
+            fail("Windows qualification limits mismatch")
         if (
             report["schema_version"]
             != "ao.command.windows-candidate-qualification.v0.1"
@@ -445,13 +495,13 @@ def collect_candidates(manifest_by_target):
             or candidate["approved_manifest_digest"]
             != os.environ["APPROVED_MANIFEST_DIGEST"]
             or candidate["provider_calls"] is not False
-            or candidate["smoke"]
-            != {
-                "functional": "passed",
-                "help": "passed",
-                "provider_calls": False,
-                "version": "passed",
-            }
+            or not isinstance(candidate["smoke"], dict)
+            or set(candidate["smoke"])
+            != {"functional", "help", "provider_calls", "version"}
+            or candidate["smoke"]["functional"] != "passed"
+            or candidate["smoke"]["help"] != "passed"
+            or candidate["smoke"]["provider_calls"] is not False
+            or candidate["smoke"]["version"] != "passed"
         ):
             fail("candidate bindings or smoke mismatch")
         for key in (
@@ -596,8 +646,8 @@ def verify():
     if os.environ.get("EXACT_CONFIRMATION") != expected_confirmation:
         fail("exact confirmation mismatch")
     try:
-        plan = json.loads(plan_bytes)
-    except (UnicodeError, json.JSONDecodeError) as error:
+        plan = strict_json_loads(plan_bytes)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
         fail(f"plan malformed: {error}")
     expected_plan_keys = {
         "approved_manifest_digest",

@@ -540,7 +540,88 @@ func TestAssemblePlanRejectsNegativeFixtures(t *testing.T) {
 			},
 			want: "Windows qualification doctor mismatch",
 		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_duplicate_status_key",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReportBytes(t, "windows-qualification-powershell51.json", func(data []byte) []byte {
+					return bytes.Replace(data, []byte("{"), []byte("{\"status\":\"passed\","), 1)
+				})
+			},
+			want: "Windows qualification report malformed",
+		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_duplicate_authority_key",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReportBytes(t, "windows-qualification-powershell51.json", func(data []byte) []byte {
+					return bytes.Replace(data, []byte("\"authority\":{"), []byte("\"authority\":{\"safe_to_execute\":false,"), 1)
+				})
+			},
+			want: "Windows qualification report malformed",
+		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_integer_authority",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReport(t, "windows-qualification-powershell51.json", func(report map[string]any) {
+					report["authority"].(map[string]any)["safe_to_execute"] = 0
+				})
+			},
+			want: "Windows qualification authority mismatch",
+		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_nonfinite_nested_value",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReportBytes(t, "windows-qualification-powershell51.json", func(data []byte) []byte {
+					return bytes.Replace(data, []byte("\"powershell_version\":\"5.1.26100.6584\""), []byte("\"powershell_version\":1e999"), 1)
+				})
+			},
+			want: "Windows qualification report malformed",
+		},
+		struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_limit_drift",
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReport(t, "windows-qualification-powershell51.json", func(report map[string]any) {
+					report["limits"].(map[string]any)["max_compression_ratio"] = 201
+				})
+			},
+			want: "Windows qualification limits mismatch",
+		},
 	)
+	for _, constant := range []string{"NaN", "Infinity", "-Infinity"} {
+		constant := constant
+		tests = append(tests, struct {
+			name   string
+			mutate func(*testing.T, *releaseFixture)
+			want   string
+		}{
+			name: "windows_qualification_nonfinite_" + strings.ToLower(strings.TrimPrefix(constant, "-")),
+			mutate: func(t *testing.T, fixture *releaseFixture) {
+				fixture.mutateWindowsQualificationReportBytes(t, "windows-qualification-powershell51.json", func(data []byte) []byte {
+					return bytes.Replace(data, []byte("\"powershell_version\":\"5.1.26100.6584\""), []byte("\"powershell_version\":"+constant), 1)
+				})
+			},
+			want: "Windows qualification report malformed",
+		})
+	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -902,13 +983,17 @@ func newReleaseFixture(t *testing.T) *releaseFixture {
 					"cleanup_verified":             true,
 					"doctor":                       map[string]any{"replacement_diagnostic": "version_and_mission_status", "status": "not_applicable"},
 					"install_path_contains_spaces": true,
-					"powershell_edition":           reportEditions[index],
-					"powershell_version":           map[bool]string{true: "5.1.26100.6584", false: "7.5.2"}[index == 0],
-					"provider_calls":               false,
-					"schema_version":               "ao.command.windows-candidate-qualification.v0.1",
-					"source_commit":                releaseSource,
-					"status":                       "passed",
-					"version":                      releaseVersion,
+					"limits": map[string]any{
+						"max_archive_bytes": 32 * 1024 * 1024, "max_compression_ratio": 200,
+						"max_entry_uncompressed_bytes": 16 * 1024 * 1024, "max_total_uncompressed_bytes": 32 * 1024 * 1024,
+					},
+					"powershell_edition": reportEditions[index],
+					"powershell_version": map[bool]string{true: "5.1.26100.6584", false: "7.5.2"}[index == 0],
+					"provider_calls":     false,
+					"schema_version":     "ao.command.windows-candidate-qualification.v0.1",
+					"source_commit":      releaseSource,
+					"status":             "passed",
+					"version":            releaseVersion,
 				}
 				reportBytes := marshalJSONBytes(t, report)
 				files[reportName] = reportBytes
@@ -991,6 +1076,39 @@ func (fixture *releaseFixture) mutateWindowsQualificationReport(t *testing.T, na
 	if err != nil {
 		t.Fatal(err)
 	}
+	digest := digestBytes(reportBytes)
+	summaryPath := filepath.Join(dir, "candidate-summary.json")
+	summary := readJSONObject(t, summaryPath)
+	for _, raw := range summary["inventory"].([]any) {
+		item := raw.(map[string]any)
+		if item["name"] == name {
+			item["sha256"] = digest
+		}
+	}
+	qualification := summary["windows_qualification"].(map[string]any)
+	for _, raw := range qualification["reports"].([]any) {
+		item := raw.(map[string]any)
+		if item["name"] == name {
+			item["sha256"] = digest
+		}
+	}
+	writeJSONFile(t, summaryPath, summary)
+}
+
+func (fixture *releaseFixture) mutateWindowsQualificationReportBytes(t *testing.T, name string, mutate func([]byte) []byte) {
+	t.Helper()
+	dir := fixture.candidateDirs["windows-x86_64"]
+	reportPath := filepath.Join(dir, name)
+	reportBytes, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := mutate(reportBytes)
+	if bytes.Equal(mutated, reportBytes) {
+		t.Fatal("qualification report byte mutation did not change fixture")
+	}
+	reportBytes = mutated
+	writeTestFile(t, reportPath, reportBytes)
 	digest := digestBytes(reportBytes)
 	summaryPath := filepath.Join(dir, "candidate-summary.json")
 	summary := readJSONObject(t, summaryPath)
