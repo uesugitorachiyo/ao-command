@@ -4785,6 +4785,7 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 	}
 
 	readme := read("REFERENCE.md")
+	repositoryReadme := read("README.md")
 	security := read("SECURITY.md")
 	foundry := read("docs", "design", "AO-COMMAND-FOUNDRY.md")
 	privateGuardrails := read("docs", "operations", "PRIVATE-REPO-GUARDRAILS.md")
@@ -4812,6 +4813,15 @@ func TestDocsDeclarePrivateReadOnlyBoundary(t *testing.T) {
 		doc  string
 		want string
 	}{
+		{name: "README current release", doc: repositoryReadme, want: "## Install v0.1.3"},
+		{name: "README current release tag", doc: repositoryReadme, want: "https://github.com/uesugitorachiyo/ao-command/releases/tag/v0.1.3"},
+		{name: "README macOS release asset", doc: repositoryReadme, want: "https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-macos-aarch64.tar.gz"},
+		{name: "README Linux release asset", doc: repositoryReadme, want: "https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-linux-x86_64.tar.gz"},
+		{name: "README Windows release asset", doc: repositoryReadme, want: "https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-windows-x86_64.zip"},
+		{name: "README Unix extracted command", doc: repositoryReadme, want: "`./ao-command --help`"},
+		{name: "README Windows extracted command", doc: repositoryReadme, want: "`.\\ao-command.exe --help`"},
+		{name: "README source development command", doc: repositoryReadme, want: "`go run ./cmd/ao-command ...`"},
+		{name: "README v0.1.2 closeout is historical", doc: repositoryReadme, want: "[Historical v0.1.2 Operator Closeout]"},
 		{name: "README publication audit", doc: readme, want: "operator-approved public-readiness audit passed"},
 		{name: "README no dangerous writes", doc: readme, want: "Dangerous writes are intentionally out of scope"},
 		{name: "README AO2 execution boundary", doc: readme, want: "AO2 is the governed execution path"},
