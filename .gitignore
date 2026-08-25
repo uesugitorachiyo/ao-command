@@ -1,6 +1,7 @@
 bin/
 dist/
 tmp/
+/docs/evidence/ao-mission-doubled-wave-v01/
 .DS_Store
 CLAUDE.local.md
 .claude/settings.local.json
