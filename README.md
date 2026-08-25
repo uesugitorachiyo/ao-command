@@ -41,6 +41,18 @@ Use `--json` when a command supports machine-readable output. The
 [full command reference](REFERENCE.md) documents every status, evidence,
 rehearsal, release, and live-mutation readback.
 
+### Windows Mission JSON handoff
+
+`ao-command mission status` accepts strict UTF-8 JSON without a byte-order mark
+(BOM). Windows PowerShell 5.1 `Set-Content -Encoding UTF8` adds a BOM, so write
+Mission’s JSON with a BOM-free encoder:
+
+```powershell
+$status = & ao-mission command status --mission <mission-id> --json
+[System.IO.File]::WriteAllText('mission-command-status.json', $status, [System.Text.UTF8Encoding]::new($false))
+.\ao-command.exe mission status --status mission-command-status.json
+```
+
 ## Install v0.1.3
 
 The current published release is [v0.1.3](https://github.com/uesugitorachiyo/ao-command/releases/tag/v0.1.3).
@@ -51,7 +63,34 @@ After extracting an archive, run `./ao-command --help` on macOS or Linux, or
 - Linux x86_64: [`ao-command-0.1.3-linux-x86_64.tar.gz`](https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-linux-x86_64.tar.gz)
 - Windows x86_64: [`ao-command-0.1.3-windows-x86_64.zip`](https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-windows-x86_64.zip)
 
-For development, source builds remain the normal path: `go run ./cmd/ao-command ...`.
+The release has no separate checksum asset. Verify a downloaded archive against
+the GitHub asset digest before extracting it:
+
+```sh
+archive=ao-command-0.1.3-macos-aarch64.tar.gz
+expected="$(gh release view v0.1.3 --repo uesugitorachiyo/ao-command --json assets --jq ".assets[] | select(.name == \"$archive\") | .digest")"
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="sha256:$(sha256sum "$archive" | awk '{print $1}')"
+else
+  actual="sha256:$(shasum -a 256 "$archive" | awk '{print $1}')"
+fi
+test "$actual" = "$expected"
+```
+
+On Linux x86_64, set
+`archive=ao-command-0.1.3-linux-x86_64.tar.gz` before running the same block.
+
+On PowerShell:
+
+```powershell
+$archive = 'ao-command-0.1.3-windows-x86_64.zip'
+$expected = gh release view v0.1.3 --repo uesugitorachiyo/ao-command --json assets --jq '.assets[] | select(.name == "ao-command-0.1.3-windows-x86_64.zip") | .digest'
+$actual = "sha256:$((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower())"
+if ($actual -ne $expected) { throw 'release digest mismatch' }
+```
+
+For development, Go 1.26 or later is required; source builds remain the normal
+path: `go run ./cmd/ao-command ...`.
 
 ## Safety Boundary
 

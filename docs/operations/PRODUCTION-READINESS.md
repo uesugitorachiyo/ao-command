@@ -3,6 +3,12 @@
 AO Command production readiness is measured by
 `scripts/production-readiness-audit.sh`.
 
+## Historical v0.1.2 Compatibility Guidance
+
+The v0.1.2 preview and governance commands below are retained compatibility
+evidence, not the current release path. For current binary installation, use
+the v0.1.3 instructions in [README.md](../../README.md).
+
 ## Current Gate
 
 The audit is passing only when all gates pass:
