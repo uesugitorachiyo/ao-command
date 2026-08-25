@@ -41,6 +41,18 @@ Use `--json` when a command supports machine-readable output. The
 [full command reference](REFERENCE.md) documents every status, evidence,
 rehearsal, release, and live-mutation readback.
 
+## Install v0.1.3
+
+The current published release is [v0.1.3](https://github.com/uesugitorachiyo/ao-command/releases/tag/v0.1.3).
+After extracting an archive, run `./ao-command --help` on macOS or Linux, or
+`.\ao-command.exe --help` in PowerShell.
+
+- macOS Apple Silicon: [`ao-command-0.1.3-macos-aarch64.tar.gz`](https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-macos-aarch64.tar.gz)
+- Linux x86_64: [`ao-command-0.1.3-linux-x86_64.tar.gz`](https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-linux-x86_64.tar.gz)
+- Windows x86_64: [`ao-command-0.1.3-windows-x86_64.zip`](https://github.com/uesugitorachiyo/ao-command/releases/download/v0.1.3/ao-command-0.1.3-windows-x86_64.zip)
+
+For development, source builds remain the normal path: `go run ./cmd/ao-command ...`.
+
 ## Safety Boundary
 
 AO Command reads records owned by other components. It does not start loops,
@@ -59,7 +71,7 @@ portfolio coordination.
 - [Branch Protection](docs/operations/BRANCH-PROTECTION.md)
 - [Retained Evidence](docs/operations/RETAINED-EVIDENCE.md)
 - [Publication Checklist](docs/operations/PUBLICATION-CHECKLIST.md)
-- [v0.1.2 Operator Closeout](docs/release/V0.1.2-OPERATOR-CLOSEOUT.md)
+- [Historical v0.1.2 Operator Closeout](docs/release/V0.1.2-OPERATOR-CLOSEOUT.md)
 - [Full Reference](REFERENCE.md)
 
 ## Verification
