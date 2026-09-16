@@ -12,6 +12,7 @@ Command does not become a source of domain truth. It has no authority to approve
 - `docs/contracts/`, `internal/cli/`, and their tests own Command's output schemas and implemented validation. [REFERENCE.md](REFERENCE.md) is the current command reference.
 - [docs/operations/PRODUCTION-READINESS.md](docs/operations/PRODUCTION-READINESS.md) and [docs/operations/RETAINED-EVIDENCE.md](docs/operations/RETAINED-EVIDENCE.md) define readiness and provenance handling.
 - `scripts/production-readiness-audit.sh`, `scripts/ao-command-smoke.sh`, and [`.github/workflows/ci.yml`](.github/workflows/ci.yml) define the broad gates.
+- [ao-quality-gates.json](ao-quality-gates.json) declares the portable source-owned commit, push, and full quality commands consumed by the stack-wide quality runner.
 
 ## Ownership And Boundaries
 
